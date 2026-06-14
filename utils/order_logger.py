@@ -53,7 +53,7 @@ async def send_order_log(
     text = (
         "📄 𝗡𝗲𝘄 𝗢𝗿𝗱𝗲𝗿 𝗦𝘂𝗯𝗺𝗶𝘁𝘁𝗲𝗱\n"
         "\n"
-        f"🆔 𝗢𝗿𝗱𝗲𝗿 𝗜𝗗: CSB-{order_id}\n"
+        f"🆔 𝗢𝗿𝗱𝗲𝗿 𝗜𝗗: SHUVO-{order_id}\n"
         f"✅ 𝗦𝘁𝗮𝘁𝘂𝘀: 𝗣𝗿𝗼𝗰𝗲𝘀𝘀𝗶𝗻𝗴 {status_icon}\n"
         f"🆔 𝗨𝘀𝗲𝗿 𝗜𝗗: {user_id}\n"
         f"👍 𝗔𝗺𝗼𝘂𝗻𝘁: {quantity:,} {service_name}\n"
