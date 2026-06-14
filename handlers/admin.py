@@ -44,9 +44,9 @@ async def admin_panel(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ Access denied.")
         return
     await update.message.reply_text(
-        f"👑 *Admin Panel*\n\nWelcome, Admin!",
+        f"👑 <b>Admin Panel</b>\n\nWelcome, Admin!",
         reply_markup=admin_keyboard(),
-        parse_mode=ParseMode.MARKDOWN
+        parse_mode=ParseMode.HTML
     )
 
 
@@ -65,17 +65,17 @@ async def bot_stats(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     orders_today  = await db.get_orders_today()
 
     text = (
-        f"📊 *Bot Statistics*\n"
+        f"📊 <b>Bot Statistics</b>\n"
         f"{'─'*28}\n"
-        f"👥 Total Users: `{total_users:,}`\n"
-        f"📦 Total Orders: `{total_orders:,}`\n"
-        f"📦 Orders Today: `{orders_today:,}`\n"
-        f"💰 Total Revenue: `{fmt_coins(total_revenue)} coins`\n"
-        f"💳 Approved Deposits: `{total_deps:,}`\n"
-        f"🎁 Total Redeems: `{total_redeems:,}`\n"
-        f"👑 VIP Users: `{vip_count:,}`\n"
+        f"👥 Total Users: <code>{total_users:,}</code>\n"
+        f"📦 Total Orders: <code>{total_orders:,}</code>\n"
+        f"📦 Orders Today: <code>{orders_today:,}</code>\n"
+        f"💰 Total Revenue: <code>{fmt_coins(total_revenue)} coins</code>\n"
+        f"💳 Approved Deposits: <code>{total_deps:,}</code>\n"
+        f"🎁 Total Redeems: <code>{total_redeems:,}</code>\n"
+        f"👑 VIP Users: <code>{vip_count:,}</code>\n"
     )
-    await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
+    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -85,8 +85,8 @@ async def user_management(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         return
     await update.message.reply_text(
-        "👥 *User Management*\n\nEnter a User ID or @username to search:",
-        parse_mode=ParseMode.MARKDOWN,
+        "👥 <b>User Management</b>\n\nEnter a User ID or @username to search:",
+        parse_mode=ParseMode.HTML,
         reply_markup=cancel_keyboard()
     )
     return SEARCH_USER
@@ -104,22 +104,22 @@ async def search_user_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         vip_ok  = await db.is_vip_active(user)
         vip_str = user.get("vip_plan", "None") if vip_ok else "None"
         text = (
-            f"👤 *User Info*\n"
+            f"👤 <b>User Info</b>\n"
             f"{'─'*28}\n"
-            f"🆔 ID: `{user['user_id']}`\n"
-            f"👤 Name: `{user['full_name']}`\n"
-            f"📱 Username: `@{user.get('username','')}`\n"
-            f"💰 Balance: `{fmt_coins(user['balance'])} coins`\n"
-            f"📦 Orders: `{user['total_orders']}`\n"
-            f"💸 Total Spent: `{fmt_coins(user['total_spent'])} coins`\n"
-            f"👥 Referrals: `{user['referral_count']}`\n"
-            f"⭐ VIP: `{vip_str}`\n"
-            f"🚫 Banned: `{'Yes' if user['is_banned'] else 'No'}`\n"
-            f"📅 Joined: `{fmt_date(user['join_date'])}`"
+            f"🆔 ID: <code>{user['user_id']}</code>\n"
+            f"👤 Name: <code>{user['full_name']}</code>\n"
+            f"📱 Username: <code>@{user.get('username','')}</code>\n"
+            f"💰 Balance: <code>{fmt_coins(user['balance'])} coins</code>\n"
+            f"📦 Orders: <code>{user['total_orders']}</code>\n"
+            f"💸 Total Spent: <code>{fmt_coins(user['total_spent'])} coins</code>\n"
+            f"👥 Referrals: <code>{user['referral_count']}</code>\n"
+            f"⭐ VIP: <code>{vip_str}</code>\n"
+            f"🚫 Banned: <code>{'Yes' if user['is_banned'] else 'No'}</code>\n"
+            f"📅 Joined: <code>{fmt_date(user['join_date'])}</code>"
         )
         await update.message.reply_text(
             text, reply_markup=admin_user_kb(user["user_id"]),
-            parse_mode=ParseMode.MARKDOWN
+            parse_mode=ParseMode.HTML
         )
 
     await update.message.reply_text("Done.", reply_markup=admin_keyboard())
@@ -133,8 +133,8 @@ async def balance_manager(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         return
     await update.message.reply_text(
-        "💰 *Balance Manager*\n\nEnter User ID to add balance:",
-        parse_mode=ParseMode.MARKDOWN,
+        "💰 <b>Balance Manager</b>\n\nEnter User ID to add balance:",
+        parse_mode=ParseMode.HTML,
         reply_markup=cancel_keyboard()
     )
     return ADD_BAL_ID
@@ -160,14 +160,14 @@ async def add_bal_amount_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
     await db.add_balance(uid, amount, "Admin Add")
     udata = await db.get_user(uid)
     await update.message.reply_text(
-        f"✅ Added `{fmt_coins(amount)} coins` to user `{uid}`.\n"
-        f"New balance: `{fmt_coins(udata['balance']) if udata else '?'} coins`",
-        parse_mode=ParseMode.MARKDOWN,
+        f"✅ Added <code>{fmt_coins(amount)} coins</code> to user <code>{uid}</code>.\n"
+        f"New balance: <code>{fmt_coins(udata['balance']) if udata else '?'} coins</code>",
+        parse_mode=ParseMode.HTML,
         reply_markup=admin_keyboard()
     )
     # Notify user
     try:
-        await ctx.bot.send_message(uid, f"💰 Admin added *{fmt_coins(amount)} coins* to your balance!", parse_mode=ParseMode.MARKDOWN)
+        await ctx.bot.send_message(uid, f"💰 Admin added <b>{fmt_coins(amount)} coins</b> to your balance!", parse_mode=ParseMode.HTML)
     except Exception:
         pass
     ctx.user_data.clear()
@@ -206,23 +206,23 @@ async def admin_user_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         ctx.user_data["adm_target_id"] = uid
         ctx.user_data["adm_action"]    = "add"
         await query.edit_message_text(
-            f"➕ Add balance to user `{uid}`\n\nEnter amount:",
-            parse_mode=ParseMode.MARKDOWN
+            f"➕ Add balance to user <code>{uid}</code>\n\nEnter amount:",
+            parse_mode=ParseMode.HTML
         )
 
     elif action == "adm_bal_rem":
         ctx.user_data["adm_target_id"] = uid
         ctx.user_data["adm_action"]    = "remove"
         await query.edit_message_text(
-            f"➖ Remove balance from user `{uid}`\n\nEnter amount:",
-            parse_mode=ParseMode.MARKDOWN
+            f"➖ Remove balance from user <code>{uid}</code>\n\nEnter amount:",
+            parse_mode=ParseMode.HTML
         )
 
     elif action == "adm_msg":
         ctx.user_data["msg_target"] = uid
         await query.edit_message_text(
-            f"📩 Send message to user `{uid}`\n\nType your message:",
-            parse_mode=ParseMode.MARKDOWN
+            f"📩 Send message to user <code>{uid}</code>\n\nType your message:",
+            parse_mode=ParseMode.HTML
         )
 
 
@@ -234,14 +234,14 @@ async def code_manager(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
     codes = await db.get_all_codes()
     if codes:
-        lines = ["🎁 *Redeem Codes*\n"]
+        lines = ["🎁 <b>Redeem Codes</b>\n"]
         for c in codes:
             status = "✅" if c["is_active"] else "❌"
             lines.append(
-                f"{status} `{c['code']}` — {fmt_coins(c['amount'])} coins "
+                f"{status} <code>{c['code']}</code> — {fmt_coins(c['amount'])} coins "
                 f"({c['used_count']}/{c['max_uses']} uses)"
             )
-        await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
+        await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
 
     await update.message.reply_text(
         "Enter new code name (or /skip to skip):",
@@ -277,10 +277,10 @@ async def create_code_uses_handler(update: Update, ctx: ContextTypes.DEFAULT_TYP
     amount = ctx.user_data["new_code_amount"]
     await db.create_redeem_code(code, amount, uses)
     await update.message.reply_text(
-        f"✅ Code `{code}` created!\n"
-        f"💰 Amount: `{fmt_coins(amount)} coins`\n"
-        f"🔢 Max Uses: `{uses}`",
-        parse_mode=ParseMode.MARKDOWN,
+        f"✅ Code <code>{code}</code> created!\n"
+        f"💰 Amount: <code>{fmt_coins(amount)} coins</code>\n"
+        f"🔢 Max Uses: <code>{uses}</code>",
+        parse_mode=ParseMode.HTML,
         reply_markup=admin_keyboard()
     )
     ctx.user_data.clear()
@@ -294,9 +294,9 @@ async def broadcast(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         return
     await update.message.reply_text(
-        "📢 *Broadcast*\n\nChoose message type:",
+        "📢 <b>Broadcast</b>\n\nChoose message type:",
         reply_markup=broadcast_type_kb(),
-        parse_mode=ParseMode.MARKDOWN
+        parse_mode=ParseMode.HTML
     )
     return BC_TYPE
 
@@ -343,11 +343,11 @@ async def broadcast_content_handler(update: Update, ctx: ContextTypes.DEFAULT_TY
         sent, failed = 0, 0
 
     await update.message.reply_text(
-        f"📢 *Broadcast Complete!*\n\n"
-        f"✅ Sent: `{sent}`\n"
-        f"❌ Failed: `{failed}`\n"
-        f"📊 Total: `{len(ids)}`",
-        parse_mode=ParseMode.MARKDOWN,
+        f"📢 <b>Broadcast Complete!</b>\n\n"
+        f"✅ Sent: <code>{sent}</code>\n"
+        f"❌ Failed: <code>{failed}</code>\n"
+        f"📊 Total: <code>{len(ids)}</code>",
+        parse_mode=ParseMode.HTML,
         reply_markup=admin_keyboard()
     )
     ctx.user_data.clear()
@@ -361,14 +361,14 @@ async def order_manager(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         return
     orders = await db.get_all_orders(20)
-    lines  = ["📦 *Recent Orders* (Last 20)\n"]
+    lines  = ["📦 <b>Recent Orders</b> (Last 20)\n"]
     for o in orders:
         lines.append(
             f"#{o['id']} | {o.get('username','?')} | "
             f"{o.get('service_name','?')[:20]} | "
             f"{o['status']} | {fmt_coins(o['charge'])}"
         )
-    await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
+    await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
 
     await update.message.reply_text(
         "Enter Order ID to check / manage (or /skip):",
@@ -393,20 +393,20 @@ async def admin_order_search_handler(update: Update, ctx: ContextTypes.DEFAULT_T
         return ConversationHandler.END
 
     reply = (
-        f"📦 *Order #{order['id']}*\n"
+        f"📦 <b>Order #{order['id']}</b>\n"
         f"{'─'*28}\n"
-        f"👤 User: `{order['user_id']}`\n"
-        f"📦 Service: `{order.get('service_name','?')}`\n"
-        f"🔗 Link: `{order['link']}`\n"
-        f"📊 Qty: `{order['quantity']:,}`\n"
-        f"💵 Charge: `{fmt_coins(order['charge'])} coins`\n"
-        f"📊 Status: `{order['status']}`\n"
-        f"🆔 API ID: `{order.get('api_order_id','N/A')}`\n"
-        f"📅 Date: `{fmt_date(order['created_at'])}`"
+        f"👤 User: <code>{order['user_id']}</code>\n"
+        f"📦 Service: <code>{order.get('service_name','?')}</code>\n"
+        f"🔗 Link: <code>{order['link']}</code>\n"
+        f"📊 Qty: <code>{order['quantity']:,}</code>\n"
+        f"💵 Charge: <code>{fmt_coins(order['charge'])} coins</code>\n"
+        f"📊 Status: <code>{order['status']}</code>\n"
+        f"🆔 API ID: <code>{order.get('api_order_id','N/A')}</code>\n"
+        f"📅 Date: <code>{fmt_date(order['created_at'])}</code>"
     )
     from keyboards.inline import order_actions_kb
     await update.message.reply_text(
-        reply, parse_mode=ParseMode.MARKDOWN,
+        reply, parse_mode=ParseMode.HTML,
         reply_markup=order_actions_kb(order["id"], order.get("api_order_id",""), True, True)
     )
     await update.message.reply_text("Done.", reply_markup=admin_keyboard())
@@ -423,14 +423,14 @@ async def api_manager(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ok, msg = await smm_api.test_connection()
     status  = "✅ Connected" if ok else "❌ Not Connected"
     text = (
-        f"⚙️ *API Manager*\n"
+        f"⚙️ <b>API Manager</b>\n"
         f"{'─'*28}\n"
         f"Status: {status}\n"
-        f"Info: `{msg}`\n\n"
+        f"Info: <code>{msg}</code>\n\n"
         f"Use /syncservices to sync all services.\n"
         f"Use /testapi to test connection."
     )
-    await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
+    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
 
 async def sync_services(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -444,9 +444,9 @@ async def sync_services(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await db.upsert_services(services)
     cats = await db.get_categories()
     await update.message.reply_text(
-        f"✅ *Synced {len(services)} services!*\n"
-        f"📂 Categories: `{len(cats)}`",
-        parse_mode=ParseMode.MARKDOWN
+        f"✅ <b>Synced {len(services)} services!</b>\n"
+        f"📂 Categories: <code>{len(cats)}</code>",
+        parse_mode=ParseMode.HTML
     )
 
 
@@ -455,8 +455,8 @@ async def test_api(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
     ok, msg = await smm_api.test_connection()
     await update.message.reply_text(
-        f"{'✅' if ok else '❌'} API Test: `{msg}`",
-        parse_mode=ParseMode.MARKDOWN
+        f"{'✅' if ok else '❌'} API Test: <code>{msg}</code>",
+        parse_mode=ParseMode.HTML
     )
 
 
@@ -467,14 +467,14 @@ async def force_join_admin(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         return
     channels = await db.get_force_channels()
-    lines    = ["📣 *Force Join Channels*\n"]
+    lines    = ["📣 <b>Force Join Channels</b>\n"]
     if channels:
         for ch in channels:
-            lines.append(f"• `{ch['channel_id']}` — {ch.get('channel_name','')}")
+            lines.append(f"• <code>{ch['channel_id']}</code> — {ch.get('channel_name','')}")
     else:
-        lines.append("_No channels set._")
+        lines.append("<i>No channels set.</i>")
     lines.append("\n/addchannel — Add\n/removechannel — Remove")
-    await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
+    await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
 
 
 async def add_channel_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -488,7 +488,7 @@ async def add_channel_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     link    = args[1] if len(args) > 1 else ""
     name    = args[2] if len(args) > 2 else ch_id
     await db.add_force_channel(ch_id, name, link)
-    await update.message.reply_text(f"✅ Channel `{ch_id}` added to force join.", parse_mode=ParseMode.MARKDOWN)
+    await update.message.reply_text(f"✅ Channel <code>{ch_id}</code> added to force join.", parse_mode=ParseMode.HTML)
 
 
 async def remove_channel_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -499,7 +499,7 @@ async def remove_channel_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Usage: /removechannel @channel")
         return
     await db.remove_force_channel(args[0])
-    await update.message.reply_text(f"✅ Channel `{args[0]}` removed.", parse_mode=ParseMode.MARKDOWN)
+    await update.message.reply_text(f"✅ Channel <code>{args[0]}</code> removed.", parse_mode=ParseMode.HTML)
 
 
 async def list_channels_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -513,8 +513,8 @@ async def ban_system(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         return
     await update.message.reply_text(
-        "🚫 *Ban System*\n\nEnter User ID to ban:",
-        parse_mode=ParseMode.MARKDOWN,
+        "🚫 <b>Ban System</b>\n\nEnter User ID to ban:",
+        parse_mode=ParseMode.HTML,
         reply_markup=cancel_keyboard()
     )
     return BAN_ID
@@ -527,7 +527,7 @@ async def ban_id_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
     uid = int(text)
     await db.ban_user(uid, "Banned by admin")
-    await update.message.reply_text(f"🚫 User `{uid}` banned.", parse_mode=ParseMode.MARKDOWN, reply_markup=admin_keyboard())
+    await update.message.reply_text(f"🚫 User <code>{uid}</code> banned.", parse_mode=ParseMode.HTML, reply_markup=admin_keyboard())
     try:
         await ctx.bot.send_message(uid, "🚫 You have been banned from this bot.")
     except Exception:
@@ -547,15 +547,15 @@ async def support_manager(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
     for t in tickets[:5]:
         text = (
-            f"☎️ *Ticket #{t['id']}*\n"
-            f"👤 User: `{t['full_name']}` (`{t['user_id']}`)\n"
-            f"📋 Subject: `{t['subject']}`\n"
+            f"☎️ <b>Ticket #{t['id']}</b>\n"
+            f"👤 User: <code>{t['full_name']}</code> (<code>{t['user_id']}</code>)\n"
+            f"📋 Subject: <code>{t['subject']}</code>\n"
             f"💬 Message: {t['message']}\n"
             f"📅 {fmt_date(t['created_at'])}"
         )
         await update.message.reply_text(
             text, reply_markup=ticket_reply_kb(t["id"], t["user_id"]),
-            parse_mode=ParseMode.MARKDOWN
+            parse_mode=ParseMode.HTML
         )
 
 
@@ -590,8 +590,8 @@ async def ticket_reply_text_handler(update: Update, ctx: ContextTypes.DEFAULT_TY
     try:
         await ctx.bot.send_message(
             user_id,
-            f"☎️ *Support Reply — Ticket #{ticket_id}*\n\n{reply}",
-            parse_mode=ParseMode.MARKDOWN
+            f"☎️ <b>Support Reply — Ticket #{ticket_id}</b>\n\n{reply}",
+            parse_mode=ParseMode.HTML
         )
     except Exception:
         pass
@@ -634,9 +634,9 @@ async def deposit_approve_callback(update: Update, ctx: ContextTypes.DEFAULT_TYP
     try:
         await ctx.bot.send_message(
             dep["user_id"],
-            f"✅ *Deposit Approved!*\n\n"
-            f"💰 +`{fmt_coins(dep['amount'])} coins` added to your balance!",
-            parse_mode=ParseMode.MARKDOWN
+            f"✅ <b>Deposit Approved!</b>\n\n"
+            f"💰 +<code>{fmt_coins(dep['amount'])} coins</code> added to your balance!",
+            parse_mode=ParseMode.HTML
         )
     except Exception:
         pass
@@ -656,10 +656,10 @@ async def deposit_reject_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE
     try:
         await ctx.bot.send_message(
             dep["user_id"],
-            f"❌ *Deposit Rejected*\n\n"
+            f"❌ <b>Deposit Rejected</b>\n\n"
             f"Deposit #{dep_id} was rejected by admin.\n"
             f"Contact support if you believe this is an error.",
-            parse_mode=ParseMode.MARKDOWN
+            parse_mode=ParseMode.HTML
         )
     except Exception:
         pass
@@ -672,8 +672,8 @@ async def vip_manager(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         return
     await update.message.reply_text(
-        "💎 *VIP Manager*\n\nEnter User ID to assign VIP:",
-        parse_mode=ParseMode.MARKDOWN,
+        "💎 <b>VIP Manager</b>\n\nEnter User ID to assign VIP:",
+        parse_mode=ParseMode.HTML,
         reply_markup=cancel_keyboard()
     )
     return SET_VIP_ID
@@ -687,8 +687,8 @@ async def set_vip_id_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ctx.user_data["vip_target"] = int(text)
     lines = ["Choose a VIP plan:\n"]
     for key, plan in VIP_PLANS.items():
-        lines.append(f"Type `{key}` for {plan['name']}")
-    await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
+        lines.append(f"Type <code>{key}</code> for {plan['name']}")
+    await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
     return SET_VIP_PLAN
 
 
@@ -701,15 +701,15 @@ async def set_vip_plan_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     plan = VIP_PLANS[plan_key]
     await db.set_vip(uid, plan_key, plan["days"])
     await update.message.reply_text(
-        f"✅ VIP `{plan['name']}` assigned to user `{uid}`!",
-        parse_mode=ParseMode.MARKDOWN,
+        f"✅ VIP <code>{plan['name']}</code> assigned to user <code>{uid}</code>!",
+        parse_mode=ParseMode.HTML,
         reply_markup=admin_keyboard()
     )
     try:
         await ctx.bot.send_message(
             uid,
-            f"🎉 *{plan['name']} Activated!*\n\nAdmin granted you VIP membership!",
-            parse_mode=ParseMode.MARKDOWN
+            f"🎉 <b>{plan['name']} Activated!</b>\n\nAdmin granted you VIP membership!",
+            parse_mode=ParseMode.HTML
         )
     except Exception:
         pass
@@ -724,8 +724,8 @@ async def notification(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         return
     await update.message.reply_text(
-        "🔔 *Send Notification*\n\nEnter message to broadcast to all users:",
-        parse_mode=ParseMode.MARKDOWN,
+        "🔔 <b>Send Notification</b>\n\nEnter message to broadcast to all users:",
+        parse_mode=ParseMode.HTML,
         reply_markup=cancel_keyboard()
     )
     return NOTIFICATION_TEXT
@@ -735,7 +735,7 @@ async def notification_text_handler(update: Update, ctx: ContextTypes.DEFAULT_TY
     text  = update.message.text.strip()
     users = await db.get_all_users()
     ids   = [u["user_id"] for u in users if not u["is_banned"]]
-    sent, failed = await broadcast_message(ctx.bot, ids, text=f"🔔 *Notification*\n\n{text}")
+    sent, failed = await broadcast_message(ctx.bot, ids, text=f"🔔 <b>Notification</b>\n\n{text}")
     await update.message.reply_text(
         f"🔔 Notification sent!\n✅ {sent} | ❌ {failed}",
         reply_markup=admin_keyboard()
@@ -750,9 +750,9 @@ async def export_data(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         return
     await update.message.reply_text(
-        "📤 *Export Data*\n\nChoose what to export:",
+        "📤 <b>Export Data</b>\n\nChoose what to export:",
         reply_markup=export_kb(),
-        parse_mode=ParseMode.MARKDOWN
+        parse_mode=ParseMode.HTML
     )
 
 
@@ -786,14 +786,14 @@ async def database_manager(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     users  = await db.get_user_count()
     orders = await db.get_order_count()
     text = (
-        f"🗄 *Database Manager*\n"
+        f"🗄 <b>Database Manager</b>\n"
         f"{'─'*28}\n"
-        f"👥 Users: `{users}`\n"
-        f"📦 Orders: `{orders}`\n\n"
+        f"👥 Users: <code>{users}</code>\n"
+        f"📦 Orders: <code>{orders}</code>\n\n"
         f"Use /syncservices to sync API services.\n"
         f"Use /export to export data."
     )
-    await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
+    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -815,9 +815,9 @@ async def admin_leaderboard(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
     from keyboards.inline import leaderboard_kb
     await update.message.reply_text(
-        "🏆 *Leaderboard*",
+        "🏆 <b>Leaderboard</b>",
         reply_markup=leaderboard_kb(),
-        parse_mode=ParseMode.MARKDOWN
+        parse_mode=ParseMode.HTML
     )
 
 
