@@ -9,7 +9,7 @@ from config import (ADMIN_IDS, BOT_NAME, DEVELOPER, DAILY_BONUS_AMOUNT,
 from keyboards.reply import main_keyboard, cancel_keyboard, back_keyboard
 from keyboards.inline import (
     leaderboard_kb, wallet_kb, account_kb, vip_plans_kb,
-    categories_kb, platform_categories_kb, services_kb, service_detail_kb, force_join_kb,
+    categories_kb, platform_categories_kb, order_categories_kb, services_kb, service_detail_kb, force_join_kb,
     payment_methods_kb, confirm_order_kb, order_actions_kb
 )
 from utils.helpers import (
@@ -479,7 +479,7 @@ async def new_order(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
     await update.message.reply_text(
         "🛒 <b>New Order</b>\n\nStep 1 — Choose a category:",
-        reply_markup=categories_kb(cats, CATEGORY_ICONS),
+        reply_markup=order_categories_kb(cats, CATEGORY_ICONS),
         parse_mode=ParseMode.HTML
     )
     return ORDER_CATEGORY
