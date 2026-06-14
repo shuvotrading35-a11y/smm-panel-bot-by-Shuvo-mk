@@ -199,3 +199,15 @@ def service_detail_kb(service_id: str) -> InlineKeyboardMarkup:
         [InlineKeyboardButton("🛒 Order Now", callback_data=f"order_start:{service_id}")],
         [InlineKeyboardButton("🔙 Back",      callback_data="svc_back")],
     ])
+
+
+def order_categories_kb(categories: list[str], icons: dict) -> InlineKeyboardMarkup:
+    """Used in New Order flow — direct category buttons (no platform grouping)."""
+    rows = []
+    for i in range(0, len(categories), 2):
+        row = []
+        for cat in categories[i:i+2]:
+            icon = next((v for k, v in icons.items() if k.lower() in cat.lower()), "\U0001f539")
+            row.append(InlineKeyboardButton(f"{icon} {cat}", callback_data=f"cat:{cat[:30]}"))
+        rows.append(row)
+    return InlineKeyboardMarkup(rows)
