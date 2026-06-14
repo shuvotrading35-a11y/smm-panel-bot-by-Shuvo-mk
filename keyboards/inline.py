@@ -126,13 +126,59 @@ def force_join_kb(channels: list[dict]) -> InlineKeyboardMarkup:
 
 
 def categories_kb(categories: list[str], icons: dict) -> InlineKeyboardMarkup:
+    # Group categories by platform (first word / keyword match)
+    PLATFORM_ORDER = [
+        "facebook", "instagram", "tiktok", "youtube",
+        "telegram", "twitter", "spotify", "website",
+    ]
+    PLATFORM_LABELS = {
+        "facebook":  "📘 Facebook",
+        "instagram": "📱 Instagram",
+        "tiktok":    "🎵 TikTok",
+        "youtube":   "📺 YouTube",
+        "telegram":  "✈️ Telegram",
+        "twitter":   "🐦 Twitter / X",
+        "spotify":   "🎧 Spotify",
+        "website":   "🌐 Website",
+    }
+
+    def get_platform(cat: str) -> str:
+        cl = cat.lower()
+        for p in PLATFORM_ORDER:
+            if p in cl:
+                return p
+        return "other"
+
+    grouped: dict[str, list[str]] = {}
+    for cat in categories:
+        p = get_platform(cat)
+        grouped.setdefault(p, [])
+        if cat not in grouped[p]:
+            grouped[p].append(cat)
+
     rows = []
-    for i in range(0, len(categories), 2):
+    # Show one button per platform (clicking opens sub-categories or direct services)
+    platforms_present = [p for p in PLATFORM_ORDER if p in grouped]
+    if "other" in grouped:
+        platforms_present.append("other")
+
+    for i in range(0, len(platforms_present), 2):
         row = []
-        for cat in categories[i:i+2]:
-            icon = next((v for k, v in icons.items() if k.lower() in cat.lower()), "🔹")
-            row.append(InlineKeyboardButton(f"{icon} {cat}", callback_data=f"cat:{cat[:30]}"))
+        for p in platforms_present[i:i+2]:
+            label = PLATFORM_LABELS.get(p, f"🔹 {p.title()}")
+            row.append(InlineKeyboardButton(label, callback_data=f"platform:{p}"))
         rows.append(row)
+
+    return InlineKeyboardMarkup(rows)
+
+
+def platform_categories_kb(platform: str, categories: list[str], icons: dict) -> InlineKeyboardMarkup:
+    """Sub-menu: all categories under a platform."""
+    rows = []
+    for cat in categories:
+        icon = next((v for k, v in icons.items() if k.lower() in cat.lower()), "🔹")
+        rows.append([InlineKeyboardButton(f"{icon} {cat}", callback_data=f"cat:{cat[:30]}")])
+    rows.append([InlineKeyboardButton("🔙 Back", callback_data="platform_back")])
     return InlineKeyboardMarkup(rows)
 
 
