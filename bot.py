@@ -62,23 +62,23 @@ logging.basicConfig(
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
-# ─────────────────────────────────────────────────────────────────
-#  CANCEL filter (shared)
-# ─────────────────────────────────────────────────────────────────
+# ── Shared filters ────────────────────────────────────────────────
 CANCEL_FILTER = filters.Regex(r"^(❌ ᴄᴀɴᴄᴇʟ|❌ Cancel|/cancel)$")
 ADMIN_FILTER  = filters.User(user_id=ADMIN_IDS)
 
-# ─────────────────────────────────────────────────────────────────
-#  REPLY KEYBOARD TEXT FILTERS
-# ─────────────────────────────────────────────────────────────────
-class TextFilter:
-    @staticmethod
-    def exact(text: str):
-        return filters.Text(text)
 
-    @staticmethod
-    def regex(pattern: str):
-        return filters.Regex(pattern)
+# ─────────────────────────────────────────────────────────────────
+#  ERROR HANDLER
+# ─────────────────────────────────────────────────────────────────
+async def error_handler(update: object, context) -> None:
+    logger.error("Exception while handling update:", exc_info=context.error)
+    if isinstance(update, Update) and update.effective_message:
+        try:
+            await update.effective_message.reply_text(
+                "⚠️ An error occurred. Please try again."
+            )
+        except Exception:
+            pass
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -86,6 +86,9 @@ class TextFilter:
 # ─────────────────────────────────────────────────────────────────
 def build_app() -> Application:
     app = Application.builder().token(BOT_TOKEN).build()
+
+    # Register global error handler
+    app.add_error_handler(error_handler)
 
     # ── /start ────────────────────────────────────────────────────
     app.add_handler(CommandHandler("start", start))
@@ -100,31 +103,22 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("export",         export_data))
     app.add_handler(CommandHandler("stats",          bot_stats))
 
-    # ── Force join callback ───────────────────────────────────────
-    app.add_handler(CallbackQueryHandler(force_join_check,        pattern="^fj_check$"))
-
-    # ── Account & wallet callbacks ────────────────────────────────
-    app.add_handler(CallbackQueryHandler(account_callback,        pattern="^acc_"))
-    app.add_handler(CallbackQueryHandler(wallet_callback,         pattern="^wallet_"))
-    app.add_handler(CallbackQueryHandler(leaderboard_callback,    pattern="^lb:"))
-    app.add_handler(CallbackQueryHandler(vip_buy_callback,        pattern="^vip_buy:"))
-
-    # ── Order action callbacks ────────────────────────────────────
-    app.add_handler(CallbackQueryHandler(order_refresh_callback,    pattern=r"^order_refresh:"))
-    app.add_handler(CallbackQueryHandler(order_refill_callback,     pattern=r"^order_refill:"))
-    app.add_handler(CallbackQueryHandler(order_cancel_api_callback, pattern=r"^order_cancel_api:"))
-
-    # ── Service / category browsing callbacks ─────────────────────
-    app.add_handler(CallbackQueryHandler(category_callback, pattern=r"^cat(_back|:.+)$"))
-    app.add_handler(CallbackQueryHandler(service_callback,  pattern=r"^svc(_back|:.+)$"))
-
-    # ── Admin callbacks ───────────────────────────────────────────
-    app.add_handler(CallbackQueryHandler(admin_user_callback,     pattern=r"^adm_(ban|unban|bal_add|bal_rem|msg):"))
-    app.add_handler(CallbackQueryHandler(deposit_approve_callback, pattern=r"^dep_approve:"))
-    app.add_handler(CallbackQueryHandler(deposit_reject_callback,  pattern=r"^dep_reject:"))
-    app.add_handler(CallbackQueryHandler(ticket_close_callback,    pattern=r"^ticket_close:"))
-    app.add_handler(CallbackQueryHandler(export_callback,          pattern=r"^export:"))
-    app.add_handler(CallbackQueryHandler(payment_method_callback,  pattern=r"^pay_method:"))
+    # ── Standalone CallbackQuery handlers (outside ConversationHandlers) ──
+    app.add_handler(CallbackQueryHandler(force_join_check,            pattern=r"^fj_check$"))
+    app.add_handler(CallbackQueryHandler(account_callback,            pattern=r"^acc_"))
+    app.add_handler(CallbackQueryHandler(wallet_callback,             pattern=r"^wallet_"))
+    app.add_handler(CallbackQueryHandler(leaderboard_callback,        pattern=r"^lb:"))
+    app.add_handler(CallbackQueryHandler(vip_buy_callback,            pattern=r"^vip_buy:"))
+    app.add_handler(CallbackQueryHandler(order_refresh_callback,      pattern=r"^order_refresh:"))
+    app.add_handler(CallbackQueryHandler(order_refill_callback,       pattern=r"^order_refill:"))
+    app.add_handler(CallbackQueryHandler(order_cancel_api_callback,   pattern=r"^order_cancel_api:"))
+    app.add_handler(CallbackQueryHandler(category_callback,           pattern=r"^cat(_back|:.+)$"))
+    app.add_handler(CallbackQueryHandler(service_callback,            pattern=r"^svc(_back|:.+)$"))
+    app.add_handler(CallbackQueryHandler(admin_user_callback,         pattern=r"^adm_(ban|unban|bal_add|bal_rem|msg):"))
+    app.add_handler(CallbackQueryHandler(deposit_approve_callback,    pattern=r"^dep_approve:"))
+    app.add_handler(CallbackQueryHandler(deposit_reject_callback,     pattern=r"^dep_reject:"))
+    app.add_handler(CallbackQueryHandler(ticket_close_callback,       pattern=r"^ticket_close:"))
+    app.add_handler(CallbackQueryHandler(export_callback,             pattern=r"^export:"))
 
     # ═══════════════════════════════════════════════════════════════
     #  USER CONVERSATIONS
@@ -145,6 +139,7 @@ def build_app() -> Application:
         },
         fallbacks=[MessageHandler(CANCEL_FILTER, cancel_handler)],
         allow_reentry=True,
+        per_message=False,
     )
     app.add_handler(order_conv)
 
@@ -156,6 +151,7 @@ def build_app() -> Application:
         },
         fallbacks=[MessageHandler(CANCEL_FILTER, cancel_handler)],
         allow_reentry=True,
+        per_message=False,
     )
     app.add_handler(tracker_conv)
 
@@ -167,6 +163,7 @@ def build_app() -> Application:
         },
         fallbacks=[MessageHandler(CANCEL_FILTER, cancel_handler)],
         allow_reentry=True,
+        per_message=False,
     )
     app.add_handler(redeem_conv)
 
@@ -179,6 +176,7 @@ def build_app() -> Application:
         },
         fallbacks=[MessageHandler(CANCEL_FILTER, cancel_handler)],
         allow_reentry=True,
+        per_message=False,
     )
     app.add_handler(support_conv)
 
@@ -186,14 +184,17 @@ def build_app() -> Application:
     deposit_conv = ConversationHandler(
         entry_points=[
             MessageHandler(filters.Regex(r"^💳 ʙᴜʏ ᴄᴏɪɴꜱ$"), buy_coins),
-            CallbackQueryHandler(payment_method_callback, pattern=r"^pay_method:"),
         ],
         states={
-            DEPOSIT_AMOUNT: [MessageHandler(filters.TEXT & ~CANCEL_FILTER, deposit_amount_handler)],
-            DEPOSIT_TXN:    [MessageHandler(filters.TEXT & ~CANCEL_FILTER, deposit_txn_handler)],
+            DEPOSIT_AMOUNT: [
+                MessageHandler(filters.TEXT & ~CANCEL_FILTER, deposit_amount_handler),
+                CallbackQueryHandler(payment_method_callback, pattern=r"^pay_method:"),
+            ],
+            DEPOSIT_TXN: [MessageHandler(filters.TEXT & ~CANCEL_FILTER, deposit_txn_handler)],
         },
         fallbacks=[MessageHandler(CANCEL_FILTER, cancel_handler)],
         allow_reentry=True,
+        per_message=False,
     )
     app.add_handler(deposit_conv)
 
@@ -212,6 +213,7 @@ def build_app() -> Application:
         },
         fallbacks=[MessageHandler(CANCEL_FILTER, cancel_admin)],
         allow_reentry=True,
+        per_message=False,
     )
     app.add_handler(user_mgmt_conv)
 
@@ -227,6 +229,7 @@ def build_app() -> Application:
         },
         fallbacks=[MessageHandler(CANCEL_FILTER, cancel_admin)],
         allow_reentry=True,
+        per_message=False,
     )
     app.add_handler(bal_conv)
 
@@ -243,6 +246,7 @@ def build_app() -> Application:
         },
         fallbacks=[MessageHandler(CANCEL_FILTER, cancel_admin)],
         allow_reentry=True,
+        per_message=False,
     )
     app.add_handler(code_conv)
 
@@ -262,6 +266,7 @@ def build_app() -> Application:
         },
         fallbacks=[MessageHandler(CANCEL_FILTER, cancel_admin)],
         allow_reentry=True,
+        per_message=False,
     )
     app.add_handler(bc_conv)
 
@@ -276,10 +281,11 @@ def build_app() -> Application:
         },
         fallbacks=[MessageHandler(CANCEL_FILTER, cancel_admin)],
         allow_reentry=True,
+        per_message=False,
     )
     app.add_handler(ban_conv)
 
-    # ── Support Manager ───────────────────────────────────────────
+    # ── Support Manager (ticket reply) ────────────────────────────
     ticket_reply_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(ticket_reply_callback, pattern=r"^ticket_reply:")],
         states={
@@ -287,6 +293,7 @@ def build_app() -> Application:
         },
         fallbacks=[MessageHandler(CANCEL_FILTER, cancel_admin)],
         allow_reentry=True,
+        per_message=False,
     )
     app.add_handler(ticket_reply_conv)
 
@@ -301,6 +308,7 @@ def build_app() -> Application:
         },
         fallbacks=[MessageHandler(CANCEL_FILTER, cancel_admin)],
         allow_reentry=True,
+        per_message=False,
     )
     app.add_handler(order_mgr_conv)
 
@@ -316,6 +324,7 @@ def build_app() -> Application:
         },
         fallbacks=[MessageHandler(CANCEL_FILTER, cancel_admin)],
         allow_reentry=True,
+        per_message=False,
     )
     app.add_handler(vip_conv)
 
@@ -330,11 +339,12 @@ def build_app() -> Application:
         },
         fallbacks=[MessageHandler(CANCEL_FILTER, cancel_admin)],
         allow_reentry=True,
+        per_message=False,
     )
     app.add_handler(notif_conv)
 
     # ═══════════════════════════════════════════════════════════════
-    #  SIMPLE REPLY KEYBOARD HANDLERS
+    #  SIMPLE REPLY KEYBOARD HANDLERS (MessageHandlers)
     # ═══════════════════════════════════════════════════════════════
     app.add_handler(MessageHandler(filters.Regex(r"^📊 ꜱᴇʀᴠɪᴄᴇꜱ ʟɪꜱᴛ$"),  services_list))
     app.add_handler(MessageHandler(filters.Regex(r"^👤 ᴍʏ ᴀᴄᴄᴏᴜɴᴛ$"),     my_account))
@@ -347,32 +357,37 @@ def build_app() -> Application:
     app.add_handler(MessageHandler(filters.Regex(r"^⭐ ᴠɪᴘ ᴍᴇᴍʙᴇʀꜱʜɪᴘ$"), vip_membership))
     app.add_handler(MessageHandler(filters.Regex(r"^📢 ᴜᴘᴅᴀᴛᴇꜱ$"),        updates_channel))
 
-    # ── Admin reply keyboard handlers ─────────────────────────────
+    # ── Admin reply keyboard ──────────────────────────────────────
     app.add_handler(MessageHandler(
-        filters.Regex(r"^📊 ʙᴏᴛ ꜱᴛᴀᴛɪꜱᴛɪᴄꜱ$") & ADMIN_FILTER, bot_stats))
+        filters.Regex(r"^📊 ʙᴏᴛ ꜱᴛᴀᴛɪꜱᴛɪᴄꜱ$") & ADMIN_FILTER,   bot_stats))
     app.add_handler(MessageHandler(
-        filters.Regex(r"^⚙️ ᴀᴘɪ ᴍᴀɴᴀɢᴇʀ$") & ADMIN_FILTER,   api_manager))
+        filters.Regex(r"^⚙️ ᴀᴘɪ ᴍᴀɴᴀɢᴇʀ$") & ADMIN_FILTER,      api_manager))
     app.add_handler(MessageHandler(
-        filters.Regex(r"^📣 ꜰᴏʀᴄᴇ ᴊᴏɪɴ$") & ADMIN_FILTER,     force_join_admin))
+        filters.Regex(r"^📣 ꜰᴏʀᴄᴇ ᴊᴏɪɴ$") & ADMIN_FILTER,        force_join_admin))
     app.add_handler(MessageHandler(
-        filters.Regex(r"^☎️ ꜱᴜᴘᴘᴏʀᴛ ᴍᴀɴᴀɢᴇʀ$") & ADMIN_FILTER, support_manager))
+        filters.Regex(r"^☎️ ꜱᴜᴘᴘᴏʀᴛ ᴍᴀɴᴀɢᴇʀ$") & ADMIN_FILTER,  support_manager))
     app.add_handler(MessageHandler(
-        filters.Regex(r"^🛒 ꜱᴇʀᴠɪᴄᴇ ᴍᴀɴᴀɢᴇʀ$") & ADMIN_FILTER, sync_services))
+        filters.Regex(r"^🛒 ꜱᴇʀᴠɪᴄᴇ ᴍᴀɴᴀɢᴇʀ$") & ADMIN_FILTER,  sync_services))
     app.add_handler(MessageHandler(
-        filters.Regex(r"^🏆 ʟᴇᴀᴅᴇʀʙᴏᴀʀᴅ$") & ADMIN_FILTER,    admin_leaderboard))
+        filters.Regex(r"^🏆 ʟᴇᴀᴅᴇʀʙᴏᴀʀᴅ$") & ADMIN_FILTER,       admin_leaderboard))
     app.add_handler(MessageHandler(
-        filters.Regex(r"^📤 ᴇxᴘᴏʀᴛ ᴅᴀᴛᴀ$") & ADMIN_FILTER,    export_data))
+        filters.Regex(r"^📤 ᴇxᴘᴏʀᴛ ᴅᴀᴛᴀ$") & ADMIN_FILTER,       export_data))
     app.add_handler(MessageHandler(
-        filters.Regex(r"^🗄 ᴅᴀᴛᴀʙᴀꜱᴇ ᴍᴀɴᴀɢᴇʀ$") & ADMIN_FILTER, database_manager))
+        filters.Regex(r"^🗄 ᴅᴀᴛᴀʙᴀꜱᴇ ᴍᴀɴᴀɢᴇʀ$") & ADMIN_FILTER,  database_manager))
     app.add_handler(MessageHandler(
-        filters.Regex(r"^🔄 ʀᴇꜱᴛᴀʀᴛ ʙᴏᴛ$") & ADMIN_FILTER,     restart_bot))
-    app.add_handler(MessageHandler(
-        filters.Regex(r"^🏠 ᴍᴀɪɴ ᴍᴇɴᴜ$") & ADMIN_FILTER,
-        lambda u, c: u.message.reply_text("Main menu:", reply_markup=__import__("keyboards.reply", fromlist=["main_keyboard"]).main_keyboard())
-    ))
+        filters.Regex(r"^🔄 ʀᴇꜱᴛᴀʀᴛ ʙᴏᴛ$") & ADMIN_FILTER,       restart_bot))
     app.add_handler(MessageHandler(
         filters.Regex(r"^🧹 ᴄʟᴇᴀɴ ᴜᴘ$") & ADMIN_FILTER,
         lambda u, c: u.message.reply_text("🧹 Clean up not implemented yet.")
+    ))
+    app.add_handler(MessageHandler(
+        filters.Regex(r"^🏠 ᴍᴀɪɴ ᴍᴇɴᴜ$") & ADMIN_FILTER,
+        lambda u, c: u.message.reply_text(
+            "🏠 Main Menu",
+            reply_markup=__import__(
+                "keyboards.reply", fromlist=["main_keyboard"]
+            ).main_keyboard()
+        )
     ))
 
     return app
@@ -385,8 +400,6 @@ async def on_startup(app: Application):
     logger.info("Initialising database...")
     await db.init_db()
     logger.info("Database ready.")
-
-    # Notify admins on boot
     for admin_id in ADMIN_IDS:
         try:
             await app.bot.send_message(admin_id, "🚀 Bot started successfully!")
@@ -410,7 +423,7 @@ def main():
     os.makedirs("data", exist_ok=True)
 
     app = build_app()
-    app.post_init    = on_startup
+    app.post_init     = on_startup
     app.post_shutdown = on_shutdown
 
     logger.info("Starting Shuvo SMM Bot...")
