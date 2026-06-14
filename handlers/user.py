@@ -51,9 +51,9 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         not_joined = await check_force_join(bot, user.id, channels)
         if not_joined:
             await update.message.reply_text(
-                "📢 *Please join our channels to use this bot:*",
+                "📢 <b>Please join our channels to use this bot:</b>",
                 reply_markup=force_join_kb(not_joined),
-                parse_mode=ParseMode.MARKDOWN
+                parse_mode=ParseMode.HTML
             )
             return
 
@@ -63,11 +63,11 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
 
     text = (
-        f"🚀 *Welcome To {BOT_NAME}*\n\n"
-        "💎 *Cheapest Prices*\n"
-        "⚡ *Instant Delivery*\n"
-        "🔒 *Secure Payments*\n"
-        "📈 *High Quality Services*\n\n"
+        f"🚀 <b>Welcome To {BOT_NAME}</b>\n\n"
+        "💎 <b>Cheapest Prices</b>\n"
+        "⚡ <b>Instant Delivery</b>\n"
+        "🔒 <b>Secure Payments</b>\n"
+        "📈 <b>High Quality Services</b>\n\n"
         "Choose an option below to continue.\n\n"
         f"👨‍💻 Developer: {DEVELOPER}\n"
         f"🤖 Powered By Shuvo SMM"
@@ -75,7 +75,7 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         text,
         reply_markup=main_keyboard(),
-        parse_mode=ParseMode.MARKDOWN
+        parse_mode=ParseMode.HTML
     )
 
 
@@ -115,21 +115,21 @@ async def my_account(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     vip_str = f"{badge} {udata['vip_plan'].title()} VIP" if vip_ok else "None"
 
     text = (
-        f"👤 *My Account*\n"
+        f"👤 <b>My Account</b>\n"
         f"{'─'*28}\n"
-        f"👤 Name: `{udata['full_name']}`\n"
-        f"🆔 User ID: `{user_id}`\n"
-        f"💰 Balance: `{fmt_coins(udata['balance'])} coins`\n"
-        f"📦 Total Orders: `{udata['total_orders']}`\n"
-        f"💸 Total Spent: `{fmt_coins(udata['total_spent'])} coins`\n"
-        f"💳 Total Deposited: `{fmt_coins(udata['total_deposited'])} coins`\n"
-        f"👥 Referrals: `{udata['referral_count']}`\n"
-        f"💎 Referral Earned: `{fmt_coins(udata['referral_earned'])} coins`\n"
-        f"🏆 Rank: `#{rank}`\n"
-        f"⭐ VIP: `{vip_str}`\n"
-        f"📅 Joined: `{fmt_date(udata['join_date'])}`\n"
+        f"👤 Name: <code>{udata['full_name']}</code>\n"
+        f"🆔 User ID: <code>{user_id}</code>\n"
+        f"💰 Balance: <code>{fmt_coins(udata['balance'])} coins</code>\n"
+        f"📦 Total Orders: <code>{udata['total_orders']}</code>\n"
+        f"💸 Total Spent: <code>{fmt_coins(udata['total_spent'])} coins</code>\n"
+        f"💳 Total Deposited: <code>{fmt_coins(udata['total_deposited'])} coins</code>\n"
+        f"👥 Referrals: <code>{udata['referral_count']}</code>\n"
+        f"💎 Referral Earned: <code>{fmt_coins(udata['referral_earned'])} coins</code>\n"
+        f"🏆 Rank: <code>#{rank}</code>\n"
+        f"⭐ VIP: <code>{vip_str}</code>\n"
+        f"📅 Joined: <code>{fmt_date(udata['join_date'])}</code>\n"
     )
-    await update.message.reply_text(text, reply_markup=account_kb(), parse_mode=ParseMode.MARKDOWN)
+    await update.message.reply_text(text, reply_markup=account_kb(), parse_mode=ParseMode.HTML)
 
 
 async def account_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -146,45 +146,45 @@ async def account_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         badge  = vip_badge(udata.get("vip_plan")) if vip_ok else "—"
         vip_str = f"{badge} {udata['vip_plan'].title()} VIP" if vip_ok else "None"
         text = (
-            f"👤 *My Account*\n"
+            f"👤 <b>My Account</b>\n"
             f"{'─'*28}\n"
-            f"👤 Name: `{udata['full_name']}`\n"
-            f"🆔 User ID: `{user_id}`\n"
-            f"💰 Balance: `{fmt_coins(udata['balance'])} coins`\n"
-            f"📦 Total Orders: `{udata['total_orders']}`\n"
-            f"💸 Total Spent: `{fmt_coins(udata['total_spent'])} coins`\n"
-            f"👥 Referrals: `{udata['referral_count']}`\n"
-            f"🏆 Rank: `#{rank}`\n"
-            f"⭐ VIP: `{vip_str}`\n"
+            f"👤 Name: <code>{udata['full_name']}</code>\n"
+            f"🆔 User ID: <code>{user_id}</code>\n"
+            f"💰 Balance: <code>{fmt_coins(udata['balance'])} coins</code>\n"
+            f"📦 Total Orders: <code>{udata['total_orders']}</code>\n"
+            f"💸 Total Spent: <code>{fmt_coins(udata['total_spent'])} coins</code>\n"
+            f"👥 Referrals: <code>{udata['referral_count']}</code>\n"
+            f"🏆 Rank: <code>#{rank}</code>\n"
+            f"⭐ VIP: <code>{vip_str}</code>\n"
         )
-        await query.edit_message_text(text, reply_markup=account_kb(), parse_mode=ParseMode.MARKDOWN)
+        await query.edit_message_text(text, reply_markup=account_kb(), parse_mode=ParseMode.HTML)
 
     elif action == "acc_deposits":
         deps  = await db.get_user_deposits(user_id)
         if not deps:
             await query.answer("No deposits yet.", show_alert=True)
             return
-        lines = ["💳 *Deposit History*\n"]
+        lines = ["💳 <b>Deposit History</b>\n"]
         for d in deps:
             lines.append(
                 f"#{d['id']} | {d['method']} | {fmt_coins(d['amount'])} coins | "
                 f"{d['status']} | {fmt_date(d['created_at'])}"
             )
-        await query.edit_message_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
+        await query.edit_message_text("\n".join(lines), parse_mode=ParseMode.HTML)
 
     elif action == "acc_transactions":
         txns = await db.get_transactions(user_id)
         if not txns:
             await query.answer("No transactions yet.", show_alert=True)
             return
-        lines = ["📤 *Transaction History*\n"]
+        lines = ["📤 <b>Transaction History</b>\n"]
         for t in txns:
             sign = "+" if t["type"] in ("credit", "deposit", "redeem", "daily", "referral") else "-"
             lines.append(
                 f"{sign}{fmt_coins(t['amount'])} | {t['type'].title()} | "
                 f"{t.get('description','')} | {fmt_date(t['created_at'])}"
             )
-        await query.edit_message_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
+        await query.edit_message_text("\n".join(lines), parse_mode=ParseMode.HTML)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -200,13 +200,13 @@ async def wallet(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     total_in  = sum(t["amount"] for t in txns if t["type"] in ("credit","deposit","redeem","daily","referral"))
     total_out = sum(t["amount"] for t in txns if t["type"] in ("debit","order"))
     text = (
-        f"💰 *My Wallet*\n"
+        f"💰 <b>My Wallet</b>\n"
         f"{'─'*28}\n"
-        f"💰 Balance: `{fmt_coins(udata['balance'])} coins`\n"
-        f"📈 Total Deposits: `{fmt_coins(udata['total_deposited'])} coins`\n"
-        f"📉 Total Spent: `{fmt_coins(udata['total_spent'])} coins`\n"
+        f"💰 Balance: <code>{fmt_coins(udata['balance'])} coins</code>\n"
+        f"📈 Total Deposits: <code>{fmt_coins(udata['total_deposited'])} coins</code>\n"
+        f"📉 Total Spent: <code>{fmt_coins(udata['total_spent'])} coins</code>\n"
     )
-    await update.message.reply_text(text, reply_markup=wallet_kb(), parse_mode=ParseMode.MARKDOWN)
+    await update.message.reply_text(text, reply_markup=wallet_kb(), parse_mode=ParseMode.HTML)
 
 
 async def wallet_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -214,9 +214,9 @@ async def wallet_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     if query.data == "wallet_add":
         await query.edit_message_text(
-            "💳 *Add Funds*\n\nChoose a payment method:",
+            "💳 <b>Add Funds</b>\n\nChoose a payment method:",
             reply_markup=payment_methods_kb(),
-            parse_mode=ParseMode.MARKDOWN
+            parse_mode=ParseMode.HTML
         )
     elif query.data == "wallet_history":
         user_id = query.from_user.id
@@ -224,11 +224,11 @@ async def wallet_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not txns:
             await query.answer("No transactions yet.", show_alert=True)
             return
-        lines = ["📜 *Transaction History*\n"]
+        lines = ["📜 <b>Transaction History</b>\n"]
         for t in txns:
             sign = "+" if t["type"] in ("credit","deposit","redeem","daily","referral") else "-"
             lines.append(f"{sign}{fmt_coins(t['amount'])} | {t['type'].title()} | {fmt_date(t['created_at'])}")
-        await query.edit_message_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
+        await query.edit_message_text("\n".join(lines), parse_mode=ParseMode.HTML)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -236,9 +236,9 @@ async def wallet_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 # ═══════════════════════════════════════════════════════════════════
 async def buy_coins(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "💳 *Buy Coins*\n\nChoose a payment method:",
+        "💳 <b>Buy Coins</b>\n\nChoose a payment method:",
         reply_markup=payment_methods_kb(),
-        parse_mode=ParseMode.MARKDOWN
+        parse_mode=ParseMode.HTML
     )
 
 
@@ -251,22 +251,22 @@ async def payment_method_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE
     method_name = PAYMENT_METHODS.get(method, method)
 
     payment_info = {
-        "binance":  "💵 *Binance Pay ID:* `your_binance_id`\n*Min:* $1",
-        "usdt_trc": "🟢 *USDT TRC20 Address:*\n`TYourWalletAddressHere`\n*Min:* $1",
-        "usdt_bep": "🟡 *USDT BEP20 Address:*\n`0xYourWalletAddressHere`\n*Min:* $1",
-        "stripe":   "💳 *Stripe Payment Link:*\nhttps://buy.stripe.com/your_link\n*Min:* $1",
-        "bank":     "🏦 *Bank Details:*\nBank: Your Bank\nAccount: 1234567890\nRouting: 021000021\n*Min:* $5",
-        "mobile":   "📱 *Mobile Banking:*\nbKash: 01XXXXXXXXX\nNagad: 01XXXXXXXXX\n*Min:* ৳50",
+        "binance":  "💵 <b>Binance Pay ID:</b> <code>your_binance_id</code>\n<b>Min:</b> $1",
+        "usdt_trc": "🟢 <b>USDT TRC20 Address:</b>\n<code>TYourWalletAddressHere</code>\n<b>Min:</b> $1",
+        "usdt_bep": "🟡 <b>USDT BEP20 Address:</b>\n<code>0xYourWalletAddressHere</code>\n<b>Min:</b> $1",
+        "stripe":   "💳 <b>Stripe Payment Link:</b>\nhttps://buy.stripe.com/your_link\n<b>Min:</b> $1",
+        "bank":     "🏦 <b>Bank Details:</b>\nBank: Your Bank\nAccount: 1234567890\nRouting: 021000021\n<b>Min:</b> $5",
+        "mobile":   "📱 <b>Mobile Banking:</b>\nbKash: 01XXXXXXXXX\nNagad: 01XXXXXXXXX\n<b>Min:</b> ৳50",
     }
 
     info = payment_info.get(method, "Contact admin for payment details.")
     ctx.user_data["deposit_method"] = method
 
     await query.edit_message_text(
-        f"💳 *{method_name}*\n\n{info}\n\n"
+        f"💳 <b>{method_name}</b>\n\n{info}\n\n"
         f"After payment, send the amount and transaction ID to get verified.\n\n"
         f"👇 Reply with your deposit amount (numbers only):",
-        parse_mode=ParseMode.MARKDOWN
+        parse_mode=ParseMode.HTML
     )
     return DEPOSIT_AMOUNT
 
@@ -285,9 +285,9 @@ async def deposit_amount_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
 
     ctx.user_data["deposit_amount"] = amount
     await update.message.reply_text(
-        f"✅ Amount: *{fmt_coins(amount)} coins*\n\n"
-        f"📝 Now send your *Transaction ID / Reference Number*:",
-        parse_mode=ParseMode.MARKDOWN,
+        f"✅ Amount: <b>{fmt_coins(amount)} coins</b>\n\n"
+        f"📝 Now send your <b>Transaction ID / Reference Number</b>:",
+        parse_mode=ParseMode.HTML,
         reply_markup=cancel_keyboard()
     )
     return DEPOSIT_TXN
@@ -302,34 +302,34 @@ async def deposit_txn_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     dep_id = await db.create_deposit(user_id, amount, method, txn_id)
 
     await update.message.reply_text(
-        f"✅ *Deposit Request Submitted!*\n\n"
-        f"🆔 Request ID: `#{dep_id}`\n"
-        f"💰 Amount: `{fmt_coins(amount)} coins`\n"
-        f"💳 Method: `{method}`\n"
-        f"📋 TXN ID: `{txn_id}`\n\n"
+        f"✅ <b>Deposit Request Submitted!</b>\n\n"
+        f"🆔 Request ID: <code>#{dep_id}</code>\n"
+        f"💰 Amount: <code>{fmt_coins(amount)} coins</code>\n"
+        f"💳 Method: <code>{method}</code>\n"
+        f"📋 TXN ID: <code>{txn_id}</code>\n\n"
         f"⏳ Admin will verify and approve within 24h.",
-        parse_mode=ParseMode.MARKDOWN,
+        parse_mode=ParseMode.HTML,
         reply_markup=main_keyboard()
     )
 
     # Notify admins
     udata = await db.get_user(user_id)
     admin_msg = (
-        f"💳 *New Deposit Request*\n"
+        f"💳 <b>New Deposit Request</b>\n"
         f"{'─'*28}\n"
-        f"👤 User: `{udata['full_name']}` (`@{udata.get('username','')}`)\n"
-        f"🆔 User ID: `{user_id}`\n"
-        f"💰 Amount: `{fmt_coins(amount)} coins`\n"
-        f"💳 Method: `{method}`\n"
-        f"📋 TXN ID: `{txn_id}`\n"
-        f"🆔 Request ID: `#{dep_id}`"
+        f"👤 User: <code>{udata['full_name']}</code> (<code>@{udata.get('username','')}</code>)\n"
+        f"🆔 User ID: <code>{user_id}</code>\n"
+        f"💰 Amount: <code>{fmt_coins(amount)} coins</code>\n"
+        f"💳 Method: <code>{method}</code>\n"
+        f"📋 TXN ID: <code>{txn_id}</code>\n"
+        f"🆔 Request ID: <code>#{dep_id}</code>"
     )
     from keyboards.inline import deposit_approve_kb
     for admin_id in ADMIN_IDS:
         try:
             await ctx.bot.send_message(admin_id, admin_msg,
                                        reply_markup=deposit_approve_kb(dep_id),
-                                       parse_mode=ParseMode.MARKDOWN)
+                                       parse_mode=ParseMode.HTML)
         except Exception:
             pass
 
@@ -349,9 +349,9 @@ async def services_list(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return
     await update.message.reply_text(
-        "📊 *Services List*\n\nChoose a category:",
+        "📊 <b>Services List</b>\n\nChoose a category:",
         reply_markup=categories_kb(cats, CATEGORY_ICONS),
-        parse_mode=ParseMode.MARKDOWN
+        parse_mode=ParseMode.HTML
     )
 
 
@@ -363,9 +363,9 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if data == "cat_back":
         cats = await db.get_categories()
         await query.edit_message_text(
-            "📊 *Services List*\n\nChoose a category:",
+            "📊 <b>Services List</b>\n\nChoose a category:",
             reply_markup=categories_kb(cats, CATEGORY_ICONS),
-            parse_mode=ParseMode.MARKDOWN
+            parse_mode=ParseMode.HTML
         )
         return
 
@@ -378,9 +378,9 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ctx.user_data["current_category"] = category
     icon = category_icon(category)
     await query.edit_message_text(
-        f"{icon} *{category}*\n\nChoose a service:",
+        f"{icon} <b>{category}</b>\n\nChoose a service:",
         reply_markup=services_kb(services, category),
-        parse_mode=ParseMode.MARKDOWN
+        parse_mode=ParseMode.HTML
     )
 
 
@@ -394,9 +394,9 @@ async def service_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         services = await db.get_services_by_category(category)
         icon     = category_icon(category)
         await query.edit_message_text(
-            f"{icon} *{category}*\n\nChoose a service:",
+            f"{icon} <b>{category}</b>\n\nChoose a service:",
             reply_markup=services_kb(services, category),
-            parse_mode=ParseMode.MARKDOWN
+            parse_mode=ParseMode.HTML
         )
         return
 
@@ -410,23 +410,23 @@ async def service_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     cancel_str  = "✅ Yes" if svc.get("cancel")  else "❌ No"
     icon        = category_icon(svc.get("category", ""))
     text = (
-        f"{icon} *{svc['name']}*\n"
+        f"{icon} <b>{svc['name']}</b>\n"
         f"{'─'*28}\n"
-        f"🆔 Service ID: `{svc['service_id']}`\n"
-        f"💵 Rate: `{fmt_coins(svc['rate'])} coins / 1000`\n"
-        f"📊 Min: `{svc['min_order']:,}`\n"
-        f"📈 Max: `{svc['max_order']:,}`\n"
+        f"🆔 Service ID: <code>{svc['service_id']}</code>\n"
+        f"💵 Rate: <code>{fmt_coins(svc['rate'])} coins / 1000</code>\n"
+        f"📊 Min: <code>{svc['min_order']:,}</code>\n"
+        f"📈 Max: <code>{svc['max_order']:,}</code>\n"
         f"♻️ Refill: {refill_str}\n"
         f"❌ Cancel: {cancel_str}\n"
     )
     if svc.get("description"):
-        text += f"\n📝 _{svc['description']}_"
+        text += f"\n📝 <i>{svc['description']}</i>"
 
     ctx.user_data["viewing_service"] = service_id
     await query.edit_message_text(
         text,
         reply_markup=service_detail_kb(service_id),
-        parse_mode=ParseMode.MARKDOWN
+        parse_mode=ParseMode.HTML
     )
 
 
@@ -439,9 +439,9 @@ async def new_order(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ No services available. Try again later.")
         return ConversationHandler.END
     await update.message.reply_text(
-        "🛒 *New Order*\n\nStep 1 — Choose a category:",
+        "🛒 <b>New Order</b>\n\nStep 1 — Choose a category:",
         reply_markup=categories_kb(cats, CATEGORY_ICONS),
-        parse_mode=ParseMode.MARKDOWN
+        parse_mode=ParseMode.HTML
     )
     return ORDER_CATEGORY
 
@@ -462,10 +462,10 @@ async def order_start_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ctx.user_data["order_category"]     = svc["category"]
 
     await query.edit_message_text(
-        f"🔗 *Step — Enter Link*\n\n"
-        f"Service: *{svc['name']}*\n\n"
+        f"🔗 <b>Step — Enter Link</b>\n\n"
+        f"Service: <b>{svc['name']}</b>\n\n"
         f"Please send the target link/username:",
-        parse_mode=ParseMode.MARKDOWN
+        parse_mode=ParseMode.HTML
     )
     return ORDER_LINK
 
@@ -483,9 +483,9 @@ async def order_category_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
     ctx.user_data["order_category"] = category
     icon = category_icon(category)
     await query.edit_message_text(
-        f"{icon} *{category}*\n\nStep 2 — Choose a service:",
+        f"{icon} <b>{category}</b>\n\nStep 2 — Choose a service:",
         reply_markup=services_kb(services, category),
-        parse_mode=ParseMode.MARKDOWN
+        parse_mode=ParseMode.HTML
     )
     return ORDER_SERVICE
 
@@ -504,11 +504,11 @@ async def order_service_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ctx.user_data["order_service"]      = svc
 
     await query.edit_message_text(
-        f"🔗 *Step 3 — Enter Link*\n\n"
-        f"Service: *{svc['name']}*\n"
-        f"📊 Min: `{svc['min_order']:,}` | Max: `{svc['max_order']:,}`\n\n"
+        f"🔗 <b>Step 3 — Enter Link</b>\n\n"
+        f"Service: <b>{svc['name']}</b>\n"
+        f"📊 Min: <code>{svc['min_order']:,}</code> | Max: <code>{svc['max_order']:,}</code>\n\n"
         f"Please send the target URL / username:",
-        parse_mode=ParseMode.MARKDOWN
+        parse_mode=ParseMode.HTML
     )
     return ORDER_LINK
 
@@ -521,10 +521,10 @@ async def order_link_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ctx.user_data["order_link"] = link
     svc = ctx.user_data.get("order_service", {})
     await update.message.reply_text(
-        f"📊 *Step 4 — Enter Quantity*\n\n"
-        f"Min: `{svc.get('min_order',1):,}` | Max: `{svc.get('max_order',1000000):,}`\n\n"
+        f"📊 <b>Step 4 — Enter Quantity</b>\n\n"
+        f"Min: <code>{svc.get('min_order',1):,}</code> | Max: <code>{svc.get('max_order',1000000):,}</code>\n\n"
         f"How many?",
-        parse_mode=ParseMode.MARKDOWN,
+        parse_mode=ParseMode.HTML,
         reply_markup=cancel_keyboard()
     )
     return ORDER_QUANTITY
@@ -543,8 +543,8 @@ async def order_quantity_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
 
     if qty < min_q or qty > max_q:
         await update.message.reply_text(
-            f"❌ Quantity must be between `{min_q:,}` and `{max_q:,}`.",
-            parse_mode=ParseMode.MARKDOWN
+            f"❌ Quantity must be between <code>{min_q:,}</code> and <code>{max_q:,}</code>.",
+            parse_mode=ParseMode.HTML
         )
         return ORDER_QUANTITY
 
@@ -567,24 +567,24 @@ async def order_quantity_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
 
     link = ctx.user_data.get("order_link", "")
     name = ctx.user_data.get("order_service_name", "")
-    disc_str = f"\n🏷️ VIP Discount: `{discount}%`" if discount else ""
+    disc_str = f"\n🏷️ VIP Discount: <code>{discount}%</code>" if discount else ""
 
     text = (
-        f"📋 *Order Confirmation*\n"
+        f"📋 <b>Order Confirmation</b>\n"
         f"{'─'*28}\n"
-        f"📦 Service: `{name}`\n"
-        f"🔗 Link: `{link}`\n"
-        f"📊 Quantity: `{qty:,}`\n"
-        f"💵 Cost: `{fmt_coins(charge)} coins`"
+        f"📦 Service: <code>{name}</code>\n"
+        f"🔗 Link: <code>{link}</code>\n"
+        f"📊 Quantity: <code>{qty:,}</code>\n"
+        f"💵 Cost: <code>{fmt_coins(charge)} coins</code>"
         f"{disc_str}\n\n"
-        f"💰 Your Balance: `{fmt_coins(udata['balance'])} coins`\n\n"
+        f"💰 Your Balance: <code>{fmt_coins(udata['balance'])} coins</code>\n\n"
         f"✅ Confirm order?"
     )
     service_id = ctx.user_data.get("order_service_id", "")
     await update.message.reply_text(
         text,
         reply_markup=confirm_order_kb(service_id),
-        parse_mode=ParseMode.MARKDOWN
+        parse_mode=ParseMode.HTML
     )
     return ORDER_CONFIRM
 
@@ -620,8 +620,8 @@ async def order_confirm_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
     ok = await db.deduct_balance(user_id, charge, f"Order: {service_name}")
     if not ok:
         await query.edit_message_text(
-            "❌ Insufficient balance!\n\n💳 Use *Buy Coins* to add funds.",
-            parse_mode=ParseMode.MARKDOWN
+            "❌ Insufficient balance!\n\n💳 Use <b>Buy Coins</b> to add funds.",
+            parse_mode=ParseMode.HTML
         )
         ctx.user_data.clear()
         return ConversationHandler.END
@@ -659,16 +659,16 @@ async def order_confirm_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
 
     svc = ctx.user_data.get("order_service", {})
     await query.edit_message_text(
-        f"✅ *Order Placed Successfully!*\n"
+        f"✅ <b>Order Placed Successfully!</b>\n"
         f"{'─'*28}\n"
-        f"🆔 Order ID: `#{order_id}`\n"
-        f"📦 Service: `{service_name}`\n"
-        f"🔗 Link: `{link}`\n"
-        f"📊 Quantity: `{qty:,}`\n"
-        f"💵 Charged: `{fmt_coins(charge)} coins`\n"
-        f"📊 Status: `{api_status}`\n\n"
-        f"Use 🔎 *Order Tracker* to check status.",
-        parse_mode=ParseMode.MARKDOWN,
+        f"🆔 Order ID: <code>#{order_id}</code>\n"
+        f"📦 Service: <code>{service_name}</code>\n"
+        f"🔗 Link: <code>{link}</code>\n"
+        f"📊 Quantity: <code>{qty:,}</code>\n"
+        f"💵 Charged: <code>{fmt_coins(charge)} coins</code>\n"
+        f"📊 Status: <code>{api_status}</code>\n\n"
+        f"Use 🔎 <b>Order Tracker</b> to check status.",
+        parse_mode=ParseMode.HTML,
         reply_markup=order_actions_kb(order_id, api_order_id or "",
                                        bool(svc.get("refill")), bool(svc.get("cancel")))
     )
@@ -683,18 +683,18 @@ async def my_orders(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     orders  = await db.get_user_orders(user_id, 10)
     if not orders:
-        await update.message.reply_text("📦 No orders yet.\n\nUse 🛒 *New Order* to place one!", parse_mode=ParseMode.MARKDOWN)
+        await update.message.reply_text("📦 No orders yet.\n\nUse 🛒 <b>New Order</b> to place one!", parse_mode=ParseMode.HTML)
         return
-    text = "📦 *My Orders* (Last 10)\n\n"
+    text = "📦 <b>My Orders</b> (Last 10)\n\n"
     for o in orders:
         text += (
-            f"🆔 `#{o['id']}` | {fmt_status(o['status'])}\n"
+            f"🆔 <code>#{o['id']}</code> | {fmt_status(o['status'])}\n"
             f"📦 {o.get('service_name','—')[:30]}\n"
             f"💵 {fmt_coins(o['charge'])} | 📊 {o['quantity']:,}\n"
             f"📅 {fmt_date(o['created_at'])}\n"
             f"{'─'*24}\n"
         )
-    await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
+    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
 
 async def order_refresh_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -714,11 +714,11 @@ async def order_refresh_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
             int(result.get("remains", 0))
         )
         await query.edit_message_text(
-            f"📦 *Order #{order_id} Updated*\n"
-            f"📊 Status: `{result['status']}`\n"
-            f"📈 Start Count: `{result.get('start_count',0):,}`\n"
-            f"📉 Remains: `{result.get('remains',0):,}`",
-            parse_mode=ParseMode.MARKDOWN,
+            f"📦 <b>Order #{order_id} Updated</b>\n"
+            f"📊 Status: <code>{result['status']}</code>\n"
+            f"📈 Start Count: <code>{result.get('start_count',0):,}</code>\n"
+            f"📉 Remains: <code>{result.get('remains',0):,}</code>",
+            parse_mode=ParseMode.HTML,
             reply_markup=query.message.reply_markup
         )
     else:
@@ -761,8 +761,8 @@ async def order_cancel_api_callback(update: Update, ctx: ContextTypes.DEFAULT_TY
 # ═══════════════════════════════════════════════════════════════════
 async def order_tracker(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🔎 *Order Tracker*\n\nEnter your Order ID:",
-        parse_mode=ParseMode.MARKDOWN,
+        "🔎 <b>Order Tracker</b>\n\nEnter your Order ID:",
+        parse_mode=ParseMode.HTML,
         reply_markup=cancel_keyboard()
     )
     return TRACKER_INPUT
@@ -794,19 +794,19 @@ async def tracker_input_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             order = await db.get_order(order_id)
 
     text = (
-        f"🔎 *Order Details*\n"
+        f"🔎 <b>Order Details</b>\n"
         f"{'─'*28}\n"
-        f"🆔 Order ID: `#{order['id']}`\n"
-        f"📦 Service: `{order.get('service_name','—')}`\n"
-        f"🔗 Link: `{order['link']}`\n"
-        f"📊 Quantity: `{order['quantity']:,}`\n"
-        f"💵 Charge: `{fmt_coins(order['charge'])} coins`\n"
+        f"🆔 Order ID: <code>#{order['id']}</code>\n"
+        f"📦 Service: <code>{order.get('service_name','—')}</code>\n"
+        f"🔗 Link: <code>{order['link']}</code>\n"
+        f"📊 Quantity: <code>{order['quantity']:,}</code>\n"
+        f"💵 Charge: <code>{fmt_coins(order['charge'])} coins</code>\n"
         f"📊 Status: {fmt_status(order['status'])}\n"
-        f"📈 Start Count: `{order.get('start_count',0):,}`\n"
-        f"📉 Remains: `{order.get('remains',0):,}`\n"
-        f"📅 Created: `{fmt_date(order['created_at'])}`"
+        f"📈 Start Count: <code>{order.get('start_count',0):,}</code>\n"
+        f"📉 Remains: <code>{order.get('remains',0):,}</code>\n"
+        f"📅 Created: <code>{fmt_date(order['created_at'])}</code>"
     )
-    await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=main_keyboard())
+    await update.message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=main_keyboard())
     return ConversationHandler.END
 
 
@@ -818,12 +818,12 @@ async def daily_bonus(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ok, msg = await db.claim_daily(user_id, DAILY_BONUS_AMOUNT)
     if ok:
         await update.message.reply_text(
-            f"🎁 *Daily Bonus Claimed!*\n\n{msg}\n\n"
+            f"🎁 <b>Daily Bonus Claimed!</b>\n\n{msg}\n\n"
             f"Come back tomorrow for another bonus!",
-            parse_mode=ParseMode.MARKDOWN
+            parse_mode=ParseMode.HTML
         )
     else:
-        await update.message.reply_text(f"🎯 *Daily Bonus*\n\n{msg}", parse_mode=ParseMode.MARKDOWN)
+        await update.message.reply_text(f"🎯 <b>Daily Bonus</b>\n\n{msg}", parse_mode=ParseMode.HTML)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -831,8 +831,8 @@ async def daily_bonus(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 # ═══════════════════════════════════════════════════════════════════
 async def redeem_code(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🎁 *Redeem Code*\n\nEnter your redeem code:",
-        parse_mode=ParseMode.MARKDOWN,
+        "🎁 <b>Redeem Code</b>\n\nEnter your redeem code:",
+        parse_mode=ParseMode.HTML,
         reply_markup=cancel_keyboard()
     )
     return REDEEM_INPUT
@@ -843,8 +843,8 @@ async def redeem_input_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     ok, msg, amount = await db.use_redeem_code(user_id, code)
     await update.message.reply_text(
-        f"🎁 *Redeem Result*\n\n{msg}",
-        parse_mode=ParseMode.MARKDOWN,
+        f"🎁 <b>Redeem Result</b>\n\n{msg}",
+        parse_mode=ParseMode.HTML,
         reply_markup=main_keyboard()
     )
     return ConversationHandler.END
@@ -858,14 +858,14 @@ async def referral(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     udata   = await db.get_user(user_id)
     link    = referral_link(user_id)
     text = (
-        f"👥 *Referral System*\n"
+        f"👥 <b>Referral System</b>\n"
         f"{'─'*28}\n"
-        f"🔗 Your Link:\n`{link}`\n\n"
-        f"👥 Total Referrals: `{udata.get('referral_count',0)}`\n"
-        f"💰 Earned: `{fmt_coins(udata.get('referral_earned',0))} coins`\n\n"
-        f"💎 Earn *{REFERRAL_REWARD} coins* for each new user!"
+        f"🔗 Your Link:\n<code>{link}</code>\n\n"
+        f"👥 Total Referrals: <code>{udata.get('referral_count',0)}</code>\n"
+        f"💰 Earned: <code>{fmt_coins(udata.get('referral_earned',0))} coins</code>\n\n"
+        f"💎 Earn <b>{REFERRAL_REWARD} coins</b> for each new user!"
     )
-    await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
+    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -873,9 +873,9 @@ async def referral(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 # ═══════════════════════════════════════════════════════════════════
 async def leaderboard(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🏆 *Leaderboard*\n\nChoose a category:",
+        "🏆 <b>Leaderboard</b>\n\nChoose a category:",
         reply_markup=leaderboard_kb(),
-        parse_mode=ParseMode.MARKDOWN
+        parse_mode=ParseMode.HTML
     )
 
 
@@ -887,20 +887,20 @@ async def leaderboard_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if board == "referrers":
         rows = await db.top_referrers(10)
         title = "🥇 Top Referrers"
-        lines = [f"{i+1}. `{r['full_name']}` — {r['referral_count']} referrals" for i, r in enumerate(rows)]
+        lines = [f"{i+1}. <code>{r['full_name']}</code> — {r['referral_count']} referrals" for i, r in enumerate(rows)]
     elif board == "buyers":
         rows  = await db.top_buyers(10)
         title = "🥈 Top Buyers"
-        lines = [f"{i+1}. `{r['full_name']}` — {fmt_coins(r['total_spent'])} coins" for i, r in enumerate(rows)]
+        lines = [f"{i+1}. <code>{r['full_name']}</code> — {fmt_coins(r['total_spent'])} coins" for i, r in enumerate(rows)]
     else:
         rows  = await db.top_orders(10)
         title = "🥉 Top Orders"
-        lines = [f"{i+1}. `{r['full_name']}` — {r['total_orders']} orders" for i, r in enumerate(rows)]
+        lines = [f"{i+1}. <code>{r['full_name']}</code> — {r['total_orders']} orders" for i, r in enumerate(rows)]
 
     medals = ["🥇","🥈","🥉"] + ["🔹"]*7
     result_lines = [f"{medals[i]} {line[3:]}" for i, line in enumerate(lines)]
-    text = f"🏆 *{title}*\n{'─'*28}\n" + "\n".join(result_lines)
-    await query.edit_message_text(text, reply_markup=leaderboard_kb(), parse_mode=ParseMode.MARKDOWN)
+    text = f"🏆 <b>{title}</b>\n{'─'*28}\n" + "\n".join(result_lines)
+    await query.edit_message_text(text, reply_markup=leaderboard_kb(), parse_mode=ParseMode.HTML)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -912,16 +912,16 @@ async def my_statistics(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     rank    = await db.get_user_rank(user_id)
     avg     = round(udata.get("total_spent", 0) / max(udata.get("total_orders", 1), 1), 2)
     text = (
-        f"📈 *My Statistics*\n"
+        f"📈 <b>My Statistics</b>\n"
         f"{'─'*28}\n"
-        f"📦 Total Orders: `{udata.get('total_orders',0)}`\n"
-        f"💰 Total Spent: `{fmt_coins(udata.get('total_spent',0))} coins`\n"
-        f"📊 Avg per Order: `{fmt_coins(avg)} coins`\n"
-        f"💳 Total Deposited: `{fmt_coins(udata.get('total_deposited',0))} coins`\n"
-        f"👥 Referrals Made: `{udata.get('referral_count',0)}`\n"
-        f"🏆 Global Rank: `#{rank}`\n"
+        f"📦 Total Orders: <code>{udata.get('total_orders',0)}</code>\n"
+        f"💰 Total Spent: <code>{fmt_coins(udata.get('total_spent',0))} coins</code>\n"
+        f"📊 Avg per Order: <code>{fmt_coins(avg)} coins</code>\n"
+        f"💳 Total Deposited: <code>{fmt_coins(udata.get('total_deposited',0))} coins</code>\n"
+        f"👥 Referrals Made: <code>{udata.get('referral_count',0)}</code>\n"
+        f"🏆 Global Rank: <code>#{rank}</code>\n"
     )
-    await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
+    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -935,24 +935,24 @@ async def vip_membership(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if vip_ok:
         badge = vip_badge(udata["vip_plan"])
         text  = (
-            f"⭐ *VIP Membership*\n"
+            f"⭐ <b>VIP Membership</b>\n"
             f"{'─'*28}\n"
-            f"✅ Active Plan: `{badge} {udata['vip_plan'].title()} VIP`\n"
-            f"📅 Expires: `{fmt_date(udata.get('vip_expires',''))}`\n\n"
+            f"✅ Active Plan: <code>{badge} {udata['vip_plan'].title()} VIP</code>\n"
+            f"📅 Expires: <code>{fmt_date(udata.get('vip_expires',''))}</code>\n\n"
             f"🎉 Enjoy your premium benefits!"
         )
     else:
-        lines = ["⭐ *VIP Membership*\n\nChoose a plan:\n"]
+        lines = ["⭐ <b>VIP Membership</b>\n\nChoose a plan:\n"]
         for key, plan in VIP_PLANS.items():
             lines.append(
                 f"{plan['name']}\n"
-                f"💵 Price: `${plan['price']}/month`\n"
-                f"🏷️ Discount: `{plan['discount']}%`\n"
-                f"🎁 Bonus Coins: `{plan['bonus_coins']}`\n"
+                f"💵 Price: <code>${plan['price']}/month</code>\n"
+                f"🏷️ Discount: <code>{plan['discount']}%</code>\n"
+                f"🎁 Bonus Coins: <code>{plan['bonus_coins']}</code>\n"
                 f"🌟 Priority Support: ✅\n"
             )
         text = "\n".join(lines)
-    await update.message.reply_text(text, reply_markup=vip_plans_kb(), parse_mode=ParseMode.MARKDOWN)
+    await update.message.reply_text(text, reply_markup=vip_plans_kb(), parse_mode=ParseMode.HTML)
 
 
 async def vip_buy_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -972,10 +972,10 @@ async def vip_buy_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not ok:
         await query.edit_message_text(
             f"❌ Insufficient balance!\n\n"
-            f"Required: `{fmt_coins(cost)} coins`\n"
-            f"Your balance: `{fmt_coins(udata['balance'])} coins`\n\n"
-            f"💳 Use *Buy Coins* to add funds.",
-            parse_mode=ParseMode.MARKDOWN
+            f"Required: <code>{fmt_coins(cost)} coins</code>\n"
+            f"Your balance: <code>{fmt_coins(udata['balance'])} coins</code>\n\n"
+            f"💳 Use <b>Buy Coins</b> to add funds.",
+            parse_mode=ParseMode.HTML
         )
         return
 
@@ -983,14 +983,14 @@ async def vip_buy_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await db.add_balance(user_id, plan["bonus_coins"], f"VIP Bonus: {plan['name']}")
 
     await query.edit_message_text(
-        f"🎉 *VIP Activated!*\n"
+        f"🎉 <b>VIP Activated!</b>\n"
         f"{'─'*28}\n"
-        f"✅ Plan: `{plan['name']}`\n"
-        f"🏷️ Discount: `{plan['discount']}%`\n"
-        f"🎁 Bonus Coins: `+{plan['bonus_coins']}`\n"
-        f"📅 Valid: `{plan['days']} days`\n\n"
+        f"✅ Plan: <code>{plan['name']}</code>\n"
+        f"🏷️ Discount: <code>{plan['discount']}%</code>\n"
+        f"🎁 Bonus Coins: <code>+{plan['bonus_coins']}</code>\n"
+        f"📅 Valid: <code>{plan['days']} days</code>\n\n"
         f"Enjoy your premium benefits! 🚀",
-        parse_mode=ParseMode.MARKDOWN
+        parse_mode=ParseMode.HTML
     )
 
 
@@ -999,8 +999,8 @@ async def vip_buy_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 # ═══════════════════════════════════════════════════════════════════
 async def support(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "☎️ *Support*\n\nDescribe your issue and we'll help you!\n\nEnter your subject:",
-        parse_mode=ParseMode.MARKDOWN,
+        "☎️ <b>Support</b>\n\nDescribe your issue and we'll help you!\n\nEnter your subject:",
+        parse_mode=ParseMode.HTML,
         reply_markup=cancel_keyboard()
     )
     return TICKET_SUBJECT
@@ -1023,22 +1023,22 @@ async def ticket_message_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
     ticket_id = await db.create_ticket(user_id, subject, message, update.message.message_id)
 
     await update.message.reply_text(
-        f"✅ *Ticket Submitted!*\n\n"
-        f"🆔 Ticket ID: `#{ticket_id}`\n"
-        f"📋 Subject: `{subject}`\n\n"
+        f"✅ <b>Ticket Submitted!</b>\n\n"
+        f"🆔 Ticket ID: <code>#{ticket_id}</code>\n"
+        f"📋 Subject: <code>{subject}</code>\n\n"
         f"Our team will reply soon.",
-        parse_mode=ParseMode.MARKDOWN,
+        parse_mode=ParseMode.HTML,
         reply_markup=main_keyboard()
     )
 
     # Notify admins
     udata = await db.get_user(user_id)
     admin_msg = (
-        f"☎️ *New Support Ticket #{ticket_id}*\n"
+        f"☎️ <b>New Support Ticket #{ticket_id}</b>\n"
         f"{'─'*28}\n"
-        f"👤 User: `{udata['full_name']}` (`@{udata.get('username','')}`)\n"
-        f"🆔 ID: `{user_id}`\n"
-        f"📋 Subject: `{subject}`\n"
+        f"👤 User: <code>{udata['full_name']}</code> (<code>@{udata.get('username','')}</code>)\n"
+        f"🆔 ID: <code>{user_id}</code>\n"
+        f"📋 Subject: <code>{subject}</code>\n"
         f"💬 Message: {message}"
     )
     from keyboards.inline import ticket_reply_kb
@@ -1047,7 +1047,7 @@ async def ticket_message_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
             await ctx.bot.send_message(
                 admin_id, admin_msg,
                 reply_markup=ticket_reply_kb(ticket_id, user_id),
-                parse_mode=ParseMode.MARKDOWN
+                parse_mode=ParseMode.HTML
             )
         except Exception:
             pass
@@ -1063,8 +1063,8 @@ async def updates_channel(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     channel = await db.get_setting("updates_channel", "")
     if channel:
         await update.message.reply_text(
-            f"📢 *Updates Channel*\n\n{channel}",
-            parse_mode=ParseMode.MARKDOWN
+            f"📢 <b>Updates Channel</b>\n\n{channel}",
+            parse_mode=ParseMode.HTML
         )
     else:
         await update.message.reply_text("📢 No updates channel set yet.")
