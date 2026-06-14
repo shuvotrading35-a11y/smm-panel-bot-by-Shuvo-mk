@@ -62,9 +62,29 @@ class SMMApiClient:
         ids = ",".join(order_ids)
         return await self._post(action="status", orders=ids)
 
-    # ── Refill ────────────────────────────────────────────────────
+    # ── Refill (Single) ───────────────────────────────────────────
     async def refill_order(self, order_id: str) -> dict:
         return await self._post(action="refill", order=order_id)
+
+    # ── Refill (Multiple) ─────────────────────────────────────────
+    async def refill_multiple_orders(self, order_ids: list[str]) -> list:
+        ids = ",".join(order_ids)
+        result = await self._post(action="refill", orders=ids)
+        if isinstance(result, list):
+            return result
+        return [{"error": str(result)}]
+
+    # ── Refill Status (Single) ────────────────────────────────────
+    async def refill_status(self, refill_id: str) -> dict:
+        return await self._post(action="refill_status", refill=refill_id)
+
+    # ── Refill Status (Multiple) ──────────────────────────────────
+    async def refill_status_multiple(self, refill_ids: list[str]) -> list:
+        ids = ",".join(refill_ids)
+        result = await self._post(action="refill_status", refills=ids)
+        if isinstance(result, list):
+            return result
+        return [{"error": str(result)}]
 
     # ── Cancel ────────────────────────────────────────────────────
     async def cancel_order(self, order_id: str) -> dict:
