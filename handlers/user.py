@@ -214,7 +214,7 @@ async def wallet_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     if query.data == "wallet_add":
         await query.edit_message_text(
-            "💳 <b>Add Funds</b>\n\nChoose a payment method:",
+            "💳 <b>Add Funds</b>\n\nChoose a payment method:\n\n❓ সমস্যা হলে যোগাযোগ: @shuvo\_9882",
             reply_markup=payment_methods_kb(),
             parse_mode=ParseMode.HTML
         )
@@ -251,21 +251,26 @@ async def payment_method_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE
     method_name = PAYMENT_METHODS.get(method, method)
 
     payment_info = {
-        "binance":  "💵 <b>Binance Pay ID:</b> <code>your_binance_id</code>\n<b>Min:</b> $1",
-        "usdt_trc": "🟢 <b>USDT TRC20 Address:</b>\n<code>TYourWalletAddressHere</code>\n<b>Min:</b> $1",
-        "usdt_bep": "🟡 <b>USDT BEP20 Address:</b>\n<code>0xYourWalletAddressHere</code>\n<b>Min:</b> $1",
-        "stripe":   "💳 <b>Stripe Payment Link:</b>\nhttps://buy.stripe.com/your_link\n<b>Min:</b> $1",
-        "bank":     "🏦 <b>Bank Details:</b>\nBank: Your Bank\nAccount: 1234567890\nRouting: 021000021\n<b>Min:</b> $5",
-        "mobile":   "📱 <b>Mobile Banking:</b>\nbKash: 01XXXXXXXXX\nNagad: 01XXXXXXXXX\n<b>Min:</b> ৳50",
+        "binance":  "💵 <b>Binance Pay ID:</b> <code>863483196</code>\n<b>Min:</b> $1",
+        "usdt_trc": "🟢 <b>USDT TRC20 Address:</b>\n<code>TKmGd9sY9UjuhAvmcLHTfQAJoEvg9nKoxk</code>\n<b>Min:</b> $1",
+        "usdt_bep": "🟡 <b>USDT BEP20 Address:</b>\n<code>0x0474d91811f1884ab07bbbc0331467815904caed</code>\n<b>Min:</b> $1",
+        "mobile":   "📱 <b>Mobile Banking:</b>\nbKash: 01336650725\nNagad: 01336650725\n<b>Min:</b> ৳50",
     }
 
-    info = payment_info.get(method, "Contact admin for payment details.")
+    # যদি method supported না হয় (stripe/bank) — contact দেখাও
+    if method not in payment_info:
+        await query.answer("This method is not available.", show_alert=True)
+        return
+
+    info = payment_info.get(method, "")
     ctx.user_data["deposit_method"] = method
 
     await query.edit_message_text(
-        f"💳 <b>{method_name}</b>\n\n{info}\n\n"
-        f"After payment, send the amount and transaction ID to get verified.\n\n"
-        f"👇 Reply with your deposit amount (numbers only):",
+        f"💳 <b>{method_name}</b>\n\n"
+        f"{info}\n\n"
+        f"✅ Payment করার পর নিচে amount পাঠাও।\n"
+        f"❓ সাহায্যের জন্য যোগাযোগ করো: @shuvo_9882\n\n"
+        f"👇 Deposit amount লেখো (শুধু সংখ্যা):",
         parse_mode=ParseMode.HTML
     )
     return DEPOSIT_AMOUNT
