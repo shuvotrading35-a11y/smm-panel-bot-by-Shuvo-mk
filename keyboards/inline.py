@@ -173,12 +173,13 @@ def categories_kb(categories: list[str], icons: dict) -> InlineKeyboardMarkup:
 
 
 def platform_categories_kb(platform: str, categories: list[str], icons: dict) -> InlineKeyboardMarkup:
-    """Sub-menu: all categories under a platform."""
+    """Sub-menu: all categories under a platform. Uses index to avoid truncation."""
     rows = []
-    for cat in categories:
-        icon = next((v for k, v in icons.items() if k.lower() in cat.lower()), "🔹")
-        rows.append([InlineKeyboardButton(f"{icon} {cat}", callback_data=f"cat:{cat[:30]}")])
-    rows.append([InlineKeyboardButton("🔙 Back", callback_data="platform_back")])
+    for idx, cat in enumerate(categories):
+        icon = next((v for k, v in icons.items() if k.lower() in cat.lower()), "\U0001f539")
+        label = cat[:35] + "…" if len(cat) > 35 else cat
+        rows.append([InlineKeyboardButton(f"{icon} {label}", callback_data=f"catidx:{idx}")])
+    rows.append([InlineKeyboardButton("\U0001f519 Back", callback_data="platform_back")])
     return InlineKeyboardMarkup(rows)
 
 
