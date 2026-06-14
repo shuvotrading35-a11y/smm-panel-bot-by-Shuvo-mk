@@ -184,8 +184,12 @@ def build_app() -> Application:
     deposit_conv = ConversationHandler(
         entry_points=[
             MessageHandler(filters.Regex(r"^💳 ʙᴜʏ ᴄᴏɪɴꜱ$"), buy_coins),
+            CallbackQueryHandler(buy_coins, pattern=r"^wallet_add$"),
         ],
         states={
+            DEPOSIT_METHOD: [
+                CallbackQueryHandler(payment_method_callback, pattern=r"^pay_method:"),
+            ],
             DEPOSIT_AMOUNT: [
                 MessageHandler(filters.TEXT & ~CANCEL_FILTER, deposit_amount_handler),
                 CallbackQueryHandler(payment_method_callback, pattern=r"^pay_method:"),
