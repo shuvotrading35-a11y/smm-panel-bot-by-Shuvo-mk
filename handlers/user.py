@@ -397,6 +397,31 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    # ── Category by index (from platform sub-menu) ───────────────
+    if data.startswith("catidx:"):
+        idx = int(data[7:])
+        platform = ctx.user_data.get("current_platform", "")
+        all_cats = await db.get_categories()
+        filtered = [c for c in all_cats if platform in c.lower()] if platform else all_cats
+        if not filtered:
+            filtered = all_cats
+        if idx >= len(filtered):
+            await query.answer("Category not found.", show_alert=True)
+            return
+        category = filtered[idx]
+        ctx.user_data["current_category"] = category
+        services = await db.get_services_by_category(category)
+        if not services:
+            await query.answer("No services in this category.", show_alert=True)
+            return
+        icon = category_icon(category)
+        await query.edit_message_text(
+            f"{icon} <b>{category}</b>\n\nChoose a service:",
+            reply_markup=services_kb(services, category),
+            parse_mode=ParseMode.HTML
+        )
+        return
+
     # ── Category tapped → show services ───────────────────────────
     category = data[4:]  # strip "cat:"
     services = await db.get_services_by_category(category)
