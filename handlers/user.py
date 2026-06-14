@@ -9,7 +9,7 @@ from config import (ADMIN_IDS, BOT_NAME, DEVELOPER, DAILY_BONUS_AMOUNT,
 from keyboards.reply import main_keyboard, cancel_keyboard, back_keyboard
 from keyboards.inline import (
     leaderboard_kb, wallet_kb, account_kb, vip_plans_kb,
-    categories_kb, services_kb, service_detail_kb, force_join_kb,
+    categories_kb, platform_categories_kb, services_kb, service_detail_kb, force_join_kb,
     payment_methods_kb, confirm_order_kb, order_actions_kb
 )
 from utils.helpers import (
@@ -349,7 +349,7 @@ async def services_list(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return
     await update.message.reply_text(
-        "📊 <b>Services List</b>\n\nChoose a category:",
+        "📊 <b>Services List</b>\n\nChoose a platform:",
         reply_markup=categories_kb(cats, CATEGORY_ICONS),
         parse_mode=ParseMode.HTML
     )
@@ -360,15 +360,44 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     data     = query.data
 
-    if data == "cat_back":
+    PLATFORM_LABELS = {
+        "facebook":  "📘 Facebook",
+        "instagram": "📱 Instagram",
+        "tiktok":    "🎵 TikTok",
+        "youtube":   "📺 YouTube",
+        "telegram":  "✈️ Telegram",
+        "twitter":   "🐦 Twitter / X",
+        "spotify":   "🎧 Spotify",
+        "website":   "🌐 Website",
+    }
+
+    # ── Back to platform list ──────────────────────────────────────
+    if data == "platform_back" or data == "cat_back":
         cats = await db.get_categories()
         await query.edit_message_text(
-            "📊 <b>Services List</b>\n\nChoose a category:",
+            "📊 <b>Services List</b>\n\nChoose a platform:",
             reply_markup=categories_kb(cats, CATEGORY_ICONS),
             parse_mode=ParseMode.HTML
         )
         return
 
+    # ── Platform button tapped → show sub-categories ───────────────
+    if data.startswith("platform:"):
+        platform = data[9:]
+        ctx.user_data["current_platform"] = platform
+        all_cats = await db.get_categories()
+        filtered = [c for c in all_cats if platform in c.lower()]
+        if not filtered:
+            filtered = all_cats
+        label = PLATFORM_LABELS.get(platform, f"🔹 {platform.title()}")
+        await query.edit_message_text(
+            f"{label}\n\nChoose a category:",
+            reply_markup=platform_categories_kb(platform, filtered, CATEGORY_ICONS),
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # ── Category tapped → show services ───────────────────────────
     category = data[4:]  # strip "cat:"
     services = await db.get_services_by_category(category)
     if not services:
@@ -391,13 +420,23 @@ async def service_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     if data == "svc_back":
         category = ctx.user_data.get("current_category", "")
+        platform = ctx.user_data.get("current_platform", "")
         services = await db.get_services_by_category(category)
-        icon     = category_icon(category)
-        await query.edit_message_text(
-            f"{icon} <b>{category}</b>\n\nChoose a service:",
-            reply_markup=services_kb(services, category),
-            parse_mode=ParseMode.HTML
-        )
+        if services:
+            icon = category_icon(category)
+            await query.edit_message_text(
+                f"{icon} <b>{category}</b>\n\nChoose a service:",
+                reply_markup=services_kb(services, category),
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            # fallback: go back to platform list
+            all_cats = await db.get_categories()
+            await query.edit_message_text(
+                "📊 <b>Services List</b>\n\nChoose a platform:",
+                reply_markup=categories_kb(all_cats, CATEGORY_ICONS),
+                parse_mode=ParseMode.HTML
+            )
         return
 
     service_id = data[4:]  # strip "svc:"
