@@ -112,7 +112,7 @@ def build_app() -> Application:
     app.add_handler(CallbackQueryHandler(order_refresh_callback,      pattern=r"^order_refresh:"))
     app.add_handler(CallbackQueryHandler(order_refill_callback,       pattern=r"^order_refill:"))
     app.add_handler(CallbackQueryHandler(order_cancel_api_callback,   pattern=r"^order_cancel_api:"))
-    app.add_handler(CallbackQueryHandler(category_callback,           pattern=r"^cat(_back|:.+)$"))
+    app.add_handler(CallbackQueryHandler(category_callback,           pattern=r"^(cat(_back|:.+)|platform(:.+|_back))$"))
     app.add_handler(CallbackQueryHandler(service_callback,            pattern=r"^svc(_back|:.+)$"))
     app.add_handler(CallbackQueryHandler(admin_user_callback,         pattern=r"^adm_(ban|unban|bal_add|bal_rem|msg):"))
     app.add_handler(CallbackQueryHandler(deposit_approve_callback,    pattern=r"^dep_approve:"))
