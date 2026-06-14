@@ -39,8 +39,6 @@ PAYMENT_METHODS = {
     "binance":  "💵 Binance Pay",
     "usdt_trc": "🟢 USDT TRC20",
     "usdt_bep": "🟡 USDT BEP20",
-    "stripe":   "💳 Stripe",
-    "bank":     "🏦 Bank Transfer",
     "mobile":   "📱 Mobile Banking",
 }
 
