@@ -213,11 +213,14 @@ async def wallet_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     if query.data == "wallet_add":
-        await query.edit_message_text(
-            "💳 <b>Add Funds</b>\n\nChoose a payment method:\n\n❓ সমস্যা হলে যোগাযোগ: @shuvo\_9882",
+        await query.message.reply_text(
+            "💳 <b>Add Funds</b>\n\nChoose a payment method:\n\n"
+            "❓ সমস্যা হলে যোগাযোগ: @shuvo_9882",
             reply_markup=payment_methods_kb(),
             parse_mode=ParseMode.HTML
         )
+        ctx.user_data["deposit_state"] = "method"
+        return DEPOSIT_METHOD
     elif query.data == "wallet_history":
         user_id = query.from_user.id
         txns    = await db.get_transactions(user_id, 10)
@@ -236,10 +239,12 @@ async def wallet_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 # ═══════════════════════════════════════════════════════════════════
 async def buy_coins(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "💳 <b>Buy Coins</b>\n\nChoose a payment method:",
+        "💳 <b>Add Funds</b>\n\nChoose a payment method:\n\n"
+        "❓ সমস্যা হলে যোগাযোগ: @shuvo_9882",
         reply_markup=payment_methods_kb(),
         parse_mode=ParseMode.HTML
     )
+    return DEPOSIT_METHOD
 
 
 async def payment_method_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -254,7 +259,7 @@ async def payment_method_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE
         "binance":  "💵 <b>Binance Pay ID:</b> <code>863483196</code>\n<b>Min:</b> $1",
         "usdt_trc": "🟢 <b>USDT TRC20 Address:</b>\n<code>TKmGd9sY9UjuhAvmcLHTfQAJoEvg9nKoxk</code>\n<b>Min:</b> $1",
         "usdt_bep": "🟡 <b>USDT BEP20 Address:</b>\n<code>0x0474d91811f1884ab07bbbc0331467815904caed</code>\n<b>Min:</b> $1",
-        "mobile":   "📱 <b>Mobile Banking:</b>\nbKash: 01336650725\nNagad: 01336650725\n<b>Min:</b> ৳50",
+        "mobile":   "📱 <b>Mobile Banking:</b>\nbKash: 01XXXXXXXXX\nNagad: 01XXXXXXXXX\n<b>Min:</b> ৳50",
     }
 
     # যদি method supported না হয় (stripe/bank) — contact দেখাও
