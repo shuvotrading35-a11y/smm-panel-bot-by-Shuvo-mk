@@ -468,7 +468,7 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     }
 
     # ── cat_back: Service list → back to Category list under platform ──
-    if data == "cat_back":
+    if data in ("cat_back", "svc_list_back"):
         platform = ctx.user_data.get("current_platform", "")
         all_cats = await db.get_categories()
         filtered = [c for c in all_cats if platform in c.lower()] if platform else all_cats
@@ -561,22 +561,16 @@ async def service_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     data       = query.data
 
     if data == "svc_back":
-        # Go back to category list under current platform
-        platform = ctx.user_data.get("current_platform", "")
-        all_cats = await db.get_categories()
-        filtered = [c for c in all_cats if platform in c.lower()] if platform else all_cats
-        if not filtered:
-            filtered = all_cats
-        PLATFORM_LABELS = {
-            "facebook": "📘 Facebook", "instagram": "📱 Instagram",
-            "tiktok": "🎵 TikTok", "youtube": "📺 YouTube",
-            "telegram": "✈️ Telegram", "twitter": "🐦 Twitter / X",
-            "spotify": "🎧 Spotify", "website": "🌐 Website",
-        }
-        label = PLATFORM_LABELS.get(platform, f"🔹 {platform.title()}")
+        # Service detail → back to service list
+        category = ctx.user_data.get("current_category", "")
+        services = await db.get_services_by_category(category)
+        if not services:
+            await query.answer("No services.", show_alert=True)
+            return
+        icon = category_icon(category)
         await query.edit_message_text(
-            f"{label}\n\nChoose a category:",
-            reply_markup=platform_categories_kb(platform, filtered, CATEGORY_ICONS),
+            f"{icon} <b>{category}</b>\n\nChoose a service:",
+            reply_markup=services_kb(services, category),
             parse_mode=ParseMode.HTML
         )
         return
