@@ -26,6 +26,11 @@ REFERRAL_REWARD    = float(os.getenv("REFERRAL_REWARD", "5"))
 MIN_DEPOSIT        = float(os.getenv("MIN_DEPOSIT", "1.00"))
 COIN_RATE          = float(os.getenv("COIN_RATE", "0.01"))  # 1 coin = X USD
 
+# ── Pricing Markup ────────────────────────────────────────────────
+# API থেকে যে rate আসে তার উপর এই % profit যোগ হবে
+# উদাহরণ: 30 মানে API rate × 1.30 — user থেকে 30% বেশি নেবে
+SERVICE_MARKUP_PCT = float(os.getenv("SERVICE_MARKUP_PCT", "30"))  # 30% profit
+
 # ── VIP Plans ────────────────────────────────────────
 VIP_PLANS = {
     "bronze":  {"name": "⭐ Bronze VIP",  "price": 5.0,  "discount": 5,  "bonus_coins": 10,  "days": 30},
