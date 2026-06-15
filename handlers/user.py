@@ -491,7 +491,7 @@ async def service_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         f"{icon} <b>{svc['name']}</b>\n"
         f"{'─'*28}\n"
         f"🆔 Service ID: <code>{svc['service_id']}</code>\n"
-        f"💵 Rate: <code>{fmt_coins_full(svc['rate'])} / 1000</code>\n"
+        f"💵 Rate: <code>৳{round(float(svc['rate'])*(1+__import__('config').SERVICE_MARKUP_PCT/100)*110, 2)} per 1000</code>\n"
         f"📊 Min: <code>{svc['min_order']:,}</code>\n"
         f"📈 Max: <code>{svc['max_order']:,}</code>\n"
         f"♻️ Refill: {refill_str}\n"
@@ -694,10 +694,15 @@ async def order_quantity_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
         )
         return ORDER_QUANTITY
 
-    # Calculate cost
-    rate    = svc.get("rate", 0)
-    charge  = round((qty / 1000) * rate, 4)
-    user_id = update.effective_user.id
+    # Calculate cost — rate is USD per 1000 from API
+    from config import COIN_RATE, SERVICE_MARKUP_PCT
+    USD_TO_BDT  = 110
+    rate_usd    = float(svc.get("rate", 0))
+    # Markup যোগ করো — এটাই তোমার profit
+    rate_usd    = round(rate_usd * (1 + SERVICE_MARKUP_PCT / 100), 6)
+    charge_usd  = round((qty / 1000) * rate_usd, 6)   # USD cost (with markup)
+    charge      = round(charge_usd / COIN_RATE, 4)     # convert to coins for balance deduction
+    user_id     = update.effective_user.id
 
     # VIP discount
     udata   = await db.get_user(user_id)
@@ -705,15 +710,24 @@ async def order_quantity_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
     discount = 0
     if vip_ok and udata.get("vip_plan"):
         from config import VIP_PLANS
-        discount = VIP_PLANS.get(udata["vip_plan"], {}).get("discount", 0)
-        charge   = round(charge * (1 - discount / 100), 4)
+        discount   = VIP_PLANS.get(udata["vip_plan"], {}).get("discount", 0)
+        charge_usd = round(charge_usd * (1 - discount / 100), 6)
+        charge     = round(charge * (1 - discount / 100), 4)
 
-    ctx.user_data["order_quantity"] = qty
-    ctx.user_data["order_charge"]   = charge
+    charge_bdt = round(charge_usd * USD_TO_BDT, 2)
+
+    ctx.user_data["order_quantity"]   = qty
+    ctx.user_data["order_charge"]     = charge
+    ctx.user_data["order_charge_usd"] = charge_usd
 
     link = ctx.user_data.get("order_link", "")
     name = ctx.user_data.get("order_service_name", "")
     disc_str = f"\n🏷️ VIP Discount: <code>{discount}%</code>" if discount else ""
+
+    # Balance display
+    bal_coins = udata['balance']
+    bal_usd   = round(bal_coins * COIN_RATE, 4)
+    bal_bdt   = round(bal_usd * USD_TO_BDT, 2)
 
     text = (
         f"📋 <b>Order Confirmation</b>\n"
@@ -721,9 +735,9 @@ async def order_quantity_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
         f"📦 Service: <code>{name}</code>\n"
         f"🔗 Link: <code>{link}</code>\n"
         f"📊 Quantity: <code>{qty:,}</code>\n"
-        f"💵 Cost: <code>{fmt_coins_full(charge)}</code>"
+        f"💵 Cost: <code>{charge} Coins (≈ ${charge_usd:.4f} / ৳{charge_bdt})</code>"
         f"{disc_str}\n\n"
-        f"💰 Your Balance: <code>{fmt_coins_full(udata['balance'])}</code>\n\n"
+        f"💰 Your Balance: <code>{bal_coins:,.2f} Coins (≈ ${bal_usd} / ৳{bal_bdt})</code>\n\n"
         f"✅ Confirm order?"
     )
     service_id = ctx.user_data.get("order_service_id", "")
