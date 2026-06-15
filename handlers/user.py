@@ -834,9 +834,22 @@ async def order_quantity_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
     bal_usd   = round(bal_coins * COIN_RATE, 4)
     bal_bdt   = round(bal_usd * USD_TO_BDT, 2)
 
-    bal_coins = udata['balance']
+    bal_coins = float(udata['balance'])
     bal_bdt   = round(bal_coins * COIN_TO_BDT, 1)
     bal_usd   = round(bal_bdt / USD_TO_BDT, 3)
+
+    # Balance sufficient check
+    if bal_coins < charge:
+        needed = round(charge - bal_coins, 2)
+        await update.callback_query.edit_message_text(
+            f"❌ <b>Balance কম!</b>\n\n"
+            f"💵 Cost: <code>{charge:,.2f} Coins (৳{charge_bdt})</code>\n"
+            f"💰 Balance: <code>{bal_coins:,.2f} Coins (৳{bal_bdt})</code>\n"
+            f"⚠️ আরও <code>{needed:,.2f} Coins (৳{needed:.0f})</code> দরকার\n\n"
+            f"💳 Buy Coins থেকে balance বাড়াও।",
+            parse_mode=ParseMode.HTML
+        )
+        return ConversationHandler.END
 
     text = (
         f"📋 <b>Order Confirmation</b>\n"
@@ -893,7 +906,6 @@ async def order_confirm_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
             parse_mode=ParseMode.HTML
         )
         ctx.user_data.clear()
-        await ctx.bot.send_message(user_id, "🏠 Main Menu:", reply_markup=main_keyboard())
         return ConversationHandler.END
 
     # Place API order
@@ -910,7 +922,6 @@ async def order_confirm_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
             f"❌ Order failed: {api_result['error']}\n\nBalance refunded."
         )
         ctx.user_data.clear()
-        await ctx.bot.send_message(user_id, "🏠 Main Menu:", reply_markup=main_keyboard())
         return ConversationHandler.END
 
     order_id = await db.create_order(
