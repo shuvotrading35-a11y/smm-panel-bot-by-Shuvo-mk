@@ -219,7 +219,7 @@ def services_kb(services: list[dict], category: str) -> InlineKeyboardMarkup:
             f"\U0001f4e6  {svc['name']}",
             callback_data=f"svc:{svc['service_id']}"
         )])
-    rows.append([InlineKeyboardButton("\U00002B05\uFE0F  Back", callback_data="cat_back")])
+    rows.append([InlineKeyboardButton("\U00002B05\uFE0F  Back", callback_data="svc_list_back")])
     return InlineKeyboardMarkup(rows)
 
 
