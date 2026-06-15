@@ -13,7 +13,7 @@ import database as db
 from handlers.user import (
     start, my_account, account_callback, wallet, wallet_callback,
     buy_coins, payment_method_callback, deposit_amount_handler,
-    deposit_txn_handler, services_list, category_callback,
+    deposit_txn_handler, package_callback, services_list, category_callback,
     service_callback, new_order, order_start_callback,
     order_platform_handler, order_category_handler, order_service_handler, order_link_handler,
     order_quantity_handler, order_confirm_callback, my_orders,
@@ -189,7 +189,8 @@ def build_app() -> Application:
         ],
         states={
             DEPOSIT_METHOD: [
-                CallbackQueryHandler(payment_method_callback, pattern=r"^pay_method:"),
+                CallbackQueryHandler(package_callback,        pattern=r"^(pkg:.+|pkg_back|contact_admin)$"),
+                CallbackQueryHandler(payment_method_callback, pattern=r"^pay_method:.+$"),
             ],
             DEPOSIT_AMOUNT: [
                 MessageHandler(filters.TEXT & ~CANCEL_FILTER, deposit_amount_handler),
@@ -198,9 +199,14 @@ def build_app() -> Application:
                 MessageHandler(filters.TEXT & ~CANCEL_FILTER, deposit_txn_handler),
             ],
         },
-        fallbacks=[MessageHandler(CANCEL_FILTER, cancel_handler)],
+        fallbacks=[
+            MessageHandler(CANCEL_FILTER, cancel_handler),
+            # যেকোনো অজানা callback — conversation শেষ করো
+            CallbackQueryHandler(lambda u, c: ConversationHandler.END),
+        ],
         allow_reentry=True,
         per_message=False,
+        conversation_timeout=180,
     )
     app.add_handler(deposit_conv)
 
