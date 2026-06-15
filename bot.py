@@ -115,13 +115,14 @@ def build_app() -> Application:
     app.add_handler(CallbackQueryHandler(force_join_check,            pattern=r"^fj_check$"))
     app.add_handler(CallbackQueryHandler(account_callback,            pattern=r"^acc_"))
     # wallet_callback handled inside deposit_conv ConversationHandler
+    app.add_handler(CallbackQueryHandler(lambda u, c: u.callback_query.answer("📩 যোগাযোগ: @shuvo_9882", show_alert=True), pattern=r"^contact_admin$"))
     app.add_handler(CallbackQueryHandler(leaderboard_callback,        pattern=r"^lb:"))
     app.add_handler(CallbackQueryHandler(vip_buy_callback,            pattern=r"^vip_buy:"))
     app.add_handler(CallbackQueryHandler(order_refresh_callback,      pattern=r"^order_refresh:"))
     app.add_handler(CallbackQueryHandler(order_refill_callback,       pattern=r"^order_refill:"))
     app.add_handler(CallbackQueryHandler(order_cancel_api_callback,   pattern=r"^order_cancel_api:"))
-    app.add_handler(CallbackQueryHandler(category_callback,           pattern=r"^(cat(_back|:.+)|platform(:.+|_back)|catidx:\d+)$"))
-    app.add_handler(CallbackQueryHandler(service_callback,            pattern=r"^svc(_back|:.+)$"))
+    app.add_handler(CallbackQueryHandler(category_callback,           pattern=r"^(cat(_back|:.+)|svc_list_back|platform(:.+|_back)|catidx:\d+)$"))
+    app.add_handler(CallbackQueryHandler(service_callback,            pattern=r"^svc(_back|:.+)$"))  # svc_back = service detail → service list
     app.add_handler(CallbackQueryHandler(admin_user_callback,         pattern=r"^adm_(ban|unban|bal_add|bal_rem|msg):"))
     app.add_handler(CallbackQueryHandler(deposit_approve_callback,    pattern=r"^dep_approve:"))
     app.add_handler(CallbackQueryHandler(deposit_reject_callback,     pattern=r"^dep_reject:"))
