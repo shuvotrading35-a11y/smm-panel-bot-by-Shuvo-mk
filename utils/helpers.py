@@ -30,19 +30,19 @@ async def check_force_join(bot: Bot, user_id: int, channels: list[dict]) -> list
     return not_joined
 
 # ── Formatters ────────────────────────────────────────────────────
-# Conversion rates (adjust as needed)
-COIN_TO_USD = 0.01   # 1 coin = $0.01
-USD_TO_BDT  = 135    # 1 USD  = ৳135
+# Conversion rates
+COIN_TO_BDT = 1.0      # 1 coin = ৳1
+BDT_TO_USD  = 1/135    # 1 BDT  = $0.0074
 
 def fmt_coins(amount: float) -> str:
     """Just the number — for calculations/internal use."""
     return f"{amount:,.2f}"
 
 def fmt_coins_full(amount: float) -> str:
-    """Coins + USD + BDT — for display to users."""
-    usd = float(amount) * COIN_TO_USD
-    bdt = usd * USD_TO_BDT
-    return f"{float(amount):,.2f} Coins (≈ ${usd:.3f} / ৳{bdt:.1f})"
+    """Coins + BDT + USD — for display to users."""
+    bdt = float(amount) * COIN_TO_BDT
+    usd = bdt * BDT_TO_USD
+    return f"{float(amount):,.2f} Coins (≈ ৳{bdt:.1f} / ${usd:.3f})"
 
 def fmt_status(status: str) -> str:
     icons = {
