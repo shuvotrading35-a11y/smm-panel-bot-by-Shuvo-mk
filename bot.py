@@ -201,12 +201,10 @@ def build_app() -> Application:
         },
         fallbacks=[
             MessageHandler(CANCEL_FILTER, cancel_handler),
-            # যেকোনো অজানা callback — conversation শেষ করো
-            CallbackQueryHandler(lambda u, c: ConversationHandler.END),
         ],
         allow_reentry=True,
         per_message=False,
-        conversation_timeout=180,
+        conversation_timeout=120,
     )
     app.add_handler(deposit_conv)
 
