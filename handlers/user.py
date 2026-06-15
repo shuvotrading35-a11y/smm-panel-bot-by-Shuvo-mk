@@ -254,7 +254,7 @@ async def buy_coins(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "🔒 <b>TRUSTED SERVICE</b>\n"
         "💬 <b>SUPPORT 24/7</b>\n"
         "──────────────────────\n\n"
-        "❓ সাহায্য: @shuvo\_9882"
+        "❓ সাহায্য: @shuvo_9882"
     )
     if update.message:
         await update.message.reply_text(text, reply_markup=coin_packages_kb(), parse_mode=ParseMode.HTML)
@@ -283,7 +283,7 @@ async def package_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             "🔒 <b>TRUSTED SERVICE</b>\n"
             "💬 <b>SUPPORT 24/7</b>\n"
             "──────────────────────\n\n"
-            "❓ সাহায্য: @shuvo\_9882"
+            "❓ সাহায্য: @shuvo_9882"
         )
         await query.edit_message_text(text, reply_markup=coin_packages_kb(), parse_mode=ParseMode.HTML)
         return DEPOSIT_METHOD
@@ -352,7 +352,7 @@ async def payment_method_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE
         f"{pkg_line}"
         f"{info}\n\n"
         f"✅ পেমেন্ট করার পর Transaction ID পাঠাও।\n"
-        f"❓ সাহায্য: @shuvo\_9882\n\n"
+        f"❓ সাহায্য: @shuvo_9882\n\n"
         f"👇 Deposit amount লেখো (শুধু সংখ্যা):",
         parse_mode=ParseMode.HTML
     )
