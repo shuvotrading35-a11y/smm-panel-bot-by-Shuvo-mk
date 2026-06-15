@@ -893,6 +893,7 @@ async def order_confirm_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
             parse_mode=ParseMode.HTML
         )
         ctx.user_data.clear()
+        await ctx.bot.send_message(user_id, "🏠 Main Menu:", reply_markup=main_keyboard())
         return ConversationHandler.END
 
     # Place API order
@@ -909,6 +910,7 @@ async def order_confirm_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
             f"❌ Order failed: {api_result['error']}\n\nBalance refunded."
         )
         ctx.user_data.clear()
+        await ctx.bot.send_message(user_id, "🏠 Main Menu:", reply_markup=main_keyboard())
         return ConversationHandler.END
 
     order_id = await db.create_order(
