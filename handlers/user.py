@@ -10,6 +10,7 @@ from keyboards.reply import main_keyboard, cancel_keyboard, back_keyboard
 from keyboards.inline import (
     leaderboard_kb, wallet_kb, account_kb, vip_plans_kb,
     categories_kb, platform_categories_kb, order_categories_kb, services_kb, service_detail_kb, force_join_kb,
+    coin_packages_kb, pkg_payment_kb,
     payment_methods_kb, confirm_order_kb, order_actions_kb
 )
 from utils.helpers import (
@@ -242,10 +243,80 @@ async def wallet_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 #  BUY COINS / DEPOSIT
 # ═══════════════════════════════════════════════════════════════════
 async def buy_coins(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "💳 <b>Add Funds</b>\n\nChoose a payment method:\n\n"
-        "❓ সমস্যা হলে যোগাযোগ: @shuvo_9882",
-        reply_markup=payment_methods_kb(),
+    text = (
+        "╔══════════════════════╗\n"
+        "      💎 <b>COIN MARKET</b> 💎\n"
+        "╚══════════════════════╝\n\n"
+        "নিচের প্যাকেজ থেকে পছন্দেরটি বেছে নাও\n"
+        "অথবা নিজের ইচ্ছামতো পরিমাণ লিখে কিনো।\n\n"
+        "──────────────────────\n"
+        "⚡ <b>INSTANT DELIVERY</b>\n"
+        "🔒 <b>TRUSTED SERVICE</b>\n"
+        "💬 <b>SUPPORT 24/7</b>\n"
+        "──────────────────────\n\n"
+        "❓ সাহায্য: @shuvo\_9882"
+    )
+    if update.message:
+        await update.message.reply_text(text, reply_markup=coin_packages_kb(), parse_mode=ParseMode.HTML)
+    else:
+        query = update.callback_query
+        await query.message.reply_text(text, reply_markup=coin_packages_kb(), parse_mode=ParseMode.HTML)
+    return DEPOSIT_METHOD
+
+
+async def package_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Package selected — show payment methods."""
+    query = update.callback_query
+    await query.answer()
+    data  = query.data
+
+    if data == "pkg_back":
+        # Back to coin market
+        text = (
+            "╔══════════════════════╗\n"
+            "      💎 <b>COIN MARKET</b> 💎\n"
+            "╚══════════════════════╝\n\n"
+            "নিচের প্যাকেজ থেকে পছন্দেরটি বেছে নাও\n"
+            "অথবা নিজের ইচ্ছামতো পরিমাণ লিখে কিনো।\n\n"
+            "──────────────────────\n"
+            "⚡ <b>INSTANT DELIVERY</b>\n"
+            "🔒 <b>TRUSTED SERVICE</b>\n"
+            "💬 <b>SUPPORT 24/7</b>\n"
+            "──────────────────────\n\n"
+            "❓ সাহায্য: @shuvo\_9882"
+        )
+        await query.edit_message_text(text, reply_markup=coin_packages_kb(), parse_mode=ParseMode.HTML)
+        return DEPOSIT_METHOD
+
+    if data == "contact_admin":
+        await query.answer("Contact: @shuvo_9882", show_alert=True)
+        return DEPOSIT_METHOD
+
+    if data == "pkg:custom":
+        ctx.user_data["deposit_package"] = "custom"
+        ctx.user_data["deposit_coins"]   = None
+        await query.edit_message_text(
+            "✏️ <b>Custom Amount</b>\n\n"
+            "কত Coins কিনতে চাও লেখো:\n"
+            "<i>(শুধু সংখ্যা, উদাহরণ: 1500)</i>\n\n"
+            "⬅️ /cancel লিখলে বাতিল হবে।",
+            reply_markup=pkg_payment_kb(),
+            parse_mode=ParseMode.HTML
+        )
+        return DEPOSIT_METHOD
+
+    # Package selected: pkg:1500:৳70
+    parts  = data.split(":")
+    coins  = parts[1]
+    price  = parts[2] if len(parts) > 2 else "?"
+    ctx.user_data["deposit_package"] = coins
+    ctx.user_data["deposit_coins"]   = coins
+    ctx.user_data["deposit_price"]   = price
+
+    await query.edit_message_text(
+        f"🛍️ <b>{int(coins):,} Coins — {price}</b>\n\n"
+        f"💳 পেমেন্ট পদ্ধতি বেছে নাও:",
+        reply_markup=pkg_payment_kb(),
         parse_mode=ParseMode.HTML
     )
     return DEPOSIT_METHOD
@@ -266,19 +337,22 @@ async def payment_method_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE
         "mobile":   "📱 <b>Mobile Banking:</b>\nbKash: 01XXXXXXXXX\nNagad: 01XXXXXXXXX\n<b>Min:</b> ৳50",
     }
 
-    # যদি method supported না হয় (stripe/bank) — contact দেখাও
     if method not in payment_info:
         await query.answer("This method is not available.", show_alert=True)
-        return
+        return DEPOSIT_METHOD
 
-    info = payment_info.get(method, "")
+    coins  = ctx.user_data.get("deposit_coins", "?")
+    price  = ctx.user_data.get("deposit_price", "")
+    pkg_line = f"🛍️ Package: <b>{int(coins):,} Coins — {price}</b>\n\n" if coins and coins != "?" else ""
+    info   = payment_info[method]
     ctx.user_data["deposit_method"] = method
 
     await query.edit_message_text(
         f"💳 <b>{method_name}</b>\n\n"
+        f"{pkg_line}"
         f"{info}\n\n"
-        f"✅ Payment করার পর নিচে amount পাঠাও।\n"
-        f"❓ সাহায্যের জন্য যোগাযোগ করো: @shuvo_9882\n\n"
+        f"✅ পেমেন্ট করার পর Transaction ID পাঠাও।\n"
+        f"❓ সাহায্য: @shuvo\_9882\n\n"
         f"👇 Deposit amount লেখো (শুধু সংখ্যা):",
         parse_mode=ParseMode.HTML
     )
@@ -512,7 +586,7 @@ async def service_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         f"{icon} <b>{svc['name']}</b>\n"
         f"{'─'*28}\n"
         f"🆔 Service ID: <code>{svc['service_id']}</code>\n"
-        f"💵 Rate: <code>৳{round(float(svc['rate'])*(1+__import__('config').SERVICE_MARKUP_PCT/100)*110, 2)} per 1000</code>\n"
+        f"💵 Rate: <code>৳{round(float(svc['rate'])*(1+__import__('config').SERVICE_MARKUP_PCT/100)*135, 2)} per 1000</code>\n"
         f"📊 Min: <code>{svc['min_order']:,}</code>\n"
         f"📈 Max: <code>{svc['max_order']:,}</code>\n"
         f"♻️ Refill: {refill_str}\n"
@@ -716,13 +790,15 @@ async def order_quantity_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
         return ORDER_QUANTITY
 
     # Calculate cost — rate is USD per 1000 from API
-    from config import COIN_RATE, SERVICE_MARKUP_PCT
-    USD_TO_BDT  = 110
+    from config import SERVICE_MARKUP_PCT
+    USD_TO_BDT  = 135    # 1 USD = ৳135
+    COIN_TO_BDT = 1.0    # 1 coin = ৳1
     rate_usd    = float(svc.get("rate", 0))
     # Markup যোগ করো — এটাই তোমার profit
     rate_usd    = round(rate_usd * (1 + SERVICE_MARKUP_PCT / 100), 6)
     charge_usd  = round((qty / 1000) * rate_usd, 6)   # USD cost (with markup)
-    charge      = round(charge_usd / COIN_RATE, 4)     # convert to coins for balance deduction
+    charge_bdt  = round(charge_usd * USD_TO_BDT, 2)   # BDT cost
+    charge      = round(charge_bdt / COIN_TO_BDT, 2)  # coins = BDT (1 coin = ৳1)
     user_id     = update.effective_user.id
 
     # VIP discount
@@ -750,15 +826,19 @@ async def order_quantity_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
     bal_usd   = round(bal_coins * COIN_RATE, 4)
     bal_bdt   = round(bal_usd * USD_TO_BDT, 2)
 
+    bal_coins = udata['balance']
+    bal_bdt   = round(bal_coins * COIN_TO_BDT, 1)
+    bal_usd   = round(bal_bdt / USD_TO_BDT, 3)
+
     text = (
         f"📋 <b>Order Confirmation</b>\n"
         f"{'─'*28}\n"
         f"📦 Service: <code>{name}</code>\n"
         f"🔗 Link: <code>{link}</code>\n"
         f"📊 Quantity: <code>{qty:,}</code>\n"
-        f"💵 Cost: <code>{charge} Coins (≈ ${charge_usd:.4f} / ৳{charge_bdt})</code>"
+        f"💵 Cost: <code>{charge:,.2f} Coins = ৳{charge_bdt} (${charge_usd:.4f})</code>"
         f"{disc_str}\n\n"
-        f"💰 Your Balance: <code>{bal_coins:,.2f} Coins (≈ ${bal_usd} / ৳{bal_bdt})</code>\n\n"
+        f"💰 Balance: <code>{bal_coins:,.2f} Coins = ৳{bal_bdt} (${bal_usd})</code>\n\n"
         f"✅ Confirm order?"
     )
     service_id = ctx.user_data.get("order_service_id", "")
