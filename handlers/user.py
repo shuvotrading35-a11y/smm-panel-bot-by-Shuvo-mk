@@ -24,10 +24,10 @@ logger = logging.getLogger(__name__)
 
 # ── Conversation states ───────────────────────────────────────────
 (
-    ORDER_CATEGORY, ORDER_SERVICE, ORDER_LINK, ORDER_QUANTITY,
+    ORDER_PLATFORM, ORDER_CATEGORY, ORDER_SERVICE, ORDER_LINK, ORDER_QUANTITY,
     ORDER_CONFIRM, REDEEM_INPUT, TICKET_SUBJECT, TICKET_MESSAGE,
     DEPOSIT_METHOD, DEPOSIT_AMOUNT, DEPOSIT_TXN, TRACKER_INPUT,
-) = range(12)
+) = range(13)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -212,6 +212,7 @@ async def wallet(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def wallet_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+
     if query.data == "wallet_add":
         await query.message.reply_text(
             "💳 <b>Add Funds</b>\n\nChoose a payment method:\n\n"
@@ -219,19 +220,22 @@ async def wallet_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             reply_markup=payment_methods_kb(),
             parse_mode=ParseMode.HTML
         )
-        ctx.user_data["deposit_state"] = "method"
         return DEPOSIT_METHOD
+
     elif query.data == "wallet_history":
         user_id = query.from_user.id
         txns    = await db.get_transactions(user_id, 10)
         if not txns:
             await query.answer("No transactions yet.", show_alert=True)
-            return
+            return ConversationHandler.END
         lines = ["📜 <b>Transaction History</b>\n"]
         for t in txns:
             sign = "+" if t["type"] in ("credit","deposit","redeem","daily","referral") else "-"
             lines.append(f"{sign}{fmt_coins(t['amount'])} | {t['type'].title()} | {fmt_date(t['created_at'])}")
         await query.edit_message_text("\n".join(lines), parse_mode=ParseMode.HTML)
+        return ConversationHandler.END
+
+    return ConversationHandler.END
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -259,7 +263,7 @@ async def payment_method_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE
         "binance":  "💵 <b>Binance Pay ID:</b> <code>863483196</code>\n<b>Min:</b> $1",
         "usdt_trc": "🟢 <b>USDT TRC20 Address:</b>\n<code>TKmGd9sY9UjuhAvmcLHTfQAJoEvg9nKoxk</code>\n<b>Min:</b> $1",
         "usdt_bep": "🟡 <b>USDT BEP20 Address:</b>\n<code>0x0474d91811f1884ab07bbbc0331467815904caed</code>\n<b>Min:</b> $1",
-        "mobile":   "📱 <b>Mobile Banking:</b>\nbKash: 01XXXXXXXXX\nNagad: 01XXXXXXXXX\n<b>Min:</b> ৳50",
+        "mobile":   "📱 <b>Mobile Banking:</b>\nbKash: 01336650725\nNagad: 01336650725\n<b>Min:</b> ৳50",
     }
 
     # যদি method supported না হয় (stripe/bank) — contact দেখাও
@@ -513,11 +517,11 @@ async def new_order(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ No services available. Try again later.")
         return ConversationHandler.END
     await update.message.reply_text(
-        "🛒 <b>New Order</b>\n\nStep 1 — Choose a category:",
-        reply_markup=order_categories_kb(cats, CATEGORY_ICONS),
+        "🛒 <b>New Order</b>\n\nStep 1 — Choose a platform:",
+        reply_markup=categories_kb(cats, CATEGORY_ICONS),
         parse_mode=ParseMode.HTML
     )
-    return ORDER_CATEGORY
+    return ORDER_PLATFORM
 
 
 async def order_start_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -544,8 +548,76 @@ async def order_start_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     return ORDER_LINK
 
 
+async def order_platform_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """ORDER_PLATFORM state: handles platform: and catidx: and platform_back."""
+    query = update.callback_query
+    await query.answer()
+    data  = query.data
+
+    PLATFORM_LABELS = {
+        "facebook":  "📘 Facebook",
+        "instagram": "📱 Instagram",
+        "tiktok":    "🎵 TikTok",
+        "youtube":   "📺 YouTube",
+        "telegram":  "✈️ Telegram",
+        "twitter":   "🐦 Twitter / X",
+        "spotify":   "🎧 Spotify",
+        "website":   "🌐 Website",
+    }
+
+    if data == "platform_back" or data == "order_platform_back":
+        cats = await db.get_categories()
+        await query.edit_message_text(
+            "🛒 <b>New Order</b>\n\nStep 1 — Choose a platform:",
+            reply_markup=categories_kb(cats, CATEGORY_ICONS),
+            parse_mode=ParseMode.HTML
+        )
+        return ORDER_PLATFORM
+
+    if data.startswith("platform:"):
+        platform = data[9:]
+        ctx.user_data["order_platform"] = platform
+        all_cats = await db.get_categories()
+        filtered = [c for c in all_cats if platform in c.lower()]
+        if not filtered:
+            filtered = all_cats
+        label = PLATFORM_LABELS.get(platform, f"🔹 {platform.title()}")
+        await query.edit_message_text(
+            f"{label}\n\nStep 2 — Choose a category:",
+            reply_markup=platform_categories_kb(platform, filtered, CATEGORY_ICONS),
+            parse_mode=ParseMode.HTML
+        )
+        return ORDER_PLATFORM
+
+    if data.startswith("catidx:"):
+        idx      = int(data[7:])
+        platform = ctx.user_data.get("order_platform", "")
+        all_cats = await db.get_categories()
+        filtered = [c for c in all_cats if platform in c.lower()] if platform else all_cats
+        if not filtered:
+            filtered = all_cats
+        if idx >= len(filtered):
+            await query.answer("Category not found.", show_alert=True)
+            return ORDER_PLATFORM
+        category = filtered[idx]
+        ctx.user_data["order_category"] = category
+        services = await db.get_services_by_category(category)
+        if not services:
+            await query.answer("No services in this category.", show_alert=True)
+            return ORDER_PLATFORM
+        icon = category_icon(category)
+        await query.edit_message_text(
+            f"{icon} <b>{category}</b>\n\nStep 3 — Choose a service:",
+            reply_markup=services_kb(services, category),
+            parse_mode=ParseMode.HTML
+        )
+        return ORDER_SERVICE
+
+    return ORDER_PLATFORM
+
+
 async def order_category_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    """Inline category selection during order flow."""
+    """ORDER_CATEGORY state: direct cat: callback (legacy/fallback)."""
     query    = update.callback_query
     await query.answer()
     category = query.data[4:]
@@ -557,7 +629,7 @@ async def order_category_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
     ctx.user_data["order_category"] = category
     icon = category_icon(category)
     await query.edit_message_text(
-        f"{icon} <b>{category}</b>\n\nStep 2 — Choose a service:",
+        f"{icon} <b>{category}</b>\n\nStep 3 — Choose a service:",
         reply_markup=services_kb(services, category),
         parse_mode=ParseMode.HTML
     )
