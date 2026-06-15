@@ -841,12 +841,12 @@ async def order_quantity_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
     # Balance sufficient check
     if bal_coins < charge:
         needed = round(charge - bal_coins, 2)
-        await update.callback_query.edit_message_text(
+        await update.effective_message.reply_text(
             f"❌ <b>Balance কম!</b>\n\n"
             f"💵 Cost: <code>{charge:,.2f} Coins (৳{charge_bdt})</code>\n"
-            f"💰 Balance: <code>{bal_coins:,.2f} Coins (৳{bal_bdt})</code>\n"
+            f"💰 তোমার Balance: <code>{bal_coins:,.2f} Coins (৳{bal_bdt})</code>\n"
             f"⚠️ আরও <code>{needed:,.2f} Coins (৳{needed:.0f})</code> দরকার\n\n"
-            f"💳 Buy Coins থেকে balance বাড়াও।",
+            f"💳 <b>Buy Coins</b> থেকে balance বাড়াও।",
             parse_mode=ParseMode.HTML
         )
         return ConversationHandler.END
@@ -899,10 +899,22 @@ async def order_confirm_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
     charge     = ctx.user_data.get("order_charge")
 
     # Deduct balance
+    if not charge or charge <= 0:
+        await query.edit_message_text("⚠️ Order data lost. Please start again.")
+        ctx.user_data.clear()
+        return ConversationHandler.END
+
     ok = await db.deduct_balance(user_id, charge, f"Order: {service_name}")
     if not ok:
+        udata = await db.get_user(user_id)
+        bal   = float(udata['balance']) if udata else 0
+        need  = round(charge - bal, 2)
         await query.edit_message_text(
-            "❌ Insufficient balance!\n\n💳 Use <b>Buy Coins</b> to add funds.",
+            f"❌ <b>Balance কম!</b>\n\n"
+            f"💵 Cost: <code>{charge:,.2f} Coins</code>\n"
+            f"💰 তোমার Balance: <code>{bal:,.2f} Coins</code>\n"
+            f"⚠️ আরও <code>{need:,.2f} Coins</code> দরকার\n\n"
+            f"💳 <b>Buy Coins</b> থেকে balance বাড়াও।",
             parse_mode=ParseMode.HTML
         )
         ctx.user_data.clear()
@@ -916,11 +928,40 @@ async def order_confirm_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
         api_order_id = str(api_result["order"])
         api_status   = "Processing"
     elif "error" in api_result:
-        # Refund on API error
+        # Refund user's coins
         await db.add_balance(user_id, charge, "Refund: API error")
-        await query.edit_message_text(
-            f"❌ Order failed: {api_result['error']}\n\nBalance refunded."
-        )
+        error_msg = str(api_result.get("error", ""))
+
+        # API balance কম — user-কে দেখাবো না, pending রাখবো
+        if "balance" in error_msg.lower() or "insufficient" in error_msg.lower():
+            await query.edit_message_text(
+                "⏳ <b>Order queued!</b>\n\n"
+                "তোমার order টি process হচ্ছে।\n"
+                "কিছুক্ষণ পরে আবার check করো।\n\n"
+                "❓ সমস্যা হলে যোগাযোগ: @shuvo_9882",
+                parse_mode=ParseMode.HTML
+            )
+            # Admin-কে notify করো
+            from config import ADMIN_IDS
+            for admin_id in ADMIN_IDS:
+                try:
+                    await ctx.bot.send_message(
+                        admin_id,
+                        f"⚠️ <b>API Balance কম!</b>\n\n"
+                        f"User: <code>{user_id}</code>\n"
+                        f"Service: <code>{service_name}</code>\n"
+                        f"Qty: <code>{qty}</code>\n"
+                        f"Error: <code>{error_msg}</code>\n\n"
+                        f"🔴 API-তে balance add করো!",
+                        parse_mode=ParseMode.HTML
+                    )
+                except Exception:
+                    pass
+        else:
+            await query.edit_message_text(
+                "⚠️ Order টি process হচ্ছে।\n"
+                "সমস্যা হলে যোগাযোগ করো: @shuvo_9882"
+            )
         ctx.user_data.clear()
         return ConversationHandler.END
 
