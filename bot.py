@@ -71,11 +71,19 @@ ADMIN_FILTER  = filters.User(user_id=ADMIN_IDS)
 #  ERROR HANDLER
 # ─────────────────────────────────────────────────────────────────
 async def error_handler(update: object, context) -> None:
-    logger.error("Exception while handling update:", exc_info=context.error)
-    if isinstance(update, Update) and update.effective_message:
+    import traceback
+    err = context.error
+    tb  = "".join(traceback.format_exception(type(err), err, err.__traceback__))
+    logger.error(f"Exception: {tb}")
+
+    # Admin-কে error জানাও
+    from config import ADMIN_IDS
+    for admin_id in ADMIN_IDS:
         try:
-            await update.effective_message.reply_text(
-                "⚠️ An error occurred. Please try again."
+            await context.bot.send_message(
+                admin_id,
+                f"🔴 <b>Bot Error</b>\n\n<code>{str(err)[:300]}</code>",
+                parse_mode="HTML"
             )
         except Exception:
             pass
