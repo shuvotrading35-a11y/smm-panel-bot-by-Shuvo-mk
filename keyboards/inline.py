@@ -31,6 +31,34 @@ def payment_methods_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
+def coin_packages_kb() -> InlineKeyboardMarkup:
+    """Coin package selection — shown first in buy coins flow."""
+    from config import COIN_PACKAGES
+    rows = []
+    # Badge for popular/best packages
+    badges = {1500: " ⭐ POPULAR", 3000: " 🔥 BEST VALUE", 7000: " 💎 PREMIUM"}
+    for coins, price in COIN_PACKAGES:
+        badge = badges.get(coins, "")
+        rows.append([InlineKeyboardButton(
+            f"🛍️  {coins:,} Coins  —  {price}{badge}",
+            callback_data=f"pkg:{coins}:{price}"
+        )])
+    rows.append([InlineKeyboardButton("✏️  Custom Amount", callback_data="pkg:custom")])
+    rows.append([InlineKeyboardButton("💬  Contact: @shuvo_9882", callback_data="contact_admin")])
+    return InlineKeyboardMarkup(rows)
+
+
+def pkg_payment_kb() -> InlineKeyboardMarkup:
+    """Payment method selection — shown after package is chosen."""
+    from config import PAYMENT_METHODS
+    rows = []
+    methods = list(PAYMENT_METHODS.items())
+    for key, label in methods:
+        rows.append([InlineKeyboardButton(f"{label}", callback_data=f"pay_method:{key}")])
+    rows.append([InlineKeyboardButton("⬅️  Back", callback_data="pkg_back")])
+    return InlineKeyboardMarkup(rows)
+
+
 def deposit_approve_kb(dep_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[
         InlineKeyboardButton("✅ Approve", callback_data=f"dep_approve:{dep_id}"),
