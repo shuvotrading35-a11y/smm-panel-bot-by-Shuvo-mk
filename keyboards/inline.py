@@ -44,7 +44,7 @@ def coin_packages_kb() -> InlineKeyboardMarkup:
             callback_data=f"pkg:{coins}:{price}"
         )])
     rows.append([InlineKeyboardButton("✏️  Custom Amount", callback_data="pkg:custom")])
-    rows.append([InlineKeyboardButton("💬  Contact: @shuvo_9882", callback_data="contact_admin")])
+    rows.append([InlineKeyboardButton("💬  Contact Admin", url="https://t.me/shuvo_9882")])
     return InlineKeyboardMarkup(rows)
 
 
