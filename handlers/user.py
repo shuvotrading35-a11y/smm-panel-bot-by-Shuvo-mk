@@ -13,7 +13,7 @@ from keyboards.inline import (
     payment_methods_kb, confirm_order_kb, order_actions_kb
 )
 from utils.helpers import (
-    fmt_coins, fmt_status, fmt_date, referral_link,
+    fmt_coins, fmt_coins_full, fmt_status, fmt_date, referral_link,
     vip_badge, is_rate_limited, check_force_join, category_icon
 )
 from utils.order_logger import send_order_log
@@ -119,12 +119,12 @@ async def my_account(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         f"{'─'*28}\n"
         f"👤 Name: <code>{udata['full_name']}</code>\n"
         f"🆔 User ID: <code>{user_id}</code>\n"
-        f"💰 Balance: <code>{fmt_coins(udata['balance'])} coins</code>\n"
+        f"💰 Balance: <code>{fmt_coins_full(udata['balance'])}</code>\n"
         f"📦 Total Orders: <code>{udata['total_orders']}</code>\n"
-        f"💸 Total Spent: <code>{fmt_coins(udata['total_spent'])} coins</code>\n"
-        f"💳 Total Deposited: <code>{fmt_coins(udata['total_deposited'])} coins</code>\n"
+        f"💸 Total Spent: <code>{fmt_coins_full(udata['total_spent'])}</code>\n"
+        f"💳 Total Deposited: <code>{fmt_coins_full(udata['total_deposited'])}</code>\n"
         f"👥 Referrals: <code>{udata['referral_count']}</code>\n"
-        f"💎 Referral Earned: <code>{fmt_coins(udata['referral_earned'])} coins</code>\n"
+        f"💎 Referral Earned: <code>{fmt_coins_full(udata['referral_earned'])}</code>\n"
         f"🏆 Rank: <code>#{rank}</code>\n"
         f"⭐ VIP: <code>{vip_str}</code>\n"
         f"📅 Joined: <code>{fmt_date(udata['join_date'])}</code>\n"
@@ -150,9 +150,9 @@ async def account_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             f"{'─'*28}\n"
             f"👤 Name: <code>{udata['full_name']}</code>\n"
             f"🆔 User ID: <code>{user_id}</code>\n"
-            f"💰 Balance: <code>{fmt_coins(udata['balance'])} coins</code>\n"
+            f"💰 Balance: <code>{fmt_coins_full(udata['balance'])}</code>\n"
             f"📦 Total Orders: <code>{udata['total_orders']}</code>\n"
-            f"💸 Total Spent: <code>{fmt_coins(udata['total_spent'])} coins</code>\n"
+            f"💸 Total Spent: <code>{fmt_coins_full(udata['total_spent'])}</code>\n"
             f"👥 Referrals: <code>{udata['referral_count']}</code>\n"
             f"🏆 Rank: <code>#{rank}</code>\n"
             f"⭐ VIP: <code>{vip_str}</code>\n"
@@ -167,7 +167,7 @@ async def account_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         lines = ["💳 <b>Deposit History</b>\n"]
         for d in deps:
             lines.append(
-                f"#{d['id']} | {d['method']} | {fmt_coins(d['amount'])} coins | "
+                f"#{d['id']} | {d['method']} | {fmt_coins_full(d['amount'])} | "
                 f"{d['status']} | {fmt_date(d['created_at'])}"
             )
         await query.edit_message_text("\n".join(lines), parse_mode=ParseMode.HTML)
@@ -181,7 +181,7 @@ async def account_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         for t in txns:
             sign = "+" if t["type"] in ("credit", "deposit", "redeem", "daily", "referral") else "-"
             lines.append(
-                f"{sign}{fmt_coins(t['amount'])} | {t['type'].title()} | "
+                f"{sign}{fmt_coins_full(t['amount'])} | {t['type'].title()} | "
                 f"{t.get('description','')} | {fmt_date(t['created_at'])}"
             )
         await query.edit_message_text("\n".join(lines), parse_mode=ParseMode.HTML)
@@ -202,9 +202,9 @@ async def wallet(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     text = (
         f"💰 <b>My Wallet</b>\n"
         f"{'─'*28}\n"
-        f"💰 Balance: <code>{fmt_coins(udata['balance'])} coins</code>\n"
-        f"📈 Total Deposits: <code>{fmt_coins(udata['total_deposited'])} coins</code>\n"
-        f"📉 Total Spent: <code>{fmt_coins(udata['total_spent'])} coins</code>\n"
+        f"💰 Balance: <code>{fmt_coins_full(udata['balance'])}</code>\n"
+        f"📈 Total Deposits: <code>{fmt_coins_full(udata['total_deposited'])}</code>\n"
+        f"📉 Total Spent: <code>{fmt_coins_full(udata['total_spent'])}</code>\n"
     )
     await update.message.reply_text(text, reply_markup=wallet_kb(), parse_mode=ParseMode.HTML)
 
@@ -231,7 +231,7 @@ async def wallet_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         lines = ["📜 <b>Transaction History</b>\n"]
         for t in txns:
             sign = "+" if t["type"] in ("credit","deposit","redeem","daily","referral") else "-"
-            lines.append(f"{sign}{fmt_coins(t['amount'])} | {t['type'].title()} | {fmt_date(t['created_at'])}")
+            lines.append(f"{sign}{fmt_coins_full(t['amount'])} | {t['type'].title()} | {fmt_date(t['created_at'])}")
         await query.edit_message_text("\n".join(lines), parse_mode=ParseMode.HTML)
         return ConversationHandler.END
 
@@ -260,10 +260,10 @@ async def payment_method_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE
     method_name = PAYMENT_METHODS.get(method, method)
 
     payment_info = {
-        "binance":  "💵 <b>Binance Pay ID:</b> <code>863483196</code>\n<b>Min:</b> $1",
-        "usdt_trc": "🟢 <b>USDT TRC20 Address:</b>\n<code>TKmGd9sY9UjuhAvmcLHTfQAJoEvg9nKoxk</code>\n<b>Min:</b> $1",
-        "usdt_bep": "🟡 <b>USDT BEP20 Address:</b>\n<code>0x0474d91811f1884ab07bbbc0331467815904caed</code>\n<b>Min:</b> $1",
-        "mobile":   "📱 <b>Mobile Banking:</b>\nbKash: 01336650725\nNagad: 01336650725\n<b>Min:</b> ৳50",
+        "binance":  "💵 <b>Binance Pay ID:</b> <code>your_binance_id</code>\n<b>Min:</b> $1",
+        "usdt_trc": "🟢 <b>USDT TRC20 Address:</b>\n<code>TYourWalletAddressHere</code>\n<b>Min:</b> $1",
+        "usdt_bep": "🟡 <b>USDT BEP20 Address:</b>\n<code>0xYourWalletAddressHere</code>\n<b>Min:</b> $1",
+        "mobile":   "📱 <b>Mobile Banking:</b>\nbKash: 01XXXXXXXXX\nNagad: 01XXXXXXXXX\n<b>Min:</b> ৳50",
     }
 
     # যদি method supported না হয় (stripe/bank) — contact দেখাও
@@ -299,7 +299,7 @@ async def deposit_amount_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
 
     ctx.user_data["deposit_amount"] = amount
     await update.message.reply_text(
-        f"✅ Amount: <b>{fmt_coins(amount)} coins</b>\n\n"
+        f"✅ Amount: <b>{fmt_coins_full(amount)}</b>\n\n"
         f"📝 Now send your <b>Transaction ID / Reference Number</b>:",
         parse_mode=ParseMode.HTML,
         reply_markup=cancel_keyboard()
@@ -318,7 +318,7 @@ async def deposit_txn_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"✅ <b>Deposit Request Submitted!</b>\n\n"
         f"🆔 Request ID: <code>#{dep_id}</code>\n"
-        f"💰 Amount: <code>{fmt_coins(amount)} coins</code>\n"
+        f"💰 Amount: <code>{fmt_coins_full(amount)}</code>\n"
         f"💳 Method: <code>{method}</code>\n"
         f"📋 TXN ID: <code>{txn_id}</code>\n\n"
         f"⏳ Admin will verify and approve within 24h.",
@@ -333,7 +333,7 @@ async def deposit_txn_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         f"{'─'*28}\n"
         f"👤 User: <code>{udata['full_name']}</code> (<code>@{udata.get('username','')}</code>)\n"
         f"🆔 User ID: <code>{user_id}</code>\n"
-        f"💰 Amount: <code>{fmt_coins(amount)} coins</code>\n"
+        f"💰 Amount: <code>{fmt_coins_full(amount)}</code>\n"
         f"💳 Method: <code>{method}</code>\n"
         f"📋 TXN ID: <code>{txn_id}</code>\n"
         f"🆔 Request ID: <code>#{dep_id}</code>"
@@ -491,7 +491,7 @@ async def service_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         f"{icon} <b>{svc['name']}</b>\n"
         f"{'─'*28}\n"
         f"🆔 Service ID: <code>{svc['service_id']}</code>\n"
-        f"💵 Rate: <code>{fmt_coins(svc['rate'])} coins / 1000</code>\n"
+        f"💵 Rate: <code>{fmt_coins_full(svc['rate'])} / 1000</code>\n"
         f"📊 Min: <code>{svc['min_order']:,}</code>\n"
         f"📈 Max: <code>{svc['max_order']:,}</code>\n"
         f"♻️ Refill: {refill_str}\n"
@@ -721,9 +721,9 @@ async def order_quantity_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
         f"📦 Service: <code>{name}</code>\n"
         f"🔗 Link: <code>{link}</code>\n"
         f"📊 Quantity: <code>{qty:,}</code>\n"
-        f"💵 Cost: <code>{fmt_coins(charge)} coins</code>"
+        f"💵 Cost: <code>{fmt_coins_full(charge)}</code>"
         f"{disc_str}\n\n"
-        f"💰 Your Balance: <code>{fmt_coins(udata['balance'])} coins</code>\n\n"
+        f"💰 Your Balance: <code>{fmt_coins_full(udata['balance'])}</code>\n\n"
         f"✅ Confirm order?"
     )
     service_id = ctx.user_data.get("order_service_id", "")
@@ -811,7 +811,7 @@ async def order_confirm_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
         f"📦 Service: <code>{service_name}</code>\n"
         f"🔗 Link: <code>{link}</code>\n"
         f"📊 Quantity: <code>{qty:,}</code>\n"
-        f"💵 Charged: <code>{fmt_coins(charge)} coins</code>\n"
+        f"💵 Charged: <code>{fmt_coins_full(charge)}</code>\n"
         f"📊 Status: <code>{api_status}</code>\n\n"
         f"Use 🔎 <b>Order Tracker</b> to check status.",
         parse_mode=ParseMode.HTML,
@@ -836,7 +836,7 @@ async def my_orders(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         text += (
             f"🆔 <code>#{o['id']}</code> | {fmt_status(o['status'])}\n"
             f"📦 {o.get('service_name','—')[:30]}\n"
-            f"💵 {fmt_coins(o['charge'])} | 📊 {o['quantity']:,}\n"
+            f"💵 {fmt_coins_full(o['charge'])} | 📊 {o['quantity']:,}\n"
             f"📅 {fmt_date(o['created_at'])}\n"
             f"{'─'*24}\n"
         )
@@ -946,7 +946,7 @@ async def tracker_input_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         f"📦 Service: <code>{order.get('service_name','—')}</code>\n"
         f"🔗 Link: <code>{order['link']}</code>\n"
         f"📊 Quantity: <code>{order['quantity']:,}</code>\n"
-        f"💵 Charge: <code>{fmt_coins(order['charge'])} coins</code>\n"
+        f"💵 Charge: <code>{fmt_coins_full(order['charge'])}</code>\n"
         f"📊 Status: {fmt_status(order['status'])}\n"
         f"📈 Start Count: <code>{order.get('start_count',0):,}</code>\n"
         f"📉 Remains: <code>{order.get('remains',0):,}</code>\n"
@@ -1008,7 +1008,7 @@ async def referral(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         f"{'─'*28}\n"
         f"🔗 Your Link:\n<code>{link}</code>\n\n"
         f"👥 Total Referrals: <code>{udata.get('referral_count',0)}</code>\n"
-        f"💰 Earned: <code>{fmt_coins(udata.get('referral_earned',0))} coins</code>\n\n"
+        f"💰 Earned: <code>{fmt_coins_full(udata.get('referral_earned',0))}</code>\n\n"
         f"💎 Earn <b>{REFERRAL_REWARD} coins</b> for each new user!"
     )
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
@@ -1037,7 +1037,7 @@ async def leaderboard_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     elif board == "buyers":
         rows  = await db.top_buyers(10)
         title = "🥈 Top Buyers"
-        lines = [f"{i+1}. <code>{r['full_name']}</code> — {fmt_coins(r['total_spent'])} coins" for i, r in enumerate(rows)]
+        lines = [f"{i+1}. <code>{r['full_name']}</code> — {fmt_coins_full(r['total_spent'])}" for i, r in enumerate(rows)]
     else:
         rows  = await db.top_orders(10)
         title = "🥉 Top Orders"
@@ -1061,9 +1061,9 @@ async def my_statistics(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         f"📈 <b>My Statistics</b>\n"
         f"{'─'*28}\n"
         f"📦 Total Orders: <code>{udata.get('total_orders',0)}</code>\n"
-        f"💰 Total Spent: <code>{fmt_coins(udata.get('total_spent',0))} coins</code>\n"
-        f"📊 Avg per Order: <code>{fmt_coins(avg)} coins</code>\n"
-        f"💳 Total Deposited: <code>{fmt_coins(udata.get('total_deposited',0))} coins</code>\n"
+        f"💰 Total Spent: <code>{fmt_coins_full(udata.get('total_spent',0))}</code>\n"
+        f"📊 Avg per Order: <code>{fmt_coins_full(avg)}</code>\n"
+        f"💳 Total Deposited: <code>{fmt_coins_full(udata.get('total_deposited',0))}</code>\n"
         f"👥 Referrals Made: <code>{udata.get('referral_count',0)}</code>\n"
         f"🏆 Global Rank: <code>#{rank}</code>\n"
     )
@@ -1118,8 +1118,8 @@ async def vip_buy_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not ok:
         await query.edit_message_text(
             f"❌ Insufficient balance!\n\n"
-            f"Required: <code>{fmt_coins(cost)} coins</code>\n"
-            f"Your balance: <code>{fmt_coins(udata['balance'])} coins</code>\n\n"
+            f"Required: <code>{fmt_coins_full(cost)}</code>\n"
+            f"Your balance: <code>{fmt_coins_full(udata['balance'])}</code>\n\n"
             f"💳 Use <b>Buy Coins</b> to add funds.",
             parse_mode=ParseMode.HTML
         )
