@@ -101,7 +101,7 @@ class SMMApiClient:
             return False, result["error"]
         if "balance" in result:
             usd = float(result['balance'])
-            bdt = usd * 135  # 1 USD ≈ 110 BDT
+            bdt = usd * 135  # 1 USD = ৳135
             return True, f"Balance: ${usd:.4f} USD (≈ ৳{bdt:.2f} BDT)"
         return False, "Unknown response"
 
