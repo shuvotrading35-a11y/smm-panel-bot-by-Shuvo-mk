@@ -215,12 +215,20 @@ async def wallet_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     if query.data == "wallet_add":
-        await query.message.reply_text(
-            "💳 <b>Add Funds</b>\n\nChoose a payment method:\n\n"
-            "❓ সমস্যা হলে যোগাযোগ: @shuvo_9882",
-            reply_markup=payment_methods_kb(),
-            parse_mode=ParseMode.HTML
+        text = (
+            "╔══════════════════════╗\n"
+            "      💎 <b>COIN MARKET</b> 💎\n"
+            "╚══════════════════════╝\n\n"
+            "নিচের প্যাকেজ থেকে পছন্দেরটি বেছে নাও\n"
+            "অথবা নিজের ইচ্ছামতো পরিমাণ লিখে কিনো।\n\n"
+            "──────────────────────\n"
+            "⚡ <b>INSTANT DELIVERY</b>\n"
+            "🔒 <b>TRUSTED SERVICE</b>\n"
+            "💬 <b>SUPPORT 24/7</b>\n"
+            "──────────────────────\n\n"
+            "❓ সাহায্য: @shuvo_9882"
         )
+        await query.message.reply_text(text, reply_markup=coin_packages_kb(), parse_mode=ParseMode.HTML)
         return DEPOSIT_METHOD
 
     elif query.data == "wallet_history":
