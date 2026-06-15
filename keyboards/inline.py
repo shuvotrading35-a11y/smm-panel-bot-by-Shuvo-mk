@@ -173,32 +173,32 @@ def categories_kb(categories: list[str], icons: dict) -> InlineKeyboardMarkup:
 
 
 def platform_categories_kb(platform: str, categories: list[str], icons: dict) -> InlineKeyboardMarkup:
-    """Sub-menu: all categories under a platform. Uses index to avoid truncation."""
+    """Sub-menu: all categories under a platform. Full-width buttons, back goes to platform list."""
     rows = []
     for idx, cat in enumerate(categories):
         icon = next((v for k, v in icons.items() if k.lower() in cat.lower()), "\U0001f539")
-        label = cat[:35] + "…" if len(cat) > 35 else cat
-        rows.append([InlineKeyboardButton(f"{icon} {label}", callback_data=f"catidx:{idx}")])
-    rows.append([InlineKeyboardButton("\U0001f519 Back", callback_data="platform_back")])
+        # Show full name — one button per row (full width)
+        rows.append([InlineKeyboardButton(f"{icon}  {cat}", callback_data=f"catidx:{idx}")])
+    rows.append([InlineKeyboardButton("\U00002B05\uFE0F  Back", callback_data="platform_back")])
     return InlineKeyboardMarkup(rows)
 
 
 def services_kb(services: list[dict], category: str) -> InlineKeyboardMarkup:
     rows = []
-    for svc in services[:20]:
-        short = svc["name"][:40]
+    for svc in services[:25]:
+        # Full service name, one per row
         rows.append([InlineKeyboardButton(
-            f"#{svc['service_id']} {short}",
+            f"\U0001f4e6  {svc['name']}",
             callback_data=f"svc:{svc['service_id']}"
         )])
-    rows.append([InlineKeyboardButton("🔙 Back", callback_data="cat_back")])
+    rows.append([InlineKeyboardButton("\U00002B05\uFE0F  Back", callback_data="cat_back")])
     return InlineKeyboardMarkup(rows)
 
 
 def service_detail_kb(service_id: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🛒 Order Now", callback_data=f"order_start:{service_id}")],
-        [InlineKeyboardButton("🔙 Back",      callback_data="svc_back")],
+        [InlineKeyboardButton("\U0001f6d2  Order Now", callback_data=f"order_start:{service_id}")],
+        [InlineKeyboardButton("\U00002B05\uFE0F  Back",      callback_data="svc_back")],
     ])
 
 
