@@ -100,7 +100,9 @@ class SMMApiClient:
         if "error" in result:
             return False, result["error"]
         if "balance" in result:
-            return True, f"Balance: ${result['balance']} {result.get('currency','')}"
+            usd = float(result['balance'])
+            bdt = usd * 135  # 1 USD ≈ 110 BDT
+            return True, f"Balance: ${usd:.4f} USD (≈ ৳{bdt:.2f} BDT)"
         return False, "Unknown response"
 
 
