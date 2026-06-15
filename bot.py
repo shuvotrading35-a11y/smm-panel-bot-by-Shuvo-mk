@@ -15,7 +15,7 @@ from handlers.user import (
     buy_coins, payment_method_callback, deposit_amount_handler,
     deposit_txn_handler, services_list, category_callback,
     service_callback, new_order, order_start_callback,
-    order_category_handler, order_service_handler, order_link_handler,
+    order_platform_handler, order_category_handler, order_service_handler, order_link_handler,
     order_quantity_handler, order_confirm_callback, my_orders,
     order_refresh_callback, order_refill_callback,
     order_cancel_api_callback, order_tracker, tracker_input_handler,
@@ -24,7 +24,7 @@ from handlers.user import (
     vip_buy_callback, support, ticket_subject_handler,
     ticket_message_handler, updates_channel, cancel_handler,
     force_join_check,
-    ORDER_CATEGORY, ORDER_SERVICE, ORDER_LINK, ORDER_QUANTITY,
+    ORDER_PLATFORM, ORDER_CATEGORY, ORDER_SERVICE, ORDER_LINK, ORDER_QUANTITY,
     ORDER_CONFIRM, REDEEM_INPUT, TICKET_SUBJECT, TICKET_MESSAGE,
     DEPOSIT_METHOD, DEPOSIT_AMOUNT, DEPOSIT_TXN, TRACKER_INPUT,
 )
@@ -106,7 +106,7 @@ def build_app() -> Application:
     # ── Standalone CallbackQuery handlers (outside ConversationHandlers) ──
     app.add_handler(CallbackQueryHandler(force_join_check,            pattern=r"^fj_check$"))
     app.add_handler(CallbackQueryHandler(account_callback,            pattern=r"^acc_"))
-    app.add_handler(CallbackQueryHandler(wallet_callback,             pattern=r"^wallet_"))
+    # wallet_callback handled inside deposit_conv ConversationHandler
     app.add_handler(CallbackQueryHandler(leaderboard_callback,        pattern=r"^lb:"))
     app.add_handler(CallbackQueryHandler(vip_buy_callback,            pattern=r"^vip_buy:"))
     app.add_handler(CallbackQueryHandler(order_refresh_callback,      pattern=r"^order_refresh:"))
@@ -131,6 +131,7 @@ def build_app() -> Application:
             CallbackQueryHandler(order_start_callback, pattern=r"^order_start:"),
         ],
         states={
+            ORDER_PLATFORM: [CallbackQueryHandler(order_platform_handler, pattern=r"^(platform(:.+|_back)|catidx:\d+)$")],
             ORDER_CATEGORY: [CallbackQueryHandler(order_category_handler, pattern=r"^cat:.+")],
             ORDER_SERVICE:  [CallbackQueryHandler(order_service_handler,  pattern=r"^svc:.+")],
             ORDER_LINK:     [MessageHandler(filters.TEXT & ~CANCEL_FILTER, order_link_handler)],
@@ -184,7 +185,7 @@ def build_app() -> Application:
     deposit_conv = ConversationHandler(
         entry_points=[
             MessageHandler(filters.Regex(r"^💳 ʙᴜʏ ᴄᴏɪɴꜱ$"), buy_coins),
-            CallbackQueryHandler(buy_coins, pattern=r"^wallet_add$"),
+            CallbackQueryHandler(wallet_callback, pattern=r"^wallet_(add|history|refresh)$"),
         ],
         states={
             DEPOSIT_METHOD: [
@@ -192,9 +193,10 @@ def build_app() -> Application:
             ],
             DEPOSIT_AMOUNT: [
                 MessageHandler(filters.TEXT & ~CANCEL_FILTER, deposit_amount_handler),
-                CallbackQueryHandler(payment_method_callback, pattern=r"^pay_method:"),
             ],
-            DEPOSIT_TXN: [MessageHandler(filters.TEXT & ~CANCEL_FILTER, deposit_txn_handler)],
+            DEPOSIT_TXN: [
+                MessageHandler(filters.TEXT & ~CANCEL_FILTER, deposit_txn_handler),
+            ],
         },
         fallbacks=[MessageHandler(CANCEL_FILTER, cancel_handler)],
         allow_reentry=True,
