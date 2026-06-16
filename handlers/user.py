@@ -436,6 +436,17 @@ async def deposit_txn_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 # ═══════════════════════════════════════════════════════════════════
 #  SERVICES LIST
 # ═══════════════════════════════════════════════════════════════════
+async def search_service_prompt(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Button handler: 🔍 Search Service — prompts user to send /search <id>."""
+    await update.message.reply_text(
+        "🔍 <b>Service Search</b>\n\n"
+        "Service ID লেখো এভাবে:\n"
+        "<code>/search 6370</code>\n\n"
+        "ID পাবে service-এর উপরে ক্লিক করলে।",
+        parse_mode=ParseMode.HTML
+    )
+
+
 async def services_list(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     cats = await db.get_categories()
     if not cats:
