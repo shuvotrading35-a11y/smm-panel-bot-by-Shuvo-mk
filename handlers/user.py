@@ -852,8 +852,10 @@ async def order_quantity_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
             f"💰 তোমার Balance: <code>{bal_coins:,.2f} Coins (৳{bal_bdt})</code>\n"
             f"⚠️ আরও <code>{needed:,.2f} Coins (৳{needed:.0f})</code> দরকার\n\n"
             f"💳 <b>Buy Coins</b> থেকে balance বাড়াও।",
+            reply_markup=main_keyboard(),
             parse_mode=ParseMode.HTML
         )
+        ctx.user_data.clear()
         return ConversationHandler.END
 
     text = (
@@ -922,6 +924,8 @@ async def order_confirm_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
             f"💳 <b>Buy Coins</b> থেকে balance বাড়াও।",
             parse_mode=ParseMode.HTML
         )
+        # Reply keyboard restore করো (edit_message_text inline keyboard touch করে, reply keyboard না)
+        await query.message.reply_text("👇 Menu:", reply_markup=main_keyboard())
         ctx.user_data.clear()
         return ConversationHandler.END
 
