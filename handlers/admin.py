@@ -11,7 +11,7 @@ from keyboards.inline import (
     broadcast_type_kb, export_kb, admin_user_kb,
     deposit_approve_kb, ticket_reply_kb, vip_plans_kb
 )
-from utils.helpers import fmt_coins, fmt_coins_full, fmt_date, broadcast_message
+from utils.helpers import fmt_coins, fmt_date, broadcast_message
 from api.smm_api import smm_api
 
 logger = logging.getLogger(__name__)
@@ -70,7 +70,7 @@ async def bot_stats(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         f"👥 Total Users: <code>{total_users:,}</code>\n"
         f"📦 Total Orders: <code>{total_orders:,}</code>\n"
         f"📦 Orders Today: <code>{orders_today:,}</code>\n"
-        f"💰 Total Revenue: <code>{fmt_coins_full(total_revenue)}</code>\n"
+        f"💰 Total Revenue: <code>{fmt_coins(total_revenue)} coins</code>\n"
         f"💳 Approved Deposits: <code>{total_deps:,}</code>\n"
         f"🎁 Total Redeems: <code>{total_redeems:,}</code>\n"
         f"👑 VIP Users: <code>{vip_count:,}</code>\n"
@@ -109,9 +109,9 @@ async def search_user_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             f"🆔 ID: <code>{user['user_id']}</code>\n"
             f"👤 Name: <code>{user['full_name']}</code>\n"
             f"📱 Username: <code>@{user.get('username','')}</code>\n"
-            f"💰 Balance: <code>{fmt_coins_full(user['balance'])}</code>\n"
+            f"💰 Balance: <code>{fmt_coins(user['balance'])} coins</code>\n"
             f"📦 Orders: <code>{user['total_orders']}</code>\n"
-            f"💸 Total Spent: <code>{fmt_coins_full(user['total_spent'])}</code>\n"
+            f"💸 Total Spent: <code>{fmt_coins(user['total_spent'])} coins</code>\n"
             f"👥 Referrals: <code>{user['referral_count']}</code>\n"
             f"⭐ VIP: <code>{vip_str}</code>\n"
             f"🚫 Banned: <code>{'Yes' if user['is_banned'] else 'No'}</code>\n"
@@ -160,14 +160,14 @@ async def add_bal_amount_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
     await db.add_balance(uid, amount, "Admin Add")
     udata = await db.get_user(uid)
     await update.message.reply_text(
-        f"✅ Added <code>{fmt_coins_full(amount)}</code> to user <code>{uid}</code>.\n"
+        f"✅ Added <code>{fmt_coins(amount)} coins</code> to user <code>{uid}</code>.\n"
         f"New balance: <code>{fmt_coins(udata['balance']) if udata else '?'} coins</code>",
         parse_mode=ParseMode.HTML,
         reply_markup=admin_keyboard()
     )
     # Notify user
     try:
-        await ctx.bot.send_message(uid, f"💰 Admin added <b>{fmt_coins_full(amount)}</b> to your balance!", parse_mode=ParseMode.HTML)
+        await ctx.bot.send_message(uid, f"💰 Admin added <b>{fmt_coins(amount)} coins</b> to your balance!", parse_mode=ParseMode.HTML)
     except Exception:
         pass
     ctx.user_data.clear()
@@ -238,7 +238,7 @@ async def code_manager(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         for c in codes:
             status = "✅" if c["is_active"] else "❌"
             lines.append(
-                f"{status} <code>{c['code']}</code> — {fmt_coins_full(c['amount'])} "
+                f"{status} <code>{c['code']}</code> — {fmt_coins(c['amount'])} coins "
                 f"({c['used_count']}/{c['max_uses']} uses)"
             )
         await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
@@ -278,7 +278,7 @@ async def create_code_uses_handler(update: Update, ctx: ContextTypes.DEFAULT_TYP
     await db.create_redeem_code(code, amount, uses)
     await update.message.reply_text(
         f"✅ Code <code>{code}</code> created!\n"
-        f"💰 Amount: <code>{fmt_coins_full(amount)}</code>\n"
+        f"💰 Amount: <code>{fmt_coins(amount)} coins</code>\n"
         f"🔢 Max Uses: <code>{uses}</code>",
         parse_mode=ParseMode.HTML,
         reply_markup=admin_keyboard()
@@ -399,7 +399,7 @@ async def admin_order_search_handler(update: Update, ctx: ContextTypes.DEFAULT_T
         f"📦 Service: <code>{order.get('service_name','?')}</code>\n"
         f"🔗 Link: <code>{order['link']}</code>\n"
         f"📊 Qty: <code>{order['quantity']:,}</code>\n"
-        f"💵 Charge: <code>{fmt_coins_full(order['charge'])}</code>\n"
+        f"💵 Charge: <code>{fmt_coins(order['charge'])} coins</code>\n"
         f"📊 Status: <code>{order['status']}</code>\n"
         f"🆔 API ID: <code>{order.get('api_order_id','N/A')}</code>\n"
         f"📅 Date: <code>{fmt_date(order['created_at'])}</code>"
@@ -456,6 +456,60 @@ async def test_api(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ok, msg = await smm_api.test_connection()
     await update.message.reply_text(
         f"{'✅' if ok else '❌'} API Test: <code>{msg}</code>",
+        parse_mode=ParseMode.HTML
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  SERVICE SEARCH BY ID
+# ═══════════════════════════════════════════════════════════════════
+async def service_search(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Search service by ID — available to all users."""
+    args = ctx.args
+    if not args:
+        await update.message.reply_text(
+            "🔍 <b>Service Search</b>\n\n"
+            "Service ID দিয়ে খুঁজো:\n"
+            "/search 6370",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    service_id = args[0].strip()
+    svc = await db.get_service(service_id)
+
+    if not svc:
+        await update.message.reply_text(
+            f"❌ Service ID <code>{service_id}</code> পাওয়া যায়নি।",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    USD_TO_BDT  = 135
+    from config import SERVICE_MARKUP_PCT
+    rate_usd    = float(svc.get("rate", 0))
+    rate_bdt    = round(rate_usd * (1 + SERVICE_MARKUP_PCT/100) * USD_TO_BDT, 2)
+    is_admin_   = is_admin(update.effective_user.id)
+    refill      = "✅" if svc.get("refill") else "❌"
+    cancel_s    = "✅" if svc.get("cancel") else "❌"
+
+    # Admin দেখবে API rate, user দেখবে শুধু তাদের rate
+    rate_line = (
+        f"💵 API Rate: <code>${rate_usd} per 1000</code>\n"
+        f"💰 তোমার Rate: <code>৳{rate_bdt} per 1000</code>\n"
+        if is_admin_ else
+        f"💰 Rate: <code>৳{rate_bdt} per 1000</code>\n"
+    )
+
+    await update.message.reply_text(
+        f"🔍 <b>Service Found</b>\n"
+        f"{'─'*28}\n"
+        f"🆔 ID: <code>{svc['service_id']}</code>\n"
+        f"📦 Name: <code>{svc['name']}</code>\n"
+        f"📂 Category: <code>{svc['category']}</code>\n"
+        f"{rate_line}"
+        f"📊 Min: <code>{svc['min_order']}</code> | Max: <code>{svc['max_order']}</code>\n"
+        f"🔄 Refill: {refill} | Cancel: {cancel_s}",
         parse_mode=ParseMode.HTML
     )
 
@@ -629,13 +683,13 @@ async def deposit_approve_callback(update: Update, ctx: ContextTypes.DEFAULT_TYP
         return
     await query.edit_message_text(
         f"✅ Deposit #{dep_id} approved!\n"
-        f"User {dep['user_id']} received {fmt_coins_full(dep['amount'])}."
+        f"User {dep['user_id']} received {fmt_coins(dep['amount'])} coins."
     )
     try:
         await ctx.bot.send_message(
             dep["user_id"],
             f"✅ <b>Deposit Approved!</b>\n\n"
-            f"💰 +<code>{fmt_coins_full(dep['amount'])}</code> added to your balance!",
+            f"💰 +<code>{fmt_coins(dep['amount'])} coins</code> added to your balance!",
             parse_mode=ParseMode.HTML
         )
     except Exception:
