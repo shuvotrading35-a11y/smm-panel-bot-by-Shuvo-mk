@@ -13,7 +13,7 @@ import database as db
 from handlers.user import (
     start, my_account, account_callback, wallet, wallet_callback,
     buy_coins, payment_method_callback, deposit_amount_handler,
-    deposit_txn_handler, package_callback, services_list, category_callback,
+    deposit_txn_handler, package_callback, services_list, search_service_prompt, category_callback,
     service_callback, new_order, order_start_callback,
     order_platform_handler, order_category_handler, order_service_handler, order_link_handler,
     order_quantity_handler, order_confirm_callback, my_orders,
@@ -35,7 +35,7 @@ from handlers.admin import (
     create_code_amount_handler, create_code_uses_handler,
     broadcast, broadcast_type_callback, broadcast_content_handler,
     order_manager, admin_order_search_handler, api_manager,
-    sync_services, test_api, force_join_admin,
+    sync_services, test_api, service_search, force_join_admin,
     add_channel_cmd, remove_channel_cmd, list_channels_cmd,
     ban_system, ban_id_handler, support_manager,
     ticket_reply_callback, ticket_reply_text_handler,
@@ -105,6 +105,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("admin",          admin_panel))
     app.add_handler(CommandHandler("syncservices",   sync_services))
     app.add_handler(CommandHandler("testapi",        test_api))
+    app.add_handler(CommandHandler("search",         service_search))
     app.add_handler(CommandHandler("addchannel",     add_channel_cmd))
     app.add_handler(CommandHandler("removechannel",  remove_channel_cmd))
     app.add_handler(CommandHandler("channels",       list_channels_cmd))
@@ -366,6 +367,7 @@ def build_app() -> Application:
     #  SIMPLE REPLY KEYBOARD HANDLERS (MessageHandlers)
     # ═══════════════════════════════════════════════════════════════
     app.add_handler(MessageHandler(filters.Regex(r"^📊 ꜱᴇʀᴠɪᴄᴇꜱ ʟɪꜱᴛ$"),  services_list))
+    app.add_handler(MessageHandler(filters.Regex(r"^🔍 ꜱᴇᴀʀᴄʜ ꜱᴇʀᴠɪᴄᴇ$"), search_service_prompt))
     app.add_handler(MessageHandler(filters.Regex(r"^👤 ᴍʏ ᴀᴄᴄᴏᴜɴᴛ$"),     my_account))
     app.add_handler(MessageHandler(filters.Regex(r"^📦 ᴍʏ ᴏʀᴅᴇʀꜱ$"),      my_orders))
     app.add_handler(MessageHandler(filters.Regex(r"^💰 ᴡᴀʟʟᴇᴛ$"),         wallet))
