@@ -9,7 +9,7 @@ def main_keyboard() -> ReplyKeyboardMarkup:
     [{"text": "🔎 ᴏʀᴅᴇʀ ᴛʀᴀᴄᴋᴇʀ", "style": "success"}, {"text": "💰 ᴡᴀʟʟᴇᴛ", "style": "danger"}],
     [{"text": "🎁 ʀᴇᴅᴇᴇᴍ ᴄᴏᴅᴇ", "style": "primary"}, {"text": "🎯 ᴅᴀɪʟʏ ʙᴏɴᴜꜱ", "style": "success"}],
     [{"text": "👥 ʀᴇꜰᴇʀʀᴀʟ", "style": "primary"}, {"text": "🏆 ʟᴇᴀᴅᴇʀʙᴏᴀʀᴅ", "style": "success"}],
-    [{"text": "📈 ᴍʏ ꜱᴛᴀᴛɪꜱᴛɪᴄꜱ", "style": "danger"}, {"text": "⭐ ᴠɪᴘ ᴍᴇᴍʙᴇʀꜱʜɪᴘ", "style": "success"}],
+    [{"text": "📈 ᴍʏ ꜱᴛᴀᴛɪꜱᴛɪᴄꜱ", "style": "danger"}, {"text": "🔍 ꜱᴇᴀʀᴄʜ ꜱᴇʀᴠɪᴄᴇ", "style": "success"}],
     [{"text": "📢 ᴜᴘᴅᴀᴛᴇꜱ", "style": "primary"}, {"text": "☎️ ꜱᴜᴘᴘᴏʀᴛ", "style": "danger"}],
     ], resize_keyboard=True)
 
@@ -22,7 +22,7 @@ def admin_keyboard() -> ReplyKeyboardMarkup:
     [{"text": "📦 ᴏʀᴅᴇʀ ᴍᴀɴᴀɢᴇʀ", "style": "danger"}, {"text": "📊 ʙᴏᴛ ꜱᴛᴀᴛɪꜱᴛɪᴄꜱ", "style": "success"}],
     [{"text": "📣 ꜰᴏʀᴄᴇ ᴊᴏɪɴ", "style": "danger"}, {"text": "🚫 ʙᴀɴ ꜱʏꜱᴛᴇᴍ", "style": "success"}],
     [{"text": "☎️ ꜱᴜᴘᴘᴏʀᴛ ᴍᴀɴᴀɢᴇʀ", "style": "danger"}, {"text": "⚙️ ᴀᴘɪ ᴍᴀɴᴀɢᴇʀ", "style": "success"}],
-    [{"text": "🛒 ꜱᴇʀᴠɪᴄᴇ ᴍᴀɴᴀɢᴇʀ", "style": "danger"}, {"text": "💎 ᴠɪᴘ ᴍᴀɴᴀɢᴇʀ", "style": "success"}],
+    [{"text": "🛒 ꜱᴇʀᴠɪᴄᴇ ᴍᴀɴᴀɢᴇʀ", "style": "danger"}],
     [{"text": "🏆 ʟᴇᴀᴅᴇʀʙᴏᴀʀᴅ", "style": "danger"}, {"text": "📤 ᴇxᴘᴏʀᴛ ᴅᴀᴛᴀ", "style": "success"}],
     [{"text": "🗄 ᴅᴀᴛᴀʙᴀꜱᴇ ᴍᴀɴᴀɢᴇʀ", "style": "primary"}],
     [{"text": "🧹 ᴄʟᴇᴀɴ ᴜᴘ", "style": "danger"}, {"text": "🔄 ʀᴇꜱᴛᴀʀᴛ ʙᴏᴛ", "style": "success"}],
@@ -31,7 +31,7 @@ def admin_keyboard() -> ReplyKeyboardMarkup:
 
 
 def cancel_keyboard() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup([["❌ ᴄᴀɴᴄᴇʟ"]], resize_keyboard=True)
+    return ReplyKeyboardMarkup([[{"❌ ᴄᴀɴᴄᴇʟ", " style": "danger"}]], resize_keyboard=True)
 
 
 def back_keyboard() -> ReplyKeyboardMarkup:
