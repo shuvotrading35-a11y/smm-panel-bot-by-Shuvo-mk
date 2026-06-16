@@ -31,7 +31,7 @@ def admin_keyboard() -> ReplyKeyboardMarkup:
 
 
 def cancel_keyboard() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup([[{"❌ ᴄᴀɴᴄᴇʟ", " style": "danger"}]], resize_keyboard=True)
+    return ReplyKeyboardMarkup([{"❌ ᴄᴀɴᴄᴇʟ", "style": "danger"}], resize_keyboard=True)
 
 
 def back_keyboard() -> ReplyKeyboardMarkup:
