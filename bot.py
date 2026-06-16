@@ -73,7 +73,18 @@ ADMIN_FILTER  = filters.User(user_id=ADMIN_IDS)
 async def error_handler(update: object, context) -> None:
     import traceback
     err = context.error
-    tb  = "".join(traceback.format_exception(type(err), err, err.__traceback__))
+
+    # Harmless Telegram errors — silently ignore, no admin alert needed
+    harmless = (
+        "Message is not modified",
+        "Query is too old",
+        "message to edit not found",
+        "Message to delete not found",
+    )
+    if any(h in str(err) for h in harmless):
+        return
+
+    tb = "".join(traceback.format_exception(type(err), err, err.__traceback__))
     logger.error(f"Exception: {tb}")
 
     # Admin-কে error জানাও
