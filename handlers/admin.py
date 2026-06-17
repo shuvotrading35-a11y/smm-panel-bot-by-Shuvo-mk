@@ -501,6 +501,11 @@ async def service_search(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         f"💰 Rate: <code>৳{rate_bdt} per 1000</code>\n"
     )
 
+    from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+    order_kb = InlineKeyboardMarkup([[
+        InlineKeyboardButton("🛒 Order Now", callback_data=f"order_start:{svc['service_id']}")
+    ]])
+
     await update.message.reply_text(
         f"🔍 <b>Service Found</b>\n"
         f"{'─'*28}\n"
@@ -510,6 +515,7 @@ async def service_search(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         f"{rate_line}"
         f"📊 Min: <code>{svc['min_order']}</code> | Max: <code>{svc['max_order']}</code>\n"
         f"🔄 Refill: {refill} | Cancel: {cancel_s}",
+        reply_markup=order_kb,
         parse_mode=ParseMode.HTML
     )
 
