@@ -455,9 +455,10 @@ async def services_list(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             "Admin needs to sync services from the API panel."
         )
         return
+    upd_ch = await db.get_setting("updates_channel", "")
     await update.message.reply_text(
         "📊 <b>Services List</b>\n\nChoose a platform:",
-        reply_markup=categories_kb(cats, CATEGORY_ICONS),
+        reply_markup=categories_kb(cats, CATEGORY_ICONS, upd_ch),
         parse_mode=ParseMode.HTML
     )
 
@@ -501,10 +502,11 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     # ── platform_back: Category list → back to Platform buttons ────
     if data == "platform_back":
-        cats = await db.get_categories()
+        cats   = await db.get_categories()
+        upd_ch = await db.get_setting("updates_channel", "")
         await query.edit_message_text(
             "📊 <b>Services List</b>\n\nChoose a platform:",
-            reply_markup=categories_kb(cats, CATEGORY_ICONS),
+            reply_markup=categories_kb(cats, CATEGORY_ICONS, upd_ch),
             parse_mode=ParseMode.HTML
         )
         return
@@ -624,9 +626,10 @@ async def new_order(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not cats:
         await update.message.reply_text("⚠️ No services available. Try again later.")
         return ConversationHandler.END
+    upd_ch = await db.get_setting("updates_channel", "")
     await update.message.reply_text(
         "🛒 <b>New Order</b>\n\nStep 1 — Choose a platform:",
-        reply_markup=categories_kb(cats, CATEGORY_ICONS),
+        reply_markup=categories_kb(cats, CATEGORY_ICONS, upd_ch),
         parse_mode=ParseMode.HTML
     )
     return ORDER_PLATFORM
@@ -674,10 +677,11 @@ async def order_platform_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
     }
 
     if data == "platform_back" or data == "order_platform_back":
-        cats = await db.get_categories()
+        cats   = await db.get_categories()
+        upd_ch = await db.get_setting("updates_channel", "")
         await query.edit_message_text(
             "🛒 <b>New Order</b>\n\nStep 1 — Choose a platform:",
-            reply_markup=categories_kb(cats, CATEGORY_ICONS),
+            reply_markup=categories_kb(cats, CATEGORY_ICONS, upd_ch),
             parse_mode=ParseMode.HTML
         )
         return ORDER_PLATFORM
@@ -1394,8 +1398,14 @@ async def ticket_message_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
 async def updates_channel(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     channel = await db.get_setting("updates_channel", "")
     if channel:
+        from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+        kb = InlineKeyboardMarkup([[
+            InlineKeyboardButton("📢 Join Updates Channel", url=channel)
+        ]])
         await update.message.reply_text(
-            f"📢 <b>Updates Channel</b>\n\n{channel}",
+            "📢 <b>Updates Channel</b>\n\n"
+            "নিচের বাটনে ক্লিক করে আমাদের Updates Channel-এ জয়েন করো:",
+            reply_markup=kb,
             parse_mode=ParseMode.HTML
         )
     else:
