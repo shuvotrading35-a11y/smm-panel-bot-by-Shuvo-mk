@@ -44,7 +44,7 @@ def coin_packages_kb() -> InlineKeyboardMarkup:
             callback_data=f"pkg:{coins}:{price}"
         )])
     rows.append([InlineKeyboardButton("✏️  Custom Amount", callback_data="pkg:custom")])
-    rows.append([InlineKeyboardButton("💬  Contact Admin", url="https://t.me/shuvo_9882", "color"="#25D366")])
+    rows.append([InlineKeyboardButton("💬  Contact Admin", url="https://t.me/shuvo_9882")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -153,7 +153,7 @@ def force_join_kb(channels: list[dict]) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
-def categories_kb(categories: list[str], icons: dict) -> InlineKeyboardMarkup:
+def categories_kb(categories: list[str], icons: dict, updates_channel: str = "") -> InlineKeyboardMarkup:
     # Group categories by platform (first word / keyword match)
     PLATFORM_ORDER = [
         "facebook", "instagram", "tiktok", "youtube",
@@ -196,6 +196,9 @@ def categories_kb(categories: list[str], icons: dict) -> InlineKeyboardMarkup:
             label = PLATFORM_LABELS.get(p, f"🔹 {p.title()}")
             row.append(InlineKeyboardButton(label, callback_data=f"platform:{p}"))
         rows.append(row)
+
+    if updates_channel:
+        rows.append([InlineKeyboardButton("📢 Join Updates Channel", url=updates_channel)])
 
     return InlineKeyboardMarkup(rows)
 
