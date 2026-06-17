@@ -545,6 +545,28 @@ async def add_channel_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"✅ Channel <code>{ch_id}</code> added to force join.", parse_mode=ParseMode.HTML)
 
 
+async def set_updates_channel(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Admin command: /setupdates https://t.me/modapk_allappps"""
+    if not is_admin(update.effective_user.id):
+        return
+    args = ctx.args
+    if not args:
+        current = await db.get_setting("updates_channel", "")
+        await update.message.reply_text(
+            f"📢 <b>Updates Channel</b>\n\n"
+            f"বর্তমান: <code>{current or 'সেট করা নেই'}</code>\n\n"
+            f"Usage: /setupdates https://t.me/your_channel",
+            parse_mode=ParseMode.HTML
+        )
+        return
+    link = args[0].strip()
+    await db.set_setting("updates_channel", link)
+    await update.message.reply_text(
+        f"✅ Updates Channel সেট হয়েছে:\n<code>{link}</code>",
+        parse_mode=ParseMode.HTML
+    )
+
+
 async def remove_channel_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         return
