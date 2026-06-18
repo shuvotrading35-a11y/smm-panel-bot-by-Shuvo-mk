@@ -1,6 +1,6 @@
 import logging
 from telegram import Update
-from telegram.ext import ContextTypes, ConversationHandler, CommandHandler, MessageHandler, filters
+from telegram.ext import ContextTypes, ConversationHandler, CommandHandler, MessageHandler, filters, ApplicationHandlerStop
 from telegram.constants import ParseMode
 
 import database as db
@@ -45,11 +45,11 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if ref_id and ref_id != user.id:
             await db.process_referral(user.id, ref_id, REFERRAL_REWARD)
 
-    # Force-join check
+    # Force-join check (handled by global_force_join_check middleware,
+    # but kept here too as a safety net for the very first /start)
     channels = await db.get_force_channels()
-    if channels:
-        bot       = ctx.bot
-        not_joined = await check_force_join(bot, user.id, channels)
+    if channels and update.effective_user.id not in ADMIN_IDS:
+        not_joined = await check_force_join(ctx.bot, user.id, channels)
         if not_joined:
             await update.message.reply_text(
                 "📢 <b>Please join our channels to use this bot:</b>",
@@ -1435,4 +1435,48 @@ async def check_banned(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if udata and udata.get("is_banned"):
         if update.message:
             await update.message.reply_text("🚫 You are banned from this bot.")
+        raise ApplicationHandlerStop
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  GLOBAL FORCE-JOIN MIDDLEWARE — runs before every message/callback
+# ═══════════════════════════════════════════════════════════════════
+async def global_force_join_check(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Blocks ANY interaction (not just /start) until user joins all channels."""
+    if not update.effective_user:
         return
+
+    # /start কে block করো না — start handler নিজেই force-join দেখাবে
+    if update.message and update.message.text and update.message.text.startswith("/start"):
+        return
+
+    # fj_check বাটনকেও block করো না — সেটাই verify করার বাটন
+    if update.callback_query and update.callback_query.data == "fj_check":
+        return
+
+    # Admin-দের force-join লাগবে না
+    if update.effective_user.id in ADMIN_IDS:
+        return
+
+    channels = await db.get_force_channels()
+    if not channels:
+        return
+
+    not_joined = await check_force_join(ctx.bot, update.effective_user.id, channels)
+    if not_joined:
+        text = (
+            "📢 <b>প্রথমে আমাদের channel(s)-এ জয়েন করো!</b>\n\n"
+            "জয়েন করার পর নিচের ✅ বাটনে চাপ দাও।"
+        )
+        if update.message:
+            await update.message.reply_text(
+                text, reply_markup=force_join_kb(not_joined), parse_mode=ParseMode.HTML
+            )
+        elif update.callback_query:
+            await update.callback_query.answer(
+                "⚠️ প্রথমে channel(s)-এ জয়েন করো!", show_alert=True
+            )
+            await update.callback_query.message.reply_text(
+                text, reply_markup=force_join_kb(not_joined), parse_mode=ParseMode.HTML
+            )
+        raise ApplicationHandlerStop
