@@ -17,16 +17,28 @@ def is_rate_limited(user_id: int) -> bool:
     return False
 
 # ── Force-Join Check ──────────────────────────────────────────────
+import logging
+_fj_logger = logging.getLogger("force_join")
+
 async def check_force_join(bot: Bot, user_id: int, channels: list[dict]) -> list[dict]:
-    """Return list of channels the user has NOT joined."""
+    """Return list of channels the user has NOT joined.
+    Fail-open: if the bot can't check (not admin / wrong ID / etc.),
+    skip that channel instead of blocking the user.
+    """
     not_joined = []
     for ch in channels:
         try:
             member = await bot.get_chat_member(ch["channel_id"], user_id)
             if member.status in ("left", "kicked"):
                 not_joined.append(ch)
-        except TelegramError:
-            not_joined.append(ch)
+        except TelegramError as e:
+            # Log the real reason so admin can fix it (wrong channel_id,
+            # bot not added as admin, channel deleted, etc.)
+            _fj_logger.warning(
+                f"Force-join check failed for channel {ch.get('channel_id')}: {e}"
+            )
+            # Fail-open — don't block the user just because the check itself failed
+            continue
     return not_joined
 
 # ── Formatters ────────────────────────────────────────────────────
