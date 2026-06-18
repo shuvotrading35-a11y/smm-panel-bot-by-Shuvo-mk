@@ -12,6 +12,7 @@ import database as db
 # ── Import handlers ───────────────────────────────────────────────
 from handlers.user import (
     start, my_account, account_callback, wallet, wallet_callback,
+    global_force_join_check, check_banned,
     buy_coins, payment_method_callback, deposit_amount_handler,
     deposit_txn_handler, package_callback, services_list, search_service_prompt, category_callback,
     service_callback, new_order, order_start_callback,
@@ -105,6 +106,13 @@ async def error_handler(update: object, context) -> None:
 # ─────────────────────────────────────────────────────────────────
 def build_app() -> Application:
     app = Application.builder().token(BOT_TOKEN).build()
+
+    # ── Global middlewares (run BEFORE every other handler) ────────
+    from telegram.ext import MessageHandler as _MH, CallbackQueryHandler as _CQH, filters as _filters
+    app.add_handler(_MH(_filters.ALL, check_banned), group=-2)
+    app.add_handler(_CQH(check_banned), group=-2)
+    app.add_handler(_MH(_filters.ALL, global_force_join_check), group=-1)
+    app.add_handler(_CQH(global_force_join_check), group=-1)
 
     # Register global error handler
     app.add_error_handler(error_handler)
