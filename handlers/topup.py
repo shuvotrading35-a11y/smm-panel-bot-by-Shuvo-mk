@@ -140,7 +140,7 @@ async def topup_game_selected(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         parse_mode=ParseMode.HTML
     )
 
-    # ── Step 1: products list থেকে actual product_code খোঁজো ──
+    # ── Step 1: products list থেকে সব matching product_code খোঁজো ──
     products_result = await get_products()
     logger.warning(f"FlashTopup products: {str(products_result)[:300]}")
 
@@ -149,11 +149,14 @@ async def topup_game_selected(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if isinstance(raw_prod, list):
         products_data = raw_prod
     elif isinstance(raw_prod, dict):
-        # কিছু API {"data": {"products": [...]}} দেয়
-        products_data = raw_prod.get("products") or raw_prod.get("product") or []
-
-    actual_code = game_code
-    actual_type = "topup"
+        products_data = (
+            raw_prod.get("products")
+            or raw_prod.get("product")
+            or list(raw_prod.values()) if raw_prod else []
+        )
+        # যদি values()-তে list পাই সেটা নাও
+        if products_data and not isinstance(products_data[0], dict):
+            products_data = []
 
     keywords = {
         "TOPUP_FREE_FIRE":       ["free fire", "freefire", "ff"],
@@ -162,19 +165,43 @@ async def topup_game_selected(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     }
     search_terms = keywords.get(game_code, [game_code.lower()])
 
+    # সব matching products collect করো (regional variants সহ)
+    matched_products = []
     for prod in products_data:
         prod_name = (prod.get("name") or prod.get("product_name") or "").lower()
-        if any(term in prod_name for term in search_terms):
-            actual_code = prod.get("product_code") or prod.get("code") or game_code
-            actual_type = prod.get("product_type") or prod.get("type") or "topup"
-            logger.warning(f"Matched product: {actual_code} / {actual_type}")
-            break
+        prod_code = (prod.get("product_code") or prod.get("code") or "").lower()
+        if any(term in prod_name or term in prod_code for term in search_terms):
+            matched_products.append(prod)
+            logger.warning(f"Matched product: {prod.get('product_code')} / {prod.get('product_type')}")
 
-    # ── Step 2: services (packages) লোড করো ──
-    result = await get_services(actual_code, actual_type)
-    logger.warning(f"FlashTopup services result: {str(result)[:500]}")
+    # ── Step 2: সব matched products-এর services একসাথে load করো ──
+    all_packages = []
 
-    packages = _extract_services(result)
+    if matched_products:
+        for prod in matched_products:
+            p_code = prod.get("product_code") or prod.get("code") or game_code
+            p_type = prod.get("product_type") or prod.get("type") or "topup"
+            result = await get_services(p_code, p_type)
+            logger.warning(f"Services for {p_code}: {str(result)[:200]}")
+            svcs = _extract_services(result)
+            all_packages.extend(svcs)
+    else:
+        # fallback: game_code দিয়ে সরাসরি চেষ্টা করো
+        result = await get_services(game_code, "topup")
+        logger.warning(f"Fallback services result: {str(result)[:300]}")
+        all_packages = _extract_services(result)
+
+    # duplicate service_code সরাও
+    seen = set()
+    packages = []
+    for pkg in all_packages:
+        sc = pkg.get("service_code", "")
+        if sc not in seen:
+            seen.add(sc)
+            packages.append(pkg)
+
+    # price অনুযায়ী sort করো
+    packages.sort(key=lambda p: float(p.get("price") or p.get("price_usd") or 0))
 
     if not packages:
         # Admin-কে actual response দেখাও
