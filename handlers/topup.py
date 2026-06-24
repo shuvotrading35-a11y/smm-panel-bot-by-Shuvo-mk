@@ -215,10 +215,14 @@ async def _verify_and_confirm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     pkg       = ctx.user_data["topup_pkg"]
     cost      = ctx.user_data["topup_cost"]
 
-    result = await check_player_id(player_id, server_id, cfg["validation_code"])
+    result   = await check_player_id(player_id, server_id, cfg["validation_code"])
+    result   = result or {}
+    data     = result.get("data") or {}
 
-    if not result.get("success") or not result.get("data", {}).get("valid"):
-        err_msg = result.get("data", {}).get("message") or "Player ID সঠিক নয়।"
+    if not result.get("success") or not data.get("valid"):
+        err_msg = data.get("message") or result.get("error", {}).get("message") if isinstance(result.get("error"), dict) else "Player ID সঠিক নয়।"
+        if not err_msg:
+            err_msg = "Player ID সঠিক নয়।"
         await msg.edit_text(
             f"❌ <b>Player ID ভুল!</b>\n\n{err_msg}\n\n"
             f"👇 সঠিক Player ID লেখো:",
@@ -226,7 +230,7 @@ async def _verify_and_confirm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return TOPUP_PLAYER_ID
 
-    nickname = result.get("data", {}).get("nickname") or "Unknown"
+    nickname = data.get("nickname") or "Unknown"
     ctx.user_data["topup_nickname"] = nickname
 
     user_id = update.effective_user.id
