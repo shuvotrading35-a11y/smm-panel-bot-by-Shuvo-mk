@@ -142,28 +142,36 @@ async def topup_game_selected(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     # ── Step 1: products list থেকে সব matching product_code খোঁজো ──
     products_result = await get_products()
-    logger.warning(f"FlashTopup products: {str(products_result)[:300]}")
+    logger.warning(f"FlashTopup products raw: {str(products_result)[:500]}")
 
+    # products_data flatten করো — যেকোনো nested structure handle করো
     products_data = []
     raw_prod = products_result.get("data")
     if isinstance(raw_prod, list):
         products_data = raw_prod
     elif isinstance(raw_prod, dict):
-        products_data = (
-            raw_prod.get("products")
-            or raw_prod.get("product")
-            or list(raw_prod.values()) if raw_prod else []
-        )
-        # যদি values()-তে list পাই সেটা নাও
-        if products_data and not isinstance(products_data[0], dict):
-            products_data = []
+        # {"data": {"products": [...], "total": ...}} বা
+        # {"data": {"data": [...]}} nested হতে পারে
+        for key in ("products", "product", "items", "data"):
+            val = raw_prod.get(key)
+            if isinstance(val, list) and val and isinstance(val[0], dict):
+                products_data = val
+                break
+        # তবুও না পেলে dict values-এ list খোঁজো
+        if not products_data:
+            for val in raw_prod.values():
+                if isinstance(val, list) and val and isinstance(val[0], dict):
+                    products_data = val
+                    break
+
+    logger.warning(f"products_data count: {len(products_data)}, sample: {str(products_data[:1])[:200]}")
 
     keywords = {
-        "TOPUP_FREE_FIRE":       ["free fire", "freefire", "ff"],
-        "TOPUP_MOBILE_LEGENDS":  ["mobile legends", "mlbb", "ml"],
+        "TOPUP_FREE_FIRE":       ["free fire", "freefire"],
+        "TOPUP_MOBILE_LEGENDS":  ["mobile legends", "mlbb"],
         "TOPUP_PUBG_MOBILE":     ["pubg mobile", "pubg"],
     }
-    search_terms = keywords.get(game_code, [game_code.lower()])
+    search_terms = keywords.get(game_code, [game_code.lower().replace("_", " ")])
 
     # সব matching products collect করো (regional variants সহ)
     matched_products = []
@@ -172,7 +180,9 @@ async def topup_game_selected(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         prod_code = (prod.get("product_code") or prod.get("code") or "").lower()
         if any(term in prod_name or term in prod_code for term in search_terms):
             matched_products.append(prod)
-            logger.warning(f"Matched product: {prod.get('product_code')} / {prod.get('product_type')}")
+            logger.warning(f"Matched: {prod.get('product_code')}")
+
+    logger.warning(f"Total matched products: {len(matched_products)}")
 
     # ── Step 2: সব matched products-এর services একসাথে load করো ──
     all_packages = []
@@ -181,15 +191,24 @@ async def topup_game_selected(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         for prod in matched_products:
             p_code = prod.get("product_code") or prod.get("code") or game_code
             p_type = prod.get("product_type") or prod.get("type") or "topup"
-            result = await get_services(p_code, p_type)
-            logger.warning(f"Services for {p_code}: {str(result)[:200]}")
-            svcs = _extract_services(result)
+            svc_result = await get_services(p_code, p_type)
+            svcs = _extract_services(svc_result)
+            logger.warning(f"Services for {p_code}: {len(svcs)} packages")
             all_packages.extend(svcs)
     else:
-        # fallback: game_code দিয়ে সরাসরি চেষ্টা করো
-        result = await get_services(game_code, "topup")
-        logger.warning(f"Fallback services result: {str(result)[:300]}")
-        all_packages = _extract_services(result)
+        # matched_products empty — products API structure বোঝা যায়নি
+        # Admin-কে জানাও এবং products raw dump করো
+        logger.warning(f"No matched products! Full products_result: {str(products_result)[:1000]}")
+        for aid in ADMIN_IDS:
+            try:
+                await ctx.bot.send_message(
+                    aid,
+                    f"⚠️ Products match হয়নি!\n"
+                    f"<code>{str(products_result)[:600]}</code>",
+                    parse_mode="HTML"
+                )
+            except Exception:
+                pass
 
     # duplicate service_code সরাও
     seen = set()
