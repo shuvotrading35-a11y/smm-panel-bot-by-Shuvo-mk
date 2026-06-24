@@ -32,7 +32,7 @@ COIN_TO_BDT = 1.0
 GAME_CONFIGS = {
     "TOPUP_FREE_FIRE_BANGLADESH_18": {
         "name":            "🔥 Free Fire Bangladesh",
-        "validation_code": "ff",
+        "validation_code": "TOPUP_FREE_FIRE_BANGLADESH_18",
         "need_server_id":  False,
         "player_label":    "Free Fire UID",
         "product_type":    "topup",
@@ -219,10 +219,23 @@ async def _verify_and_confirm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     result   = result or {}
     data     = result.get("data") or {}
 
+    # Admin-এ full response দেখাও debug করতে
+    from config import ADMIN_IDS
+    for aid in ADMIN_IDS:
+        try:
+            await update.effective_message.bot.send_message(
+                aid,
+                f"🔍 check_player_id response:\n<code>{str(result)[:600]}</code>\n"
+                f"validation_code used: <code>{cfg['validation_code']}</code>",
+                parse_mode="HTML"
+            )
+        except Exception:
+            pass
+
     if not result.get("success") or not data.get("valid"):
-        err_msg = data.get("message") or result.get("error", {}).get("message") if isinstance(result.get("error"), dict) else "Player ID সঠিক নয়।"
-        if not err_msg:
-            err_msg = "Player ID সঠিক নয়।"
+        err_msg = (data.get("message") or
+                   (result.get("error", {}).get("message") if isinstance(result.get("error"), dict) else None) or
+                   "Player ID সঠিক নয়।")
         await msg.edit_text(
             f"❌ <b>Player ID ভুল!</b>\n\n{err_msg}\n\n"
             f"👇 সঠিক Player ID লেখো:",
