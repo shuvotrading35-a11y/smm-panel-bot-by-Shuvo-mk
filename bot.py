@@ -29,6 +29,12 @@ from handlers.user import (
     ORDER_CONFIRM, REDEEM_INPUT, TICKET_SUBJECT, TICKET_MESSAGE,
     DEPOSIT_METHOD, DEPOSIT_AMOUNT, DEPOSIT_TXN, TRACKER_INPUT,
 )
+from handlers.topup import (
+    topup_start, topup_game_selected, topup_package_selected,
+    topup_player_id, topup_server_id, topup_confirm,
+    TOPUP_GAME_SELECT, TOPUP_PACKAGE_SELECT, TOPUP_PLAYER_ID,
+    TOPUP_SERVER_ID, TOPUP_CONFIRM,
+)
 from handlers.admin import (
     admin_panel, bot_stats, user_management, search_user_handler,
     balance_manager, add_bal_id_handler, add_bal_amount_handler,
@@ -115,6 +121,25 @@ def build_app() -> Application:
     app.add_handler(_CQH(global_force_join_check), group=-1)
 
     # Register global error handler
+    # ── Game Topup ConversationHandler ───────────────────────────
+    topup_conv = ConversationHandler(
+        entry_points=[
+            MessageHandler(filters.Regex(r"^🎮 ɢᴀᴍᴇ ᴛᴏᴘᴜᴘ$"), topup_start),
+        ],
+        states={
+            TOPUP_GAME_SELECT:    [CallbackQueryHandler(topup_game_selected,    pattern=r"^(tg:.+|topup_cancel)$")],
+            TOPUP_PACKAGE_SELECT: [CallbackQueryHandler(topup_package_selected, pattern=r"^(tp:.+|topup_game_back|topup_cancel)$")],
+            TOPUP_PLAYER_ID:      [MessageHandler(filters.TEXT & ~filters.COMMAND, topup_player_id)],
+            TOPUP_SERVER_ID:      [MessageHandler(filters.TEXT & ~filters.COMMAND, topup_server_id)],
+            TOPUP_CONFIRM:        [CallbackQueryHandler(topup_confirm, pattern=r"^(topup_confirm|topup_cancel)$")],
+        },
+        fallbacks=[MessageHandler(filters.Regex(r"^❌ ᴄᴀɴᴄᴇʟ$"), cancel_handler)],
+        allow_reentry=True,
+        per_message=False,
+        conversation_timeout=300,
+    )
+    app.add_handler(topup_conv)
+
     app.add_error_handler(error_handler)
 
     # ── /start ────────────────────────────────────────────────────
