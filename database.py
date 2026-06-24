@@ -138,6 +138,21 @@ async def init_db():
             value       TEXT
         );
 
+        CREATE TABLE IF NOT EXISTS topup_orders (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id      INTEGER NOT NULL,
+            order_id     TEXT,
+            reference_id TEXT    UNIQUE,
+            game         TEXT,
+            package      TEXT,
+            player_id    TEXT,
+            nickname     TEXT,
+            cost         REAL,
+            status       TEXT    DEFAULT 'Processing',
+            created_at   TEXT    DEFAULT (datetime('now')),
+            FOREIGN KEY (user_id) REFERENCES users(user_id)
+        );
+
         CREATE TABLE IF NOT EXISTS services_cache (
             service_id      TEXT PRIMARY KEY,
             name            TEXT,
@@ -746,6 +761,34 @@ async def set_setting(key: str, value: str):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?,?)", (key, value))
         await db.commit()
+
+# ─────────────────────────────────────────────────────────────────
+#  TOPUP ORDERS
+# ─────────────────────────────────────────────────────────────────
+async def save_topup_order(user_id: int, order_id: str, reference_id: str,
+                           game: str, package: str, player_id: str,
+                           nickname: str, cost: float, status: str) -> int:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            """INSERT INTO topup_orders
+               (user_id, order_id, reference_id, game, package, player_id, nickname, cost, status)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
+            (user_id, order_id, reference_id, game, package, player_id, nickname, cost, status)
+        )
+        await db.commit()
+        return cur.lastrowid
+
+
+async def get_topup_orders(user_id: int, limit: int = 10) -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM topup_orders WHERE user_id=? ORDER BY created_at DESC LIMIT ?",
+            (user_id, limit)
+        ) as cur:
+            rows = await cur.fetchall()
+            return [dict(r) for r in rows]
+
 
 # ─────────────────────────────────────────────────────────────────
 #  EXPORT
