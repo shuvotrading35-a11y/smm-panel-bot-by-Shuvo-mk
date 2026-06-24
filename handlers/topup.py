@@ -29,11 +29,12 @@ logger = logging.getLogger(__name__)
 
 # Free Fire-এর validation_code (FlashTopup-এর fixed value)
 GAME_CONFIGS = {
-    "TOPUP_FREE_FIRE": {
-        "name":            "🔥 Free Fire",
+    "TOPUP_FREE_FIRE_BANGLADESH_18": {
+        "name":            "🔥 Free Fire Bangladesh",
         "validation_code": "ff",
         "need_server_id":  False,
         "player_label":    "Free Fire UID",
+        "product_type":    "topup",
     },
     "TOPUP_MOBILE_LEGENDS": {
         "name":            "⚔️ Mobile Legends",
@@ -41,12 +42,14 @@ GAME_CONFIGS = {
         "need_server_id":  True,
         "player_label":    "MLBB User ID",
         "server_label":    "Zone ID",
+        "product_type":    "topup",
     },
     "TOPUP_PUBG_MOBILE": {
         "name":            "🎯 PUBG Mobile",
         "validation_code": "pubgm",
         "need_server_id":  False,
         "player_label":    "PUBG UID",
+        "product_type":    "topup",
     },
 }
 
@@ -68,37 +71,6 @@ def _games_kb() -> InlineKeyboardMarkup:
         rows.append([InlineKeyboardButton(cfg["name"], callback_data=f"tg:{code}")])
     rows.append([InlineKeyboardButton("❌ Cancel", callback_data="topup_cancel")])
     return InlineKeyboardMarkup(rows)
-
-
-def _extract_services(result: dict) -> list:
-    """
-    FlashTopup API response থেকে services list বের করো।
-    সম্ভাব্য structures:
-      1. {"data": [list of services]}
-      2. {"data": {"service": [list], ...}}
-      3. {"data": {"services": [list], ...}}
-      4. [list of services]  (top-level)
-    """
-    if not result or "error" in result:
-        return []
-
-    raw = result.get("data")
-
-    # Case 1: data is already a list
-    if isinstance(raw, list):
-        return raw
-
-    # Case 2 & 3: data is a dict with "service" or "services" key
-    if isinstance(raw, dict):
-        services = raw.get("service") or raw.get("services") or []
-        if isinstance(services, list):
-            return services
-
-    # Case 4: top-level list
-    if isinstance(result, list):
-        return result
-
-    return []
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -140,118 +112,31 @@ async def topup_game_selected(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         parse_mode=ParseMode.HTML
     )
 
-    # ── Step 1: products list থেকে সব matching product_code খোঁজো ──
-    products_result = await get_products()
-    logger.warning(f"FlashTopup products raw: {str(products_result)[:500]}")
+    # Use product_code and product_type directly from GAME_CONFIGS
+    actual_code = game_code
+    actual_type = cfg.get("product_type", "topup")
+    result = await get_services(actual_code, actual_type)
 
-    # products_data flatten করো — যেকোনো nested structure handle করো
-    products_data = []
-    raw_prod = products_result.get("data")
-    if isinstance(raw_prod, list):
-        products_data = raw_prod
-    elif isinstance(raw_prod, dict):
-        # {"data": {"products": [...], "total": ...}} বা
-        # {"data": {"data": [...]}} nested হতে পারে
-        for key in ("products", "product", "items", "data"):
-            val = raw_prod.get(key)
-            if isinstance(val, list) and val and isinstance(val[0], dict):
-                products_data = val
-                break
-        # তবুও না পেলে dict values-এ list খোঁজো
-        if not products_data:
-            for val in raw_prod.values():
-                if isinstance(val, list) and val and isinstance(val[0], dict):
-                    products_data = val
-                    break
+    # API returns: {"data": {"service": [...packages...]}}
+    raw_data = result.get("data") or {}
+    packages = raw_data.get("service") or []
 
-    logger.warning(f"products_data count: {len(products_data)}, sample: {str(products_data[:1])[:200]}")
-
-    keywords = {
-        "TOPUP_FREE_FIRE":       ["free fire", "freefire"],
-        "TOPUP_MOBILE_LEGENDS":  ["mobile legends", "mlbb"],
-        "TOPUP_PUBG_MOBILE":     ["pubg mobile", "pubg"],
-    }
-    search_terms = keywords.get(game_code, [game_code.lower().replace("_", " ")])
-
-    # সব matching products collect করো (regional variants সহ)
-    matched_products = []
-    for prod in products_data:
-        prod_name = (prod.get("name") or prod.get("product_name") or "").lower()
-        prod_code = (prod.get("product_code") or prod.get("code") or "").lower()
-        if any(term in prod_name or term in prod_code for term in search_terms):
-            matched_products.append(prod)
-            logger.warning(f"Matched: {prod.get('product_code')}")
-
-    logger.warning(f"Total matched products: {len(matched_products)}")
-
-    # ── Step 2: সব matched products-এর services একসাথে load করো ──
-    all_packages = []
-
-    if matched_products:
-        for prod in matched_products:
-            p_code = prod.get("product_code") or prod.get("code") or game_code
-            p_type = prod.get("product_type") or prod.get("type") or "topup"
-            svc_result = await get_services(p_code, p_type)
-            svcs = _extract_services(svc_result)
-            logger.warning(f"Services for {p_code}: {len(svcs)} packages")
-            all_packages.extend(svcs)
-    else:
-        # matched_products empty — products API structure বোঝা যায়নি
-        # Admin-কে জানাও এবং products raw dump করো
-        logger.warning(f"No matched products! Full products_result: {str(products_result)[:1000]}")
-        for aid in ADMIN_IDS:
-            try:
-                await ctx.bot.send_message(
-                    aid,
-                    f"⚠️ Products match হয়নি!\n"
-                    f"<code>{str(products_result)[:600]}</code>",
-                    parse_mode="HTML"
-                )
-            except Exception:
-                pass
-
-    # duplicate service_code সরাও
-    seen = set()
-    packages = []
-    for pkg in all_packages:
-        sc = pkg.get("service_code", "")
-        if sc not in seen:
-            seen.add(sc)
-            packages.append(pkg)
-
-    # price অনুযায়ী sort করো
-    packages.sort(key=lambda p: float(p.get("price") or p.get("price_usd") or 0))
-
-    if not packages:
-        # Admin-কে actual response দেখাও
-        for aid in ADMIN_IDS:
-            try:
-                await ctx.bot.send_message(
-                    aid,
-                    f"🔴 FlashTopup API Response (no packages):\n"
-                    f"<code>{str(result)[:800]}</code>",
-                    parse_mode="HTML"
-                )
-            except Exception:
-                pass
+    if not result.get("success") or not packages:
         await query.edit_message_text(
             "❌ Packages লোড করা যায়নি। কিছুক্ষণ পরে আবার চেষ্টা করো।"
         )
         await query.message.reply_text("👇 Menu:", reply_markup=main_keyboard())
         return ConversationHandler.END
 
-    # service_code দিয়ে index করো
     ctx.user_data["topup_packages"] = {p["service_code"]: p for p in packages}
 
-    # ── Show packages keyboard ──
+    # Show packages keyboard
     rows = []
-    for pkg in packages[:30]:
-        price_raw = pkg.get("price_usd") or pkg.get("price") or 0
-        cost      = _markup_price(float(price_raw))
-        label     = pkg.get("name") or pkg.get("service_name") or pkg["service_code"]
-        emoji     = "💎" if "diamond" in label.lower() else "🔶"
+    for pkg in packages[:30]:   # max 30 packages
+        cost     = _markup_price(float(pkg.get("price") or pkg.get("price_usd") or 0))
+        label    = pkg.get("service_name") or pkg.get("name") or pkg["service_code"]
         rows.append([InlineKeyboardButton(
-            f"{emoji} {label} — ৳{cost:.0f}",
+            f"{'💎' if 'diamond' in label.lower() else '🔶'} {label} — ৳{cost:.0f}",
             callback_data=f"tp:{pkg['service_code'][:40]}"
         )])
     rows.append([InlineKeyboardButton("⬅️ Back", callback_data="topup_game_back")])
@@ -288,10 +173,10 @@ async def topup_package_selected(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
     service_code = query.data[3:]   # strip "tp:"
     packages     = ctx.user_data.get("topup_packages", {})
 
-    # button-এ code truncate হয়েছিল, তাই prefix match করো
+    # Find matching package (code was truncated to 40 chars in button)
     pkg = None
     for code, p in packages.items():
-        if code == service_code or code[:40] == service_code:
+        if code.startswith(service_code) or code[:40] == service_code:
             pkg = p
             service_code = code
             break
@@ -300,17 +185,14 @@ async def topup_package_selected(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
         await query.answer("Package পাওয়া যায়নি।", show_alert=True)
         return TOPUP_PACKAGE_SELECT
 
-    price_raw = pkg.get("price_usd") or pkg.get("price") or 0
-    cost      = _markup_price(float(price_raw))
-    label     = pkg.get("name") or pkg.get("service_name") or service_code
-
+    cost = _markup_price(float(pkg.get("price") or pkg.get("price_usd") or 0))
     ctx.user_data["topup_service_code"] = service_code
     ctx.user_data["topup_pkg"]          = pkg
     ctx.user_data["topup_cost"]         = cost
 
     cfg = ctx.user_data.get("topup_game_cfg", {})
     await query.edit_message_text(
-        f"✅ Selected: <b>{label}</b>\n"
+        f"✅ Selected: <b>{pkg.get('name', service_code)}</b>\n"
         f"💰 Cost: <code>{cost:.0f} Coins (৳{cost:.0f})</code>\n\n"
         f"👇 তোমার <b>{cfg.get('player_label', 'Player ID')}</b> লেখো:",
         parse_mode=ParseMode.HTML
@@ -341,6 +223,7 @@ async def topup_player_id(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return TOPUP_SERVER_ID
     else:
+        # No server_id needed — go straight to verify
         ctx.user_data["topup_server_id"] = "0"
         return await _verify_and_confirm(update, ctx)
 
@@ -370,12 +253,8 @@ async def _verify_and_confirm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     result = await check_player_id(player_id, server_id, cfg["validation_code"])
 
-    # valid check — "valid" key না থাকলে nickname থাকলেই valid ধরো
-    data      = result.get("data") or {}
-    is_valid  = data.get("valid") or bool(data.get("nickname"))
-
-    if result.get("error") or not is_valid:
-        err_msg = data.get("message") or "Player ID সঠিক নয়।"
+    if result.get("error") or not result.get("data", {}).get("valid"):
+        err_msg = result.get("data", {}).get("message") or "Player ID সঠিক নয়।"
         await msg.edit_text(
             f"❌ <b>Player ID ভুল!</b>\n\n{err_msg}\n\n"
             f"👇 সঠিক Player ID লেখো:",
@@ -383,7 +262,7 @@ async def _verify_and_confirm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return TOPUP_PLAYER_ID
 
-    nickname = data.get("nickname") or data.get("username") or "Unknown"
+    nickname = result.get("data", {}).get("nickname") or "Unknown"
     ctx.user_data["topup_nickname"] = nickname
 
     user_id  = update.effective_user.id
@@ -395,14 +274,12 @@ async def _verify_and_confirm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("❌ Cancel",  callback_data="topup_cancel")],
     ])
 
-    label  = pkg.get("name") or pkg.get("service_name") or ctx.user_data["topup_service_code"]
-    bal_ok = "✅" if balance >= cost else "❌"
-
+    bal_ok  = "✅" if balance >= cost else "❌"
     await msg.edit_text(
         f"📋 <b>Topup Confirmation</b>\n"
         f"{'─'*28}\n"
         f"🎮 Game: <b>{cfg['name']}</b>\n"
-        f"💎 Package: <code>{label}</code>\n"
+        f"💎 Package: <code>{pkg.get('service_name') or pkg.get('name', '')}</code>\n"
         f"👤 {cfg.get('player_label', 'ID')}: <code>{player_id}</code>\n"
         f"🏷️ Nickname: <b>{nickname}</b>\n"
         f"💵 Cost: <code>{cost:.0f} Coins (৳{cost:.0f})</code>\n"
@@ -435,10 +312,9 @@ async def topup_confirm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     pkg          = ctx.user_data["topup_pkg"]
     cfg          = ctx.user_data["topup_game_cfg"]
     nickname     = ctx.user_data.get("topup_nickname", "")
-    label        = pkg.get("name") or pkg.get("service_name") or service_code
 
     # Deduct balance
-    ok = await db.deduct_balance(user_id, cost, f"Topup: {label}")
+    ok = await db.deduct_balance(user_id, cost, f"Topup: {pkg.get('name', service_code)}")
     if not ok:
         await query.edit_message_text(
             "❌ <b>Balance কম!</b>\n\n💳 Buy Coins থেকে balance বাড়াও।",
@@ -454,13 +330,13 @@ async def topup_confirm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     reference_id = f"TG_{user_id}_{uuid.uuid4().hex[:10]}"
     result       = await place_order(service_code, player_id, server_id, reference_id)
 
-    order_ok = result.get("success") is True or result.get("code") in (None, "SUCCESS", "200")
-
-    if not order_ok:
+    if result.get("error") or result.get("code") not in (None, "SUCCESS"):
         # Refund
         await db.add_balance(user_id, cost, "Refund: Topup failed")
         err = result.get("message") or str(result.get("error", "Unknown error"))
 
+        # Admin notify
+        from config import ADMIN_IDS
         for admin_id in ADMIN_IDS:
             try:
                 await query.message.bot.send_message(
@@ -475,34 +351,32 @@ async def topup_confirm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 pass
 
         await query.edit_message_text(
-            "⚠️ Order টি process করা যায়নি। Balance refund হয়ে গেছে।\n"
+            "⚠️ Order টি process হচ্ছে।\n"
             "সমস্যা হলে যোগাযোগ করো: @shuvo_9882",
         )
         await query.message.reply_text("👇 Menu:", reply_markup=main_keyboard())
         ctx.user_data.clear()
         return ConversationHandler.END
 
-    order_data = result.get("data") or {}
-    order_id   = order_data.get("order_id") or reference_id
-    status     = order_data.get("status") or "Processing"
-
+    order_id = result.get("data", {}).get("order_id") or reference_id
+    # Save to DB
     await db.save_topup_order(
         user_id      = user_id,
         order_id     = order_id,
         reference_id = reference_id,
         game         = cfg["name"],
-        package      = label,
+        package      = pkg.get("name", service_code),
         player_id    = player_id,
         nickname     = nickname,
         cost         = cost,
-        status       = status,
+        status       = result.get("data", {}).get("status", "Processing"),
     )
 
     await query.edit_message_text(
         f"✅ <b>Order Successful!</b>\n"
         f"{'─'*28}\n"
         f"🎮 Game: <b>{cfg['name']}</b>\n"
-        f"💎 Package: <code>{label}</code>\n"
+        f"💎 Package: <code>{pkg.get('service_name') or pkg.get('name', '')}</code>\n"
         f"👤 Nickname: <b>{nickname}</b>\n"
         f"🆔 Order ID: <code>{order_id}</code>\n\n"
         f"⏳ ৫-১০ মিনিটের মধ্যে diamonds পাবে!\n"
