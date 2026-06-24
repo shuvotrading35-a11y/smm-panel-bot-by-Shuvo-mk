@@ -79,10 +79,10 @@ MAX_ORDERS_PER_DAY = 50  # max orders a user can place per day
 # (coins, price_bdt) — ইচ্ছামতো পরিবর্তন করো
 # বড় package-এ প্রতি coin সস্তা — user বেশি কিনতে উৎসাহিত হবে
 COIN_PACKAGES = [
-    (100,  "৳100"),    # ৳0.15/coin  — starter
-    (300,  "৳300"),    # ৳0.13/coin  — small
-    (700,  "৳700"),    # ৳0.12/coin  — medium
-    (1500, "৳1500"),   # ৳0.11/coin  — popular ⭐
-    (3000, "৳3000"),   # ৳0.11/coin  — best value 🔥
-    (7000, "৳7000"),   # ৳0.10/coin  — premium 💎
+    (100,  "৳15"),    # ৳0.15/coin  — starter
+    (300,  "৳40"),    # ৳0.13/coin  — small
+    (700,  "৳85"),    # ৳0.12/coin  — medium
+    (1500, "৳170"),   # ৳0.11/coin  — popular ⭐
+    (3000, "৳320"),   # ৳0.11/coin  — best value 🔥
+    (7000, "৳700"),   # ৳0.10/coin  — premium 💎
 ]
