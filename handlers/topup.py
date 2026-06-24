@@ -96,11 +96,13 @@ async def topup_game_selected(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     try:
         result      = await get_services(game_code, cfg.get("product_type", "topup"))
+        result      = result or {}
         raw_data    = result.get("data") or {}
         packages    = list(raw_data.get("service") or []) if isinstance(raw_data, dict) else []
-        api_success = result.get("success", False)
+        api_success = bool(result.get("success", False))
     except Exception as e:
         logger.error(f"get_services error: {e}")
+        result      = {}
         packages    = []
         api_success = False
 
