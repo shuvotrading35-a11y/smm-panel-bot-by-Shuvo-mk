@@ -109,13 +109,54 @@ async def topup_game_selected(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         parse_mode=ParseMode.HTML
     )
 
-    result = await get_services(game_code, "topup")
-    if "error" in result or not result.get("data"):
+    # First fetch products list to get actual product_code and product_type
+    products_result = await get_products()
+    logger.warning(f"FlashTopup products: {str(products_result)[:300]}")
+
+    products_data = products_result.get("data") or []
+    actual_code = game_code
+    actual_type = "topup"
+
+    # Find matching product by keyword search
+    keywords = {
+        "TOPUP_FREE_FIRE":       ["free fire", "freefire", "ff"],
+        "TOPUP_MOBILE_LEGENDS":  ["mobile legends", "mlbb", "ml"],
+        "TOPUP_PUBG_MOBILE":     ["pubg mobile", "pubg"],
+    }
+    search_terms = keywords.get(game_code, [game_code.lower()])
+
+    for prod in products_data:
+        prod_name = (prod.get("name") or "").lower()
+        if any(term in prod_name for term in search_terms):
+            actual_code = prod.get("product_code") or prod.get("code") or game_code
+            actual_type = prod.get("product_type") or prod.get("type") or "topup"
+            logger.warning(f"Matched product: {actual_code} / {actual_type}")
+            break
+
+    result = await get_services(actual_code, actual_type)
+    logger.warning(f"FlashTopup services result: {result}")
+
+    # "data" key না থেকে সরাসরি list আসতে পারে
+    data = result.get("data") or (result if isinstance(result, list) else [])
+    if "error" in result or not data:
+        # Admin-কে actual response দেখাও
+        from config import ADMIN_IDS
+        for aid in ADMIN_IDS:
+            try:
+                await ctx.bot.send_message(
+                    aid,
+                    f"🔴 FlashTopup API Response:\n<code>{str(result)[:500]}</code>",
+                    parse_mode="HTML"
+                )
+            except Exception:
+                pass
         await query.edit_message_text(
             "❌ Packages লোড করা যায়নি। কিছুক্ষণ পরে আবার চেষ্টা করো।"
         )
         await query.message.reply_text("👇 Menu:", reply_markup=main_keyboard())
         return ConversationHandler.END
+
+    result = {"data": data}
 
     packages = result["data"]
     ctx.user_data["topup_packages"] = {p["service_code"]: p for p in packages}
