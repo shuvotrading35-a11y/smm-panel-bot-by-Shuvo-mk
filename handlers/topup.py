@@ -116,10 +116,28 @@ async def topup_game_selected(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     actual_code = game_code
     actual_type = cfg.get("product_type", "topup")
     result = await get_services(actual_code, actual_type)
+    logger.warning(f"get_services raw result: {result}")
+
+    # Send to admin for debugging
+    from config import ADMIN_IDS
+    for aid in ADMIN_IDS:
+        try:
+            await ctx.bot.send_message(
+                aid,
+                f"🔴 FlashTopup API Response (no packages):\n<code>{str(result)[:800]}</code>",
+                parse_mode="HTML"
+            )
+        except Exception:
+            pass
 
     # API returns: {"data": {"service": [...packages...]}}
     raw_data = result.get("data") or {}
-    packages = raw_data.get("service") or []
+    if isinstance(raw_data, dict):
+        packages = raw_data.get("service") or raw_data.get("services") or []
+    elif isinstance(raw_data, list):
+        packages = raw_data
+    else:
+        packages = []
 
     if not result.get("success") or not packages:
         await query.edit_message_text(
