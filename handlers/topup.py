@@ -13,7 +13,7 @@ from api.flashtopup_api import (
     get_services, check_player_id, place_order
 )
 from keyboards.reply import main_keyboard
-from config import ADMIN_IDS, SERVICE_MARKUP_PCT
+from config import ADMIN_IDS, TOPUP_MARKUP_PCT
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +50,7 @@ GAME_CONFIGS = {
 
 def _markup_price(cost_usd: float) -> float:
     cost_bdt  = cost_usd * USD_TO_BDT
-    after_mkp = cost_bdt * (1 + SERVICE_MARKUP_PCT / 100)
+    after_mkp = cost_bdt * (1 + TOPUP_MARKUP_PCT / 100)
     return round(after_mkp, 2)
 
 
