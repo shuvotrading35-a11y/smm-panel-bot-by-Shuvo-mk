@@ -100,6 +100,27 @@ async def topup_game_selected(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         raw_data    = result.get("data") or {}
         packages    = list(raw_data.get("service") or []) if isinstance(raw_data, dict) else []
         api_success = bool(result.get("success", False))
+        # Save validation_code from Product API response
+        val_code = (raw_data.get("validation_code") or
+                    raw_data.get("check_id_validation_code") or
+                    raw_data.get("validation_id") or
+                    cfg.get("validation_code", ""))
+        ctx.user_data["topup_validation_code"] = val_code
+        # Log all keys for debug
+        logger.warning(f"raw_data keys: {list(raw_data.keys())}, val_code: {val_code}")
+        # Notify admin of product data keys
+        from config import ADMIN_IDS
+        for aid in ADMIN_IDS:
+            try:
+                await ctx.bot.send_message(
+                    aid,
+                    f"🔍 Product data keys:\n<code>{list(raw_data.keys())}</code>\n"
+                    f"validation_code: <code>{val_code or 'NOT FOUND'}</code>\n"
+                    f"Full data: <code>{str(raw_data)[:400]}</code>",
+                    parse_mode="HTML"
+                )
+            except Exception:
+                pass
     except Exception as e:
         logger.error(f"get_services error: {e}")
         result      = {}
@@ -215,35 +236,29 @@ async def _verify_and_confirm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     pkg       = ctx.user_data["topup_pkg"]
     cost      = ctx.user_data["topup_cost"]
 
-    result   = await check_player_id(player_id, server_id, cfg["validation_code"])
-    result   = result or {}
-    data     = result.get("data") or {}
+    val_code = ctx.user_data.get("topup_validation_code", "")
 
-    # Admin-এ full response দেখাও debug করতে
-    from config import ADMIN_IDS
-    for aid in ADMIN_IDS:
-        try:
-            await update.effective_message.bot.send_message(
-                aid,
-                f"🔍 check_player_id response:\n<code>{str(result)[:600]}</code>\n"
-                f"validation_code used: <code>{cfg['validation_code']}</code>",
-                parse_mode="HTML"
+    if val_code:
+        result   = await check_player_id(player_id, server_id, val_code)
+        result   = result or {}
+        data     = result.get("data") or {}
+
+        if not result.get("success") or not data.get("valid"):
+            err_msg = (data.get("message") or
+                      (result.get("error", {}).get("message") if isinstance(result.get("error"), dict) else None) or
+                      "Player ID সঠিক নয়।")
+            await msg.edit_text(
+                f"❌ <b>Player ID ভুল!</b>\n\n{err_msg}\n\n"
+                f"👇 সঠিক Player ID লেখো:",
+                parse_mode=ParseMode.HTML
             )
-        except Exception:
-            pass
+            return TOPUP_PLAYER_ID
 
-    if not result.get("success") or not data.get("valid"):
-        err_msg = (data.get("message") or
-                   (result.get("error", {}).get("message") if isinstance(result.get("error"), dict) else None) or
-                   "Player ID সঠিক নয়।")
-        await msg.edit_text(
-            f"❌ <b>Player ID ভুল!</b>\n\n{err_msg}\n\n"
-            f"👇 সঠিক Player ID লেখো:",
-            parse_mode=ParseMode.HTML
-        )
-        return TOPUP_PLAYER_ID
+        nickname = data.get("nickname") or data.get("username") or f"UID: {player_id}"
+    else:
+        # validation_code not found — skip validation, proceed directly
+        nickname = f"UID: {player_id}"
 
-    nickname = data.get("nickname") or "Unknown"
     ctx.user_data["topup_nickname"] = nickname
 
     user_id = update.effective_user.id
