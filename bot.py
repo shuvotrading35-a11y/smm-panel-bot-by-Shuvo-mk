@@ -42,7 +42,7 @@ from handlers.admin import (
     create_code_amount_handler, create_code_uses_handler,
     broadcast, broadcast_type_callback, broadcast_content_handler,
     order_manager, admin_order_search_handler, api_manager,
-    sync_services, test_api, service_search, force_join_admin, set_updates_channel,
+    sync_services, test_api, service_search, force_join_admin, set_updates_channel, topup_debug,
     add_channel_cmd, remove_channel_cmd, list_channels_cmd,
     ban_system, ban_id_handler, support_manager,
     ticket_reply_callback, ticket_reply_text_handler,
@@ -151,6 +151,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("testapi",        test_api))
     app.add_handler(CommandHandler("search",         service_search))
     app.add_handler(CommandHandler("setupdates",     set_updates_channel))
+    app.add_handler(CommandHandler("topupdebug",     topup_debug))
     app.add_handler(CommandHandler("addchannel",     add_channel_cmd))
     app.add_handler(CommandHandler("removechannel",  remove_channel_cmd))
     app.add_handler(CommandHandler("channels",       list_channels_cmd))
