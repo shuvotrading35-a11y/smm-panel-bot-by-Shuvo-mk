@@ -69,15 +69,18 @@ LOG_PAYMENT_NAME  = os.getenv("LOG_PAYMENT_NAME",  "CSB")
 RATE_LIMIT_SECONDS = 1
 MAX_ORDERS_PER_DAY = 50
 
+
 # ── Pricing Markup ────────────────────────────────────
-SERVICE_MARKUP_PCT = float(os.getenv("SERVICE_MARKUP_PCT", "30"))
+SERVICE_MARKUP_PCT = float(os.getenv("SERVICE_MARKUP_PCT", "30"))   # SMM services markup
+TOPUP_MARKUP_PCT   = float(os.getenv("TOPUP_MARKUP_PCT",   "20"))   # Game topup markup
 
 # ── Coin Packages ─────────────────────────────────────
 COIN_PACKAGES = [
-    (30,   "৳30"),
-    (55,   "৳55"),
-    (100,  "৳100"),
-    (170,  "৳170"),
-    (230,  "৳230"),
-    (420,  "৳420"),
+    (50,   "৳50"),
+    (100,   "৳100"),
+    (200,  "৳200"),
+    (300,  "৳300"),
+    (500,  "৳500"),
+    (700,  "৳700"),
+				(1000,   "৳1000")
 ]
