@@ -224,6 +224,18 @@ async def _verify_and_confirm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         result   = result or {}
         data     = result.get("data") or {}
 
+        # Send full response to admin for debugging
+        from config import ADMIN_IDS
+        for aid in ADMIN_IDS:
+            try:
+                await update.effective_message.bot.send_message(
+                    aid,
+                    f"🔍 check_player_id full response:\n<code>{str(result)[:600]}</code>",
+                    parse_mode="HTML"
+                )
+            except Exception:
+                pass
+
         if not result.get("success") or not data.get("valid"):
             err_msg = (data.get("message") or
                       (result.get("error", {}).get("message") if isinstance(result.get("error"), dict) else None) or
@@ -235,7 +247,12 @@ async def _verify_and_confirm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             )
             return TOPUP_PLAYER_ID
 
-        nickname = data.get("nickname") or data.get("username") or f"UID: {player_id}"
+        # Log full check_player_id response to find nickname field
+        logger.warning(f"check_player_id data fields: {list(data.keys()) if isinstance(data, dict) else data}")
+        nickname = (data.get("nickname") or data.get("username") or
+                    data.get("name") or data.get("player_name") or
+                    data.get("game_name") or data.get("character_name") or
+                    f"UID: {player_id}")
     else:
         # validation_code not found — skip validation, proceed directly
         nickname = f"UID: {player_id}"
