@@ -249,9 +249,8 @@ async def _verify_and_confirm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
         # Log full check_player_id response to find nickname field
         logger.warning(f"check_player_id data fields: {list(data.keys()) if isinstance(data, dict) else data}")
-        nickname = (data.get("nickname") or data.get("username") or
-                    data.get("name") or data.get("player_name") or
-                    data.get("game_name") or data.get("character_name") or
+        nickname = (data.get("account_name") or data.get("nickname") or
+                    data.get("username") or data.get("name") or
                     f"UID: {player_id}")
     else:
         # validation_code not found — skip validation, proceed directly
