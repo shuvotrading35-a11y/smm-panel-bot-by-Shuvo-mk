@@ -530,10 +530,15 @@ async def force_join_admin(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     lines    = ["📣 <b>Force Join Channels</b>\n"]
     if channels:
         for ch in channels:
-            lines.append(f"• <code>{ch['channel_id']}</code> — {ch.get('channel_name','')}")
+            link = ch.get("invite_link") or "<i>(no link set!)</i>"
+            lines.append(
+                f"• ID: <code>{ch['channel_id']}</code>\n"
+                f"  Name: <code>{ch.get('channel_name','')}</code>\n"
+                f"  Link: <code>{link}</code>\n"
+            )
     else:
         lines.append("<i>No channels set.</i>")
-    lines.append("\n/addchannel — Add\n/removechannel — Remove")
+    lines.append("\n/addchannel @channel link name — Add\n/removechannel — Remove")
     await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
 
 
@@ -549,6 +554,37 @@ async def add_channel_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     name    = args[2] if len(args) > 2 else ch_id
     await db.add_force_channel(ch_id, name, link)
     await update.message.reply_text(f"✅ Channel <code>{ch_id}</code> added to force join.", parse_mode=ParseMode.HTML)
+
+
+async def topup_debug(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Admin: /topupdebug — show full FlashTopup products API response"""
+    if not is_admin(update.effective_user.id):
+        return
+    from api.flashtopup_api import get_products, get_services
+    await update.message.reply_text("⏳ Fetching products...")
+
+    # Get products list
+    prod_result = await get_products()
+    prod_data   = prod_result.get("data") or []
+    if isinstance(prod_data, list):
+        ff_products = [p for p in prod_data if "free" in str(p).lower() or "fire" in str(p).lower() or "FF" in str(p)]
+    else:
+        ff_products = []
+
+    await update.message.reply_text(
+        f"📋 FF Products found: {len(ff_products)}\n"
+        f"<code>{str(ff_products[:2])[:600]}</code>",
+        parse_mode=ParseMode.HTML
+    )
+
+    # Get services for FF Bangladesh
+    svc_result = await get_services("TOPUP_FREE_FIRE_BANGLADESH_18", "topup")
+    raw        = svc_result.get("data") or {}
+    await update.message.reply_text(
+        f"📋 Services raw_data keys: <code>{list(raw.keys()) if isinstance(raw, dict) else type(raw)}</code>\n\n"
+        f"Full: <code>{str(raw)[:600]}</code>",
+        parse_mode=ParseMode.HTML
+    )
 
 
 async def set_updates_channel(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
