@@ -1,6 +1,26 @@
 from telegram import ReplyKeyboardMarkup, KeyboardButton
 
 
+def service_menu_keyboard() -> ReplyKeyboardMarkup:
+    """📊 Services List বাটনে ক্লিক করলে এই sub-menu আসবে"""
+    return ReplyKeyboardMarkup([
+        ["🌐 ꜱᴍᴍ ꜱᴇʀᴠɪᴄᴇ"],
+        ["🎮 ᴛᴏᴘ ᴜᴘ ꜱᴇʀᴠɪᴄᴇ"],
+        ["✈️ ᴛᴇʟᴇɢʀᴀᴍ ꜱᴇʀᴠɪᴄᴇ"],
+        ["🔙 ʙᴀᴄᴋ"],
+    ], resize_keyboard=True)
+
+
+def order_menu_keyboard() -> ReplyKeyboardMarkup:
+    """🛒 New Order বাটনে ক্লিক করলে এই sub-menu আসবে"""
+    return ReplyKeyboardMarkup([
+        ["🌐 ꜱᴍᴍ ᴏʀᴅᴇʀ"],
+        ["🎮 ᴛᴏᴘ ᴜᴘ ᴏʀᴅᴇʀ"],
+        ["✈️ ᴛᴇʟᴇɢʀᴀᴍ ᴏʀᴅᴇʀ"],
+        ["🔙 ʙᴀᴄᴋ"],
+    ], resize_keyboard=True)
+
+
 def main_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup([
         ["📊 ꜱᴇʀᴠɪᴄᴇꜱ ʟɪꜱᴛ"],
