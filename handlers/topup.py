@@ -32,6 +32,7 @@ COIN_TO_BDT = 1.0
 GAME_CONFIGS = {
     "TOPUP_FREE_FIRE_BANGLADESH_18": {
         "name":            "🔥 Free Fire Bangladesh",
+        "product_id":      18,
         "validation_code": "freefire_bd",
         "need_server_id":  False,
         "player_label":    "Free Fire UID",
@@ -39,10 +40,19 @@ GAME_CONFIGS = {
     },
     "TOPUP_MOBILE_LEGENDS": {
         "name":            "⚔️ Mobile Legends",
+        "product_id":      3,
         "validation_code": "mlbb",
         "need_server_id":  True,
         "player_label":    "MLBB User ID",
         "server_label":    "Zone ID",
+        "product_type":    "topup",
+    },
+    "TOPUP_PUBG_MOBILE": {
+        "name":            "🎯 PUBG Mobile",
+        "product_id":      7,
+        "validation_code": "pubgm",
+        "need_server_id":  False,
+        "player_label":    "PUBG Player ID",
         "product_type":    "topup",
     },
 }
@@ -95,12 +105,12 @@ async def topup_game_selected(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     )
 
     try:
-        result      = await get_services(game_code, cfg.get("product_type", "topup"))
+        product_id  = cfg.get("product_id")
+        result      = await get_services(product_id, cfg.get("product_type", "topup"))
         result      = result or {}
         raw_data    = result.get("data") or {}
         packages    = list(raw_data.get("service") or []) if isinstance(raw_data, dict) else []
         api_success = bool(result.get("success", False))
-        # Use validation_code from GAME_CONFIGS (fetched via /topupdebug)
         ctx.user_data["topup_validation_code"] = cfg.get("validation_code", "")
     except Exception as e:
         logger.error(f"get_services error: {e}")
@@ -216,16 +226,13 @@ async def _verify_and_confirm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     cfg       = ctx.user_data["topup_game_cfg"]
     pkg       = ctx.user_data["topup_pkg"]
     cost      = ctx.user_data["topup_cost"]
-
-    val_code = ctx.user_data.get("topup_validation_code", "")
+    val_code  = ctx.user_data.get("topup_validation_code", "")
 
     if val_code:
-        result   = await check_player_id(player_id, server_id, val_code)
-        result   = result or {}
-        data     = result.get("data") or {}
+        result = await check_player_id(player_id, server_id, val_code)
+        result = result or {}
+        data   = result.get("data") or {}
 
-        # Send full response to admin for debugging
-        from config import ADMIN_IDS
         for aid in ADMIN_IDS:
             try:
                 await update.effective_message.bot.send_message(
@@ -237,9 +244,12 @@ async def _verify_and_confirm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 pass
 
         if not result.get("success") or not data.get("valid"):
-            err_msg = (data.get("message") or
-                      (result.get("error", {}).get("message") if isinstance(result.get("error"), dict) else None) or
-                      "Player ID সঠিক নয়।")
+            err_msg = (
+                data.get("message") or
+                (result.get("error", {}).get("message")
+                 if isinstance(result.get("error"), dict) else None) or
+                "Player ID সঠিক নয়।"
+            )
             await msg.edit_text(
                 f"❌ <b>Player ID ভুল!</b>\n\n{err_msg}\n\n"
                 f"👇 সঠিক Player ID লেখো:",
@@ -247,13 +257,13 @@ async def _verify_and_confirm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             )
             return TOPUP_PLAYER_ID
 
-        # Log full check_player_id response to find nickname field
         logger.warning(f"check_player_id data fields: {list(data.keys()) if isinstance(data, dict) else data}")
-        nickname = (data.get("account_name") or data.get("nickname") or
-                    data.get("username") or data.get("name") or
-                    f"UID: {player_id}")
+        nickname = (
+            data.get("account_name") or data.get("nickname") or
+            data.get("username") or data.get("name") or
+            f"UID: {player_id}"
+        )
     else:
-        # validation_code not found — skip validation, proceed directly
         nickname = f"UID: {player_id}"
 
     ctx.user_data["topup_nickname"] = nickname
