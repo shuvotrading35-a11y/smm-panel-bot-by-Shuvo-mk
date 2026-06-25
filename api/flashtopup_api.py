@@ -78,10 +78,10 @@ async def get_products(page: int = 1, per_page: int = 500) -> dict:
     return await _get("/products", {"page": page, "per_page": per_page})
 
 
-async def get_services(product_code: str, product_type: str) -> dict:
+async def get_services(product_id: int, product_type: str) -> dict:
     """Get package list for a specific product."""
     return await _get("/services", {
-        "product_code": product_code,
+        "product_id":   product_id,
         "product_type": product_type
     })
 
