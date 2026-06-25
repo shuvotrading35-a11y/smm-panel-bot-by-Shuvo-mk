@@ -32,7 +32,7 @@ COIN_TO_BDT = 1.0
 GAME_CONFIGS = {
     "TOPUP_FREE_FIRE_BANGLADESH_18": {
         "name":            "🔥 Free Fire Bangladesh",
-        "validation_code": "TOPUP_FREE_FIRE_BANGLADESH_18",
+        "validation_code": "freefire_bd",
         "need_server_id":  False,
         "player_label":    "Free Fire UID",
         "product_type":    "topup",
@@ -100,27 +100,8 @@ async def topup_game_selected(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         raw_data    = result.get("data") or {}
         packages    = list(raw_data.get("service") or []) if isinstance(raw_data, dict) else []
         api_success = bool(result.get("success", False))
-        # Save validation_code from Product API response
-        val_code = (raw_data.get("validation_code") or
-                    raw_data.get("check_id_validation_code") or
-                    raw_data.get("validation_id") or
-                    cfg.get("validation_code", ""))
-        ctx.user_data["topup_validation_code"] = val_code
-        # Log all keys for debug
-        logger.warning(f"raw_data keys: {list(raw_data.keys())}, val_code: {val_code}")
-        # Notify admin of product data keys
-        from config import ADMIN_IDS
-        for aid in ADMIN_IDS:
-            try:
-                await ctx.bot.send_message(
-                    aid,
-                    f"🔍 Product data keys:\n<code>{list(raw_data.keys())}</code>\n"
-                    f"validation_code: <code>{val_code or 'NOT FOUND'}</code>\n"
-                    f"Full data: <code>{str(raw_data)[:400]}</code>",
-                    parse_mode="HTML"
-                )
-            except Exception:
-                pass
+        # Use validation_code from GAME_CONFIGS (fetched via /topupdebug)
+        ctx.user_data["topup_validation_code"] = cfg.get("validation_code", "")
     except Exception as e:
         logger.error(f"get_services error: {e}")
         result      = {}
