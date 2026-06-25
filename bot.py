@@ -15,7 +15,8 @@ from handlers.user import (
     global_force_join_check, check_banned,
     buy_coins, payment_method_callback, deposit_amount_handler,
     deposit_txn_handler, package_callback, services_list, search_service_prompt, category_callback,
-    service_callback, new_order, order_start_callback,
+    service_callback, services_list_smm, services_list_telegram,
+    new_order, new_order_smm, new_order_telegram, back_to_main, order_start_callback,
     order_platform_handler, order_category_handler, order_service_handler, order_link_handler,
     order_quantity_handler, order_confirm_callback, my_orders,
     order_refresh_callback, order_refill_callback,
@@ -125,6 +126,8 @@ def build_app() -> Application:
     topup_conv = ConversationHandler(
         entry_points=[
             MessageHandler(filters.Regex(r"^🎮 ɢᴀᴍᴇ ᴛᴏᴘᴜᴘ$"), topup_start),
+            MessageHandler(filters.Regex(r"^🎮 ᴛᴏᴘ ᴜᴘ ꜱᴇʀᴠɪᴄᴇ$"), topup_start),
+            MessageHandler(filters.Regex(r"^🎮 ᴛᴏᴘ ᴜᴘ ᴏʀᴅᴇʀ$"), topup_start),
         ],
         states={
             TOPUP_GAME_SELECT:    [CallbackQueryHandler(topup_game_selected,    pattern=r"^(tg:.+|topup_cancel)$")],
@@ -184,6 +187,8 @@ def build_app() -> Application:
     order_conv = ConversationHandler(
         entry_points=[
             MessageHandler(filters.Regex(r"^🛒 ɴᴇᴡ ᴏʀᴅᴇʀ$"), new_order),
+            MessageHandler(filters.Regex(r"^🌐 ꜱᴍᴍ ᴏʀᴅᴇʀ$"), new_order_smm),
+            MessageHandler(filters.Regex(r"^✈️ ᴛᴇʟᴇɢʀᴀᴍ ᴏʀᴅᴇʀ$"), new_order_telegram),
             CallbackQueryHandler(order_start_callback, pattern=r"^order_start:"),
         ],
         states={
@@ -413,6 +418,9 @@ def build_app() -> Application:
     #  SIMPLE REPLY KEYBOARD HANDLERS (MessageHandlers)
     # ═══════════════════════════════════════════════════════════════
     app.add_handler(MessageHandler(filters.Regex(r"^📊 ꜱᴇʀᴠɪᴄᴇꜱ ʟɪꜱᴛ$"),  services_list))
+    app.add_handler(MessageHandler(filters.Regex(r"^🌐 ꜱᴍᴍ ꜱᴇʀᴠɪᴄᴇ$"),    services_list_smm))
+    app.add_handler(MessageHandler(filters.Regex(r"^✈️ ᴛᴇʟᴇɢʀᴀᴍ ꜱᴇʀᴠɪᴄᴇ$"), services_list_telegram))
+    app.add_handler(MessageHandler(filters.Regex(r"^🔙 ʙᴀᴄᴋ$"),             back_to_main))
     app.add_handler(MessageHandler(filters.Regex(r"^🔍 ꜱᴇᴀʀᴄʜ ꜱᴇʀᴠɪᴄᴇ$"), search_service_prompt))
     app.add_handler(MessageHandler(filters.Regex(r"^👤 ᴍʏ ᴀᴄᴄᴏᴜɴᴛ$"),     my_account))
     app.add_handler(MessageHandler(filters.Regex(r"^📦 ᴍʏ ᴏʀᴅᴇʀꜱ$"),      my_orders))
