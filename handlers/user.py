@@ -6,7 +6,7 @@ from telegram.constants import ParseMode
 import database as db
 from config import (ADMIN_IDS, BOT_NAME, DEVELOPER, DAILY_BONUS_AMOUNT,
                     REFERRAL_REWARD, VIP_PLANS, COIN_RATE, BOT_USERNAME)
-from keyboards.reply import main_keyboard, cancel_keyboard, back_keyboard
+from keyboards.reply import main_keyboard, cancel_keyboard, back_keyboard, service_menu_keyboard, order_menu_keyboard
 from keyboards.inline import (
     leaderboard_kb, wallet_kb, account_kb, vip_plans_kb,
     categories_kb, platform_categories_kb, order_categories_kb, services_kb, service_detail_kb, force_join_kb,
@@ -448,6 +448,15 @@ async def search_service_prompt(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def services_list(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "📊 <b>Services List</b>\n\nকোন সার্ভিস দেখতে চাও?",
+        reply_markup=service_menu_keyboard(),
+        parse_mode=ParseMode.HTML
+    )
+
+
+async def services_list_smm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """SMM Service sub-menu থেকে — platform list দেখাও"""
     cats = await db.get_categories()
     if not cats:
         await update.message.reply_text(
@@ -455,12 +464,36 @@ async def services_list(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             "Admin needs to sync services from the API panel."
         )
         return
+    # শুধু non-telegram, non-topup categories
+    smm_cats = [c for c in cats if "telegram" not in c.lower()]
+    if not smm_cats:
+        smm_cats = cats
     upd_ch = await db.get_setting("updates_channel", "")
     await update.message.reply_text(
-        "📊 <b>Services List</b>\n\nChoose a platform:",
-        reply_markup=categories_kb(cats, CATEGORY_ICONS, upd_ch),
+        "🌐 <b>SMM Services</b>\n\nChoose a platform:",
+        reply_markup=categories_kb(smm_cats, CATEGORY_ICONS, upd_ch),
         parse_mode=ParseMode.HTML
     )
+
+
+async def services_list_telegram(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Telegram Service sub-menu থেকে — শুধু telegram categories"""
+    cats = await db.get_categories()
+    tg_cats = [c for c in cats if "telegram" in c.lower()]
+    if not tg_cats:
+        await update.message.reply_text(
+            "⚠️ No Telegram services available.\n"
+            "Admin needs to sync Telegram services.",
+            reply_markup=service_menu_keyboard()
+        )
+        return
+    upd_ch = await db.get_setting("updates_channel", "")
+    await update.message.reply_text(
+        "✈️ <b>Telegram Services</b>\n\nChoose a category:",
+        reply_markup=categories_kb(tg_cats, CATEGORY_ICONS, upd_ch),
+        parse_mode=ParseMode.HTML
+    )
+
 
 
 async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -622,17 +655,50 @@ async def service_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 #  NEW ORDER FLOW
 # ═══════════════════════════════════════════════════════════════════
 async def new_order(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "🛒 <b>New Order</b>\n\nকোন ধরনের অর্ডার দিতে চাও?",
+        reply_markup=order_menu_keyboard(),
+        parse_mode=ParseMode.HTML
+    )
+    return ConversationHandler.END
+
+
+async def new_order_smm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """SMM Order — platform selection দিয়ে order শুরু"""
     cats = await db.get_categories()
     if not cats:
         await update.message.reply_text("⚠️ No services available. Try again later.")
         return ConversationHandler.END
+    smm_cats = [c for c in cats if "telegram" not in c.lower()]
+    if not smm_cats:
+        smm_cats = cats
     upd_ch = await db.get_setting("updates_channel", "")
     await update.message.reply_text(
-        "🛒 <b>New Order</b>\n\nStep 1 — Choose a platform:",
-        reply_markup=categories_kb(cats, CATEGORY_ICONS, upd_ch),
+        "🌐 <b>SMM Order</b>\n\nStep 1 — Choose a platform:",
+        reply_markup=categories_kb(smm_cats, CATEGORY_ICONS, upd_ch),
         parse_mode=ParseMode.HTML
     )
     return ORDER_PLATFORM
+
+
+async def new_order_telegram(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Telegram Order — শুধু telegram categories"""
+    cats = await db.get_categories()
+    tg_cats = [c for c in cats if "telegram" in c.lower()]
+    if not tg_cats:
+        await update.message.reply_text(
+            "⚠️ No Telegram services available.",
+            reply_markup=order_menu_keyboard()
+        )
+        return ConversationHandler.END
+    upd_ch = await db.get_setting("updates_channel", "")
+    await update.message.reply_text(
+        "✈️ <b>Telegram Order</b>\n\nStep 1 — Choose a category:",
+        reply_markup=categories_kb(tg_cats, CATEGORY_ICONS, upd_ch),
+        parse_mode=ParseMode.HTML
+    )
+    return ORDER_PLATFORM
+
 
 
 async def order_start_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -1415,6 +1481,15 @@ async def updates_channel(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 # ═══════════════════════════════════════════════════════════════════
 #  CANCEL
 # ═══════════════════════════════════════════════════════════════════
+async def back_to_main(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """🔙 Back বাটন — main menu তে ফেরত"""
+    ctx.user_data.clear()
+    await update.message.reply_text(
+        "🏠 Main Menu",
+        reply_markup=main_keyboard()
+    )
+
+
 async def cancel_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ctx.user_data.clear()
     await update.message.reply_text(
