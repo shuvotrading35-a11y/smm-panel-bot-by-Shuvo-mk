@@ -577,15 +577,12 @@ async def topup_debug(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         parse_mode=ParseMode.HTML
     )
 
-    # Show ALL FF products with their validation_code
-    all_ff = []
-    if isinstance(prod_data, list):
-        all_ff = [p for p in prod_data if "free" in str(p.get("name","")).lower() or "fire" in str(p.get("name","")).lower()]
-    lines = []
-    for p in all_ff:
-        lines.append(f"• {p.get('product_code')}\n  val: <code>{p.get('validation_code','N/A')}</code>")
+    # Test check_player_id directly
+    from api.flashtopup_api import check_player_id
+    await update.message.reply_text("⏳ Testing check-id with UID 2296094466...")
+    result = await check_player_id("2296094466", "", "freefire_bd")
     await update.message.reply_text(
-        "📋 All FF Products:\n\n" + "\n".join(lines),
+        f"🔍 check_player_id response:\n<code>{str(result)[:800]}</code>",
         parse_mode=ParseMode.HTML
     )
 
