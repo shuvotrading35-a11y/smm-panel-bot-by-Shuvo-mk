@@ -577,12 +577,15 @@ async def topup_debug(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         parse_mode=ParseMode.HTML
     )
 
-    # Get services for FF Bangladesh
-    svc_result = await get_services("TOPUP_FREE_FIRE_BANGLADESH_18", "topup")
-    raw        = svc_result.get("data") or {}
+    # Show ALL FF products with their validation_code
+    all_ff = []
+    if isinstance(prod_data, list):
+        all_ff = [p for p in prod_data if "free" in str(p.get("name","")).lower() or "fire" in str(p.get("name","")).lower()]
+    lines = []
+    for p in all_ff:
+        lines.append(f"• {p.get('product_code')}\n  val: <code>{p.get('validation_code','N/A')}</code>")
     await update.message.reply_text(
-        f"📋 Services raw_data keys: <code>{list(raw.keys()) if isinstance(raw, dict) else type(raw)}</code>\n\n"
-        f"Full: <code>{str(raw)[:600]}</code>",
+        "📋 All FF Products:\n\n" + "\n".join(lines),
         parse_mode=ParseMode.HTML
     )
 
