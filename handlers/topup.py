@@ -63,8 +63,8 @@ TELEGRAM_CONFIG = {
     "product_id":      191,
     "validation_code": "telegram",
     "need_server_id":  False,
-    "player_label":    "Telegram Username / ID",
-    "allow_text_id":   True,   # digit check bypass
+    "player_label":    "Telegram Numeric ID",
+    "allow_text_id":   True,
     "product_type":    "topup",
 }
 
@@ -291,7 +291,7 @@ async def topup_server_id(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def _verify_and_confirm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    msg = await update.effective_message.reply_text("⏳ Player ID verify হচ্ছে...")
+    msg = await update.effective_message.reply_text("⏳ Order confirm হচ্ছে...")
 
     player_id = ctx.user_data["topup_player_id"]
     server_id = ctx.user_data["topup_server_id"]
@@ -300,7 +300,10 @@ async def _verify_and_confirm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     cost      = ctx.user_data["topup_cost"]
     val_code  = ctx.user_data.get("topup_validation_code", "")
 
-    if val_code:
+    # Telegram এর জন্য skip_validation নেই — API দিয়ে validate করো
+    if not val_code:
+        nickname = player_id
+    else:
         result = await check_player_id(player_id, server_id, val_code)
         result = result or {}
         data   = result.get("data") or {}
@@ -320,11 +323,13 @@ async def _verify_and_confirm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 data.get("message") or
                 (result.get("error", {}).get("message")
                  if isinstance(result.get("error"), dict) else None) or
-                "Player ID সঠিক নয়।"
+                "ID সঠিক নয়।"
             )
+            cfg_label = cfg.get("player_label", "ID")
             await msg.edit_text(
-                f"❌ <b>Player ID ভুল!</b>\n\n{err_msg}\n\n"
-                f"👇 সঠিক Player ID লেখো:",
+                f"❌ <b>ভুল {cfg_label}!</b>\n\n"
+                f"<i>{err_msg}</i>\n\n"
+                f"👇 সঠিক <b>{cfg_label}</b> দাও:",
                 parse_mode=ParseMode.HTML
             )
             return TOPUP_PLAYER_ID
@@ -333,10 +338,8 @@ async def _verify_and_confirm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         nickname = (
             data.get("account_name") or data.get("nickname") or
             data.get("username") or data.get("name") or
-            f"UID: {player_id}"
+            player_id
         )
-    else:
-        nickname = f"UID: {player_id}"
 
     ctx.user_data["topup_nickname"] = nickname
 
