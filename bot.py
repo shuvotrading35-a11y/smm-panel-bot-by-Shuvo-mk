@@ -128,6 +128,8 @@ def build_app() -> Application:
             MessageHandler(filters.Regex(r"^🎮 ɢᴀᴍᴇ ᴛᴏᴘᴜᴘ$"), topup_start),
             MessageHandler(filters.Regex(r"^🎮 ᴛᴏᴘ ᴜᴘ ꜱᴇʀᴠɪᴄᴇ$"), topup_start),
             MessageHandler(filters.Regex(r"^🎮 ᴛᴏᴘ ᴜᴘ ᴏʀᴅᴇʀ$"), topup_start),
+            MessageHandler(filters.Regex(r"^✈️ ᴛᴇʟᴇɢʀᴀᴍ ꜱᴇʀᴠɪᴄᴇ$"), topup_start_telegram),
+            MessageHandler(filters.Regex(r"^✈️ ᴛᴇʟᴇɢʀᴀᴍ ᴏʀᴅᴇʀ$"), topup_start_telegram),
         ],
         states={
             TOPUP_GAME_SELECT:    [CallbackQueryHandler(topup_game_selected,    pattern=r"^(tg:.+|topup_cancel)$")],
