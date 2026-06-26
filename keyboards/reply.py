@@ -56,4 +56,4 @@ def cancel_keyboard() -> ReplyKeyboardMarkup:
 
 
 def back_keyboard() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup([["🔙 ʙᴀᴄᴋ"]], resize_keyboard=True)
+    return ReplyKeyboardMarkup([  [{"text": "🔙 ʙᴀᴄᴋ", "style": "success"}]], resize_keyboard=True)
