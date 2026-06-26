@@ -13,6 +13,7 @@ from keyboards.inline import (
 )
 from utils.helpers import fmt_coins, fmt_date, broadcast_message
 from api.smm_api import smm_api
+from api.flashtopup_api import get_balance as ft_get_balance
 
 logger = logging.getLogger(__name__)
 
@@ -420,13 +421,29 @@ async def api_manager(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         return
 
+    # SMM Panel API status
     ok, msg = await smm_api.test_connection()
-    status  = "✅ Connected" if ok else "❌ Not Connected"
+    smm_status = "✅ Connected" if ok else "❌ Not Connected"
+
+    # FlashTopup API balance
+    ft_result  = await ft_get_balance()
+    ft_data    = ft_result.get("data") or {}
+    if ft_result.get("success") and ft_data:
+        ft_balance = ft_data.get("balance", "N/A")
+        ft_currency = ft_data.get("currency", "")
+        ft_status  = f"✅ {ft_balance} {ft_currency}"
+    else:
+        err = (ft_result.get("error") or {})
+        ft_status = f"❌ {err.get('message', 'Error')}"
+
     text = (
         f"⚙️ <b>API Manager</b>\n"
         f"{'─'*28}\n"
-        f"Status: {status}\n"
+        f"📊 <b>SMM Panel API</b>\n"
+        f"Status: {smm_status}\n"
         f"Info: <code>{msg}</code>\n\n"
+        f"✈️ <b>FlashTopup API</b>\n"
+        f"Balance: {ft_status}\n\n"
         f"Use /syncservices to sync all services.\n"
         f"Use /testapi to test connection."
     )
