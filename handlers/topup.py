@@ -98,6 +98,12 @@ async def topup_start_telegram(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ctx.user_data["topup_game_code"] = "TOPUP_TELEGRAM"
     ctx.user_data["topup_game_cfg"]  = tg_cfg
 
+    # পুরনো game data clear করো
+    ctx.user_data.clear()
+    ctx.user_data["topup_game_code"] = "TOPUP_TELEGRAM"
+    ctx.user_data["topup_game_cfg"]  = tg_cfg
+    ctx.user_data["topup_validation_code"] = tg_cfg["validation_code"]  # "telegram"
+
     msg = await update.message.reply_text(
         "✈️ <b>Telegram Topup</b>\n\n⏳ Packages লোড হচ্ছে...",
         parse_mode=ParseMode.HTML
