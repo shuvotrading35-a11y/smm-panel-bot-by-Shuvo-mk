@@ -55,6 +55,14 @@ GAME_CONFIGS = {
         "player_label":    "PUBG Player ID",
         "product_type":    "topup",
     },
+    "TOPUP_TELEGRAM": {
+        "name":            "✈️ Telegram",
+        "product_id":      191,
+        "validation_code": "telegram",
+        "need_server_id":  False,
+        "player_label":    "Telegram Username / ID",
+        "product_type":    "topup",
+    },
 }
 
 
@@ -79,6 +87,54 @@ async def topup_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         parse_mode=ParseMode.HTML
     )
     return TOPUP_GAME_SELECT
+
+
+async def topup_start_telegram(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """সরাসরি Telegram product (ID 191) এর packages দেখায়"""
+    tg_cfg = GAME_CONFIGS["TOPUP_TELEGRAM"]
+    ctx.user_data["topup_game_code"] = "TOPUP_TELEGRAM"
+    ctx.user_data["topup_game_cfg"]  = tg_cfg
+
+    msg = await update.message.reply_text(
+        "✈️ <b>Telegram Topup</b>\n\n⏳ Packages লোড হচ্ছে...",
+        parse_mode=ParseMode.HTML
+    )
+
+    try:
+        result   = await get_services(tg_cfg["product_id"], tg_cfg.get("product_type", "topup"))
+        result   = result or {}
+        raw_data = result.get("data") or {}
+        packages = list(raw_data.get("service") or []) if isinstance(raw_data, dict) else []
+
+        if not packages:
+            await msg.edit_text("⚠️ কোনো Telegram package পাওয়া যায়নি। পরে চেষ্টা করো।")
+            return ConversationHandler.END
+
+        ctx.user_data["topup_packages"] = packages
+
+        rows = []
+        for pkg in packages[:20]:
+            label = pkg.get("name") or pkg.get("service_name", "Package")
+            price = _markup_price(float(pkg.get("price", 0)))
+            rows.append([InlineKeyboardButton(
+                f"{label} — ৳{price}",
+                callback_data=f"tp:{pkg.get('service_code', pkg.get('id', ''))}"
+            )])
+        rows.append([InlineKeyboardButton("❌ Cancel", callback_data="topup_cancel")])
+
+        await msg.edit_text(
+            f"✈️ <b>Telegram Packages</b>\n\n👇 Package বেছে নাও:",
+            reply_markup=InlineKeyboardMarkup(rows),
+            parse_mode=ParseMode.HTML
+        )
+        return TOPUP_PACKAGE_SELECT
+
+    except Exception as e:
+        logger.error(f"topup_start_telegram error: {e}")
+        await msg.edit_text("❌ Error loading packages. Try again later.")
+        return ConversationHandler.END
+
+
 
 
 async def topup_game_selected(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -165,11 +221,21 @@ async def topup_package_selected(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
     packages     = ctx.user_data.get("topup_packages", {})
 
     pkg = None
-    for code, p in packages.items():
-        if code[:40] == service_code:
-            pkg = p
-            service_code = code
-            break
+    # dict format (game topup)
+    if isinstance(packages, dict):
+        for code, p in packages.items():
+            if code[:40] == service_code:
+                pkg = p
+                service_code = code
+                break
+    # list format (telegram topup)
+    elif isinstance(packages, list):
+        for p in packages:
+            code = str(p.get("service_code", p.get("id", "")))
+            if code[:40] == service_code:
+                pkg = p
+                service_code = code
+                break
 
     if not pkg:
         await query.answer("Package পাওয়া যায়নি।", show_alert=True)
@@ -182,7 +248,7 @@ async def topup_package_selected(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
 
     cfg = ctx.user_data.get("topup_game_cfg", {})
     await query.edit_message_text(
-        f"✅ Selected: <b>{pkg.get('service_name', service_code)}</b>\n"
+        f"✅ Selected: <b>{pkg.get('service_name', pkg.get('name', service_code))}</b>\n"
         f"💰 Cost: <code>{cost:.0f} Coins (৳{cost:.0f})</code>\n\n"
         f"👇 তোমার <b>{cfg.get('player_label', 'Player ID')}</b> লেখো:",
         parse_mode=ParseMode.HTML
