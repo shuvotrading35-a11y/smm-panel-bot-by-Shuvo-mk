@@ -14,6 +14,7 @@ from api.flashtopup_api import (
 )
 from keyboards.reply import main_keyboard
 from config import ADMIN_IDS, TOPUP_MARKUP_PCT
+from utils.order_logger import send_order_log
 
 logger = logging.getLogger(__name__)
 
@@ -443,14 +444,34 @@ async def topup_confirm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         status=result.get("data", {}).get("status", "Processing"),
     )
 
+    # ── Order log channel এ পাঠাও ──────────────────────────────────
+    await send_order_log(
+        order_id     = order_id,
+        user_id      = user_id,
+        service_name = f"{cfg['name']} — {pkg.get('service_name', service_code)}",
+        quantity     = 1,
+        link         = "",
+        status       = result.get("data", {}).get("status", "Processing"),
+        order_type   = "topup",
+        player_id    = player_id,
+        nickname     = nickname,
+    )
+
+    # Telegram এর জন্য আলাদা success message
+    is_telegram = cfg.get("validation_code") == "telegram"
+    if is_telegram:
+        delivery_note = "⏳ ৫-১৫ মিনিটের মধ্যে সম্পন্ন হবে!"
+    else:
+        delivery_note = "⏳ ৫-১০ মিনিটের মধ্যে diamonds পাবে!"
+
     await query.edit_message_text(
         f"✅ <b>Order Successful!</b>\n"
         f"{'─'*28}\n"
-        f"🎮 Game: <b>{cfg['name']}</b>\n"
+        f"🎮 Service: <b>{cfg['name']}</b>\n"
         f"💎 Package: <code>{pkg.get('service_name', '')}</code>\n"
-        f"👤 Nickname: <b>{nickname}</b>\n"
+        f"👤 {'Username' if is_telegram else 'Nickname'}: <b>{nickname or player_id}</b>\n"
         f"🆔 Order ID: <code>{order_id}</code>\n\n"
-        f"⏳ ৫-১০ মিনিটের মধ্যে diamonds পাবে!\n"
+        f"{delivery_note}\n"
         f"❓ সমস্যা হলে: @shuvo_9882",
         parse_mode=ParseMode.HTML
     )
