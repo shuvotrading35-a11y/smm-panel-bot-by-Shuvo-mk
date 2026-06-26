@@ -31,7 +31,7 @@ from handlers.user import (
     DEPOSIT_METHOD, DEPOSIT_AMOUNT, DEPOSIT_TXN, TRACKER_INPUT,
 )
 from handlers.topup import (
-    topup_start, topup_game_selected, topup_package_selected,
+    topup_start, topup_start_telegram, topup_game_selected, topup_package_selected,
     topup_player_id, topup_server_id, topup_confirm,
     TOPUP_GAME_SELECT, TOPUP_PACKAGE_SELECT, TOPUP_PLAYER_ID,
     TOPUP_SERVER_ID, TOPUP_CONFIRM,
