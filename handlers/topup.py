@@ -55,14 +55,17 @@ GAME_CONFIGS = {
         "player_label":    "PUBG Player ID",
         "product_type":    "topup",
     },
-    "TOPUP_TELEGRAM": {
-        "name":            "✈️ Telegram",
-        "product_id":      191,
-        "validation_code": "telegram",
-        "need_server_id":  False,
-        "player_label":    "Telegram Username / ID",
-        "product_type":    "topup",
-    },
+}
+
+# Telegram config — GAME_CONFIGS এর বাইরে, শুধু reply menu button থেকে access
+TELEGRAM_CONFIG = {
+    "name":            "✈️ Telegram",
+    "product_id":      191,
+    "validation_code": "telegram",
+    "need_server_id":  False,
+    "player_label":    "Telegram Username / ID",
+    "allow_text_id":   True,   # digit check bypass
+    "product_type":    "topup",
 }
 
 
@@ -91,7 +94,7 @@ async def topup_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 async def topup_start_telegram(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """সরাসরি Telegram product (ID 191) এর packages দেখায়"""
-    tg_cfg = GAME_CONFIGS["TOPUP_TELEGRAM"]
+    tg_cfg = TELEGRAM_CONFIG
     ctx.user_data["topup_game_code"] = "TOPUP_TELEGRAM"
     ctx.user_data["topup_game_cfg"]  = tg_cfg
 
@@ -258,10 +261,13 @@ async def topup_package_selected(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
 
 async def topup_player_id(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     player_id = update.message.text.strip()
-    if not player_id.isdigit():
+    cfg       = ctx.user_data.get("topup_game_cfg", {})
+
+    # Telegram এর জন্য text ID allow, বাকিদের জন্য শুধু digit
+    if not cfg.get("allow_text_id") and not player_id.isdigit():
         await update.message.reply_text(
             "❌ শুধু সংখ্যা দাও (উদাহরণ: 123456789)\n\n"
-            "👇 তোমার Player ID লেখো:"
+            f"👇 তোমার {cfg.get('player_label', 'Player ID')} লেখো:"
         )
         return TOPUP_PLAYER_ID
 
