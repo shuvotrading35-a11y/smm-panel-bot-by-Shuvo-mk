@@ -63,7 +63,7 @@ TELEGRAM_CONFIG = {
     "product_id":      191,
     "validation_code": "telegram",
     "need_server_id":  False,
-    "player_label":    "Telegram Numeric ID",
+    "player_label":    "Telegram Username (যেমন: shuvo বা @shuvo)",
     "allow_text_id":   True,
     "product_type":    "topup",
 }
@@ -271,8 +271,11 @@ async def topup_player_id(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return TOPUP_PLAYER_ID
 
+    # Telegram username — @ ছাড়া দিলে @ যোগ করো
+    if cfg.get("allow_text_id") and not player_id.startswith("@") and not player_id.isdigit():
+        player_id = "@" + player_id
+
     ctx.user_data["topup_player_id"] = player_id
-    cfg = ctx.user_data.get("topup_game_cfg", {})
 
     if cfg.get("need_server_id"):
         await update.message.reply_text(
