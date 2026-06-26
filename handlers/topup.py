@@ -315,7 +315,9 @@ async def _verify_and_confirm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             try:
                 await update.effective_message.bot.send_message(
                     aid,
-                    f"🔍 check_player_id full response:\n<code>{str(result)[:600]}</code>",
+                    f"🔍 <b>check_player_id DEBUG</b>\n"
+                    f"📤 Request:\n<code>user_id={player_id}\nserver_id={server_id}\nvalidation_code={val_code}</code>\n\n"
+                    f"📥 Response:\n<code>{str(result)[:500]}</code>",
                     parse_mode="HTML"
                 )
             except Exception:
