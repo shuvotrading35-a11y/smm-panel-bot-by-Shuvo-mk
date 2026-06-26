@@ -311,6 +311,15 @@ async def _verify_and_confirm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         result = result or {}
         data   = result.get("data") or {}
 
+        # DEBUG — সাময়িক, response দেখার জন্য
+        await update.effective_message.reply_text(
+            f"🔍 <b>DEBUG</b>\n"
+            f"📤 <code>user_id={player_id}</code>\n"
+            f"📤 <code>val_code={val_code}</code>\n"
+            f"📥 <code>{str(result)[:400]}</code>",
+            parse_mode="HTML"
+        )
+
         for aid in ADMIN_IDS:
             try:
                 await update.effective_message.bot.send_message(
