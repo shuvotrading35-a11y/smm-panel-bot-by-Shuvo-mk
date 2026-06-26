@@ -477,23 +477,9 @@ async def services_list_smm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def services_list_telegram(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    """Telegram Service sub-menu থেকে — শুধু telegram categories"""
-    cats = await db.get_categories()
-    tg_cats = [c for c in cats if "telegram" in c.lower()]
-    if not tg_cats:
-        await update.message.reply_text(
-            "⚠️ No Telegram services available.\n"
-            "Admin needs to sync Telegram services.",
-            reply_markup=service_menu_keyboard()
-        )
-        return
-    upd_ch = await db.get_setting("updates_channel", "")
-    await update.message.reply_text(
-        "✈️ <b>Telegram Services</b>\n\nChoose a category:",
-        reply_markup=categories_kb(tg_cats, CATEGORY_ICONS, upd_ch),
-        parse_mode=ParseMode.HTML
-    )
-
+    """Telegram Service — flashtopup এর Telegram product দেখাবে"""
+    from handlers.topup import topup_start_telegram
+    await topup_start_telegram(update, ctx)
 
 
 async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -682,22 +668,9 @@ async def new_order_smm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def new_order_telegram(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    """Telegram Order — শুধু telegram categories"""
-    cats = await db.get_categories()
-    tg_cats = [c for c in cats if "telegram" in c.lower()]
-    if not tg_cats:
-        await update.message.reply_text(
-            "⚠️ No Telegram services available.",
-            reply_markup=order_menu_keyboard()
-        )
-        return ConversationHandler.END
-    upd_ch = await db.get_setting("updates_channel", "")
-    await update.message.reply_text(
-        "✈️ <b>Telegram Order</b>\n\nStep 1 — Choose a category:",
-        reply_markup=categories_kb(tg_cats, CATEGORY_ICONS, upd_ch),
-        parse_mode=ParseMode.HTML
-    )
-    return ORDER_PLATFORM
+    """Telegram Order — flashtopup Telegram product (ID 191) এ route করে"""
+    from handlers.topup import topup_start_telegram
+    return await topup_start_telegram(update, ctx)
 
 
 
