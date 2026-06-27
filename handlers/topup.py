@@ -457,12 +457,11 @@ async def topup_confirm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         nickname     = nickname,
     )
 
-    # Telegram এর জন্য আলাদা success message
     is_telegram = cfg.get("validation_code") == "telegram"
     if is_telegram:
         delivery_note = "⏳ ৫-১৫ মিনিটের মধ্যে সম্পন্ন হবে!"
     else:
-        delivery_note = "⏳ ৫-১০ মিনিটের মধ্যে diamonds পাবে!"
+        delivery_note = "⏳ ৫-১০ মিনিটের মধ্যে সম্পন্ন হবে!"
 
     await query.edit_message_text(
         f"✅ <b>Order Successful!</b>\n"
