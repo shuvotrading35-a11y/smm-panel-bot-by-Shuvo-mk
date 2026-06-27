@@ -14,9 +14,7 @@ def confirm_order_kb(service_id: str) -> InlineKeyboardMarkup:
 def order_actions_kb(order_id: int, api_order_id: str, refill: bool = False, cancel: bool = False) -> InlineKeyboardMarkup:
     row = [InlineKeyboardButton("🔄 Refresh", callback_data=f"order_refresh:{order_id}")]
     if refill:
-        row.append(InlineKeyboardButton("♻️ Refill",  callback_data=f"order_refill:{order_id}"))
-    if cancel:
-        row.append(InlineKeyboardButton("❌ Cancel",   callback_data=f"order_cancel_api:{order_id}"))
+        row.append(InlineKeyboardButton("♻️ Refill", callback_data=f"order_refill:{order_id}"))
     return InlineKeyboardMarkup([row])
 
 
