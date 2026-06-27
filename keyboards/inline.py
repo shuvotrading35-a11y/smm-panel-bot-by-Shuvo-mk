@@ -53,7 +53,7 @@ def coin_packages_kb() -> InlineKeyboardMarkup:
         badge = badges.get(coins, "")
         rows.append([StyledButton(
             f"🛍️  {coins:,} Coins  —  {price}{badge}",
-            style="primary",
+            style="success",
             callback_data=f"pkg:{coins}:{price}"
         )])
     rows.append([StyledButton("✏️  Custom Amount", style="primary", callback_data="pkg:custom")])
@@ -66,7 +66,7 @@ def pkg_payment_kb() -> InlineKeyboardMarkup:
     rows = []
     methods = list(PAYMENT_METHODS.items())
     for key, label in methods:
-        rows.append([StyledButton(f"{label}", style="primary", callback_data=f"pay_method:{key}")])
+        rows.append([StyledButton(f"{label}", style="success", callback_data=f"pay_method:{key}")])
     rows.append([StyledButton("⬅️  Back", style="danger", callback_data="pkg_back")])
     return InlineKeyboardMarkup(rows)
 
