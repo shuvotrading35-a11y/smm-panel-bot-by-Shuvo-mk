@@ -8,7 +8,7 @@ def service_menu_keyboard() -> ReplyKeyboardMarkup:
   [{"text": "🎮 ᴛᴏᴘ ᴜᴘ ꜱᴇʀᴠɪᴄᴇ", "style": "danger"}],
   [{"text": "✈️ ᴛᴇʟᴇɢʀᴀᴍ ꜱᴇʀᴠɪᴄᴇ", "style": "primary"}],
   [{"text": "🔙 ʙᴀᴄᴋ", "style": "success"}]
-    ], resize_keyboard=True,input_field_placeholder="⚡ BY SHUVO......")
+    ], resize_keyboard=True,input_field_placeholder="📊 BY SHUVO......")
 
 
 def order_menu_keyboard() -> ReplyKeyboardMarkup:
@@ -18,7 +18,7 @@ def order_menu_keyboard() -> ReplyKeyboardMarkup:
   [{"text": "🎮 ᴛᴏᴘ ᴜᴘ ᴏʀᴅᴇʀ", "style": "danger"}],
   [{"text": "✈️ ᴛᴇʟᴇɢʀᴀᴍ ᴏʀᴅᴇʀ", "style": "primary"}],
   [{"text": "🔙 ʙᴀᴄᴋ", "style": "success"}]
-    ], resize_keyboard=True,input_field_placeholder="⚡ BY SHUVO......")
+    ], resize_keyboard=True,input_field_placeholder="🛒 BY SHUVO......")
 
 
 def main_keyboard() -> ReplyKeyboardMarkup:
@@ -48,12 +48,12 @@ def admin_keyboard() -> ReplyKeyboardMarkup:
   [{"text": "🗄 ᴅᴀᴛᴀʙᴀꜱᴇ ᴍᴀɴᴀɢᴇʀ", "style": "primary"}],
   [{"text": "🧹 ᴄʟᴇᴀɴ ᴜᴘ", "style": "success"}, {"text": "🔄 ʀᴇꜱᴛᴀʀᴛ ʙᴏᴛ", "style": "danger"}],
   [{"text": "🏠 ᴍᴀɪɴ ᴍᴇɴᴜ", "style": "primary"}]
-    ], resize_keyboard=True,input_field_placeholder="⚡ BY SHUVO......")
+    ], resize_keyboard=True,input_field_placeholder="🔥 BY SHUVO......")
 
 
 def cancel_keyboard() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup([[{"text": "❌ ᴄᴀɴᴄᴇʟ", "style": "success"}]], resize_keyboard=True,input_field_placeholder="⚡ BY SHUVO......")
+    return ReplyKeyboardMarkup([[{"text": "❌ ᴄᴀɴᴄᴇʟ", "style": "success"}]], resize_keyboard=True,input_field_placeholder="❌ BY SHUVO......")
 
 
 def back_keyboard() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup([  [{"text": "🔙 ʙᴀᴄᴋ", "style": "success"}]], resize_keyboard=True,input_field_placeholder="⚡ BY SHUVO......")
+    return ReplyKeyboardMarkup([  [{"text": "🔙 ʙᴀᴄᴋ", "style": "success"}]], resize_keyboard=True,input_field_placeholder="⭐ BY SHUVO......")
