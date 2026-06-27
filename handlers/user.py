@@ -1055,21 +1055,46 @@ async def order_confirm_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
 #  MY ORDERS
 # ═══════════════════════════════════════════════════════════════════
 async def my_orders(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    from telegram import InlineKeyboardMarkup, InlineKeyboardButton
     user_id = update.effective_user.id
     orders  = await db.get_user_orders(user_id, 10)
     if not orders:
-        await update.message.reply_text("📦 No orders yet.\n\nUse 🛒 <b>New Order</b> to place one!", parse_mode=ParseMode.HTML)
-        return
-    text = "📦 <b>My Orders</b> (Last 10)\n\n"
-    for o in orders:
-        text += (
-            f"🆔 <code>#{o['id']}</code> | {fmt_status(o['status'])}\n"
-            f"📦 {o.get('service_name','—')[:30]}\n"
-            f"💵 {fmt_coins_full(o['charge'])} | 📊 {o['quantity']:,}\n"
-            f"📅 {fmt_date(o['created_at'])}\n"
-            f"{'─'*24}\n"
+        await update.message.reply_text(
+            "📦 No orders yet.\n\nUse 🛒 <b>New Order</b> to place one!",
+            parse_mode=ParseMode.HTML
         )
-    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+        return
+
+    for o in orders:
+        status_icon = {
+            "Pending":    "🕐", "Processing": "⏳", "In progress": "⏳",
+            "Completed":  "✅", "Partial":    "⚠️", "Cancelled":   "❌",
+        }.get(o["status"], "⏳")
+
+        text = (
+            f"📦 <b>Order #{o['id']}</b>\n"
+            f"{'─'*24}\n"
+            f"📌 {o.get('service_name', '—')[:35]}\n"
+            f"📊 Status: {status_icon} <code>{o['status']}</code>\n"
+            f"💰 Charge: {fmt_coins_full(o['charge'])}\n"
+            f"📈 Quantity: {o['quantity']:,}\n"
+            f"📅 {fmt_date(o['created_at'])}\n"
+        )
+
+        # Buttons
+        buttons = [[
+            InlineKeyboardButton("🔄 Refresh", callback_data=f"orefresh:{o['id']}"),
+        ]]
+        if o.get("refill"):
+            buttons[0].append(
+                InlineKeyboardButton("♻️ Refill", callback_data=f"orefill:{o['id']}")
+            )
+
+        await update.message.reply_text(
+            text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup(buttons)
+        )
 
 
 async def order_refresh_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -1123,10 +1148,33 @@ async def order_cancel_api_callback(update: Update, ctx: ContextTypes.DEFAULT_TY
     if not order or not order.get("api_order_id"):
         await query.answer("Cannot cancel.", show_alert=True)
         return
+
     result = await smm_api.cancel_order(order["api_order_id"])
     if "cancel" in result or result.get("status") == "1":
         await db.update_order_status(order_id, "Cancelled")
-        await query.edit_message_text(f"❌ Order #{order_id} cancelled.")
+
+        # Coin refund — remains অনুযায়ী partial refund
+        charge   = float(order.get("charge", 0))
+        quantity = int(order.get("quantity", 1))
+        remains  = int(order.get("remains", 0))
+        if remains > 0 and quantity > 0:
+            refund = round(charge * (remains / quantity), 2)
+        else:
+            refund = charge  # পুরো refund
+
+        if refund > 0:
+            await db.add_balance(
+                order["user_id"], refund,
+                f"Refund: Order #{order_id} cancelled"
+            )
+            refund_text = f"\n💰 Refunded: <b>{refund:.2f} Coins</b>"
+        else:
+            refund_text = ""
+
+        await query.edit_message_text(
+            f"❌ <b>Order #{order_id} Cancelled</b>{refund_text}",
+            parse_mode=ParseMode.HTML
+        )
     else:
         await query.answer(f"Error: {result.get('error','Unknown')}", show_alert=True)
 
