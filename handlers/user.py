@@ -45,14 +45,13 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if ref_id and ref_id != user.id:
             await db.process_referral(user.id, ref_id, REFERRAL_REWARD)
 
-    # Force-join check (handled by global_force_join_check middleware,
-    # but kept here too as a safety net for the very first /start)
+    # Force-join check
     channels = await db.get_force_channels()
     if channels and update.effective_user.id not in ADMIN_IDS:
         not_joined = await check_force_join(ctx.bot, user.id, channels)
         if not_joined:
             await update.message.reply_text(
-                "📢 <b>Please join our channels to use this bot:</b>",
+                "📢 <b>Join our channels to unlock the bot:</b>",
                 reply_markup=force_join_kb(not_joined),
                 parse_mode=ParseMode.HTML
             )
@@ -60,25 +59,39 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     udata = await db.get_user(user.id)
     if udata and udata["is_banned"]:
-        await update.message.reply_text("🚫 You are banned from using this bot.")
+        await update.message.reply_text(
+            "🚫 <b>Access Denied</b>\n\n"
+            "You have been banned from using this bot.\n"
+            f"Contact support: {DEVELOPER}",
+            parse_mode=ParseMode.HTML
+        )
         return
 
+    first_name = user.first_name or "Friend"
+
     text = (
-        f"🚀 <b>Welcome To {BOT_NAME}</b>\n\n"
-        "💎 <b>Cheapest Prices</b>\n"
-        "⚡ <b>Instant Delivery</b>\n"
-        "🔒 <b>Secure Payments</b>\n"
-        "📈 <b>High Quality Services</b>\n\n"
-        "Choose an option below to continue.\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"👋 Welcome, <b>{first_name}</b>!\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"🤖 You're now inside <b>{BOT_NAME}</b> —\n"
+        f"your all-in-one digital services bot! 🚀\n\n"
+        f"🛒 <b>What we offer:</b>\n"
+        f"┣ 📱 Social Media Services\n"
+        f"┣ 🎮 Game Top-Up\n"
+        f"┣ 📞 Virtual Phone Numbers\n"
+        f"┣ ⚡ Instant Delivery\n"
+        f"┣ 💎 Cheapest Prices\n"
+        f"┗ 🔒 Secure Payments\n\n"
+        f"👇 Use the menu below to get started!\n\n"
         f"👨‍💻 Developer: {DEVELOPER}\n"
-        f"🤖 Powered By Shuvo SMM"
+        f"⚙️ Powered by <b>Shuvo SMM</b>"
     )
+
     await update.message.reply_text(
         text,
         reply_markup=main_keyboard(),
         parse_mode=ParseMode.HTML
     )
-
 
 # ═══════════════════════════════════════════════════════════════════
 #  FORCE JOIN CALLBACK CHECK
@@ -89,17 +102,43 @@ async def force_join_check(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user     = query.from_user
     channels = await db.get_force_channels()
     not_joined = await check_force_join(ctx.bot, user.id, channels)
+
     if not_joined:
         await query.edit_message_text(
-            "❌ You haven't joined all channels yet!\n\n"
-            "📢 Please join all required channels and try again.",
+            "❌ *You haven't joined all channels yet!*\n\n"
+            "📢 Please join all required channels below, then try again.",
+            parse_mode="Markdown",
             reply_markup=force_join_kb(not_joined)
         )
     else:
-        await query.edit_message_text("✅ Verified! You can now use the bot.")
-        await ctx.bot.send_message(user.id, f"🚀 Welcome to {BOT_NAME}!", reply_markup=main_keyboard())
+        first_name = user.first_name or "Friend"
 
+        await query.edit_message_text(
+            "✅ *Verification successful!*\n\n"
+            "You're all set — enjoy using the bot! 🎉",
+            parse_mode="Markdown"
+        )
 
+        welcome_text = (
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"👋 Welcome, *{first_name}*!\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"🤖 You've joined *{BOT_NAME}* —\n"
+            f"your all-in-one digital services bot! 🚀\n\n"
+            f"🛒 *What you can do here:*\n"
+            f"┣ 📱 Social Media Services\n"
+            f"┣ 🎮 Game Top-Up\n"
+            f"┣ 📞 Virtual Phone Numbers\n"
+            f"┗ 💳 Fast & Easy Payments\n\n"
+            f"👇 Use the menu below to get started!"
+        )
+
+        await ctx.bot.send_message(
+            user.id,
+            welcome_text,
+            parse_mode="Markdown",
+            reply_markup=main_keyboard()
+        )
 # ═══════════════════════════════════════════════════════════════════
 #  MY ACCOUNT
 # ═══════════════════════════════════════════════════════════════════
@@ -342,7 +381,7 @@ async def payment_method_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE
         "binance":  "💵 <b>Binance Pay ID:</b> <code>your_binance_id</code>\n<b>Min:</b> $1",
         "usdt_trc": "🟢 <b>USDT TRC20 Address:</b>\n<code>TYourWalletAddressHere</code>\n<b>Min:</b> $1",
         "usdt_bep": "🟡 <b>USDT BEP20 Address:</b>\n<code>0xYourWalletAddressHere</code>\n<b>Min:</b> $1",
-        "mobile":   "📱 <b>Mobile Banking:</b>\nbKash: 01XXXXXXXXX\nNagad: 01XXXXXXXXX\n<b>Min:</b> ৳50",
+        "mobile":   "📱 <b>Mobile Banking:</b>\nbKash: 01336650725\nNagad: 01336650725\n<b>Min:</b> ৳50",
     }
 
     if method not in payment_info:
