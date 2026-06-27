@@ -456,7 +456,7 @@ async def services_list(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def services_list_smm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    """SMM Service sub-menu থেকে — platform list দেখাও"""
+    """SMM Service — সব categories দেখাবে"""
     cats = await db.get_categories()
     if not cats:
         await update.message.reply_text(
@@ -464,14 +464,10 @@ async def services_list_smm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             "Admin needs to sync services from the API panel."
         )
         return
-    # শুধু non-telegram, non-topup categories
-    smm_cats = [c for c in cats if "telegram" not in c.lower()]
-    if not smm_cats:
-        smm_cats = cats
     upd_ch = await db.get_setting("updates_channel", "")
     await update.message.reply_text(
         "🌐 <b>SMM Services</b>\n\nChoose a platform:",
-        reply_markup=categories_kb(smm_cats, CATEGORY_ICONS, upd_ch),
+        reply_markup=categories_kb(cats, CATEGORY_ICONS, upd_ch),
         parse_mode=ParseMode.HTML
     )
 
@@ -650,18 +646,15 @@ async def new_order(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def new_order_smm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    """SMM Order — platform selection দিয়ে order শুরু"""
+    """SMM Order — সব categories দিয়ে order শুরু"""
     cats = await db.get_categories()
     if not cats:
         await update.message.reply_text("⚠️ No services available. Try again later.")
         return ConversationHandler.END
-    smm_cats = [c for c in cats if "telegram" not in c.lower()]
-    if not smm_cats:
-        smm_cats = cats
     upd_ch = await db.get_setting("updates_channel", "")
     await update.message.reply_text(
         "🌐 <b>SMM Order</b>\n\nStep 1 — Choose a platform:",
-        reply_markup=categories_kb(smm_cats, CATEGORY_ICONS, upd_ch),
+        reply_markup=categories_kb(cats, CATEGORY_ICONS, upd_ch),
         parse_mode=ParseMode.HTML
     )
     return ORDER_PLATFORM
@@ -1047,6 +1040,7 @@ async def order_confirm_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
         reply_markup=order_actions_kb(order_id, api_order_id or "",
                                        bool(svc.get("refill")), bool(svc.get("cancel")))
     )
+    await query.message.reply_text("👇 Menu:", reply_markup=main_keyboard())
     ctx.user_data.clear()
     return ConversationHandler.END
 
