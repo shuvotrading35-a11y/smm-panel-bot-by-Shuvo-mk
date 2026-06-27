@@ -7,6 +7,8 @@ import uuid
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes, ConversationHandler
 from telegram.constants import ParseMode
+from telegram._utils.types import JSONDict
+from typing import Optional
 
 import database as db
 from api.flashtopup_api import (
@@ -58,7 +60,6 @@ GAME_CONFIGS = {
     },
 }
 
-# Telegram config — GAME_CONFIGS এর বাইরে, শুধু reply menu button থেকে access
 TELEGRAM_CONFIG = {
     "name":            "✈️ Telegram",
     "product_id":      191,
@@ -70,6 +71,19 @@ TELEGRAM_CONFIG = {
 }
 
 
+# ── StyledButton ──────────────────────────────────────────────────
+class StyledButton(InlineKeyboardButton):
+    def __init__(self, text: str, style: Optional[str] = None, **kwargs):
+        super().__init__(text=text, **kwargs)
+        self._style = style
+
+    def to_dict(self, recursive: bool = True) -> JSONDict:
+        data = super().to_dict(recursive=recursive)
+        if self._style:
+            data["style"] = self._style
+        return data
+
+
 def _markup_price(cost_usd: float) -> float:
     cost_bdt  = cost_usd * USD_TO_BDT
     after_mkp = cost_bdt * (1 + TOPUP_MARKUP_PCT / 100)
@@ -79,8 +93,8 @@ def _markup_price(cost_usd: float) -> float:
 def _games_kb() -> InlineKeyboardMarkup:
     rows = []
     for code, cfg in GAME_CONFIGS.items():
-        rows.append([InlineKeyboardButton(cfg["name"], callback_data=f"tg:{code}")])
-    rows.append([InlineKeyboardButton("❌ Cancel", callback_data="topup_cancel")])
+        rows.append([StyledButton(cfg["name"], style="primary", callback_data=f"tg:{code}")])
+    rows.append([StyledButton("❌ Cancel", style="danger", callback_data="topup_cancel")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -94,16 +108,11 @@ async def topup_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def topup_start_telegram(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    """সরাসরি Telegram product (ID 191) এর packages দেখায়"""
     tg_cfg = TELEGRAM_CONFIG
-    ctx.user_data["topup_game_code"] = "TOPUP_TELEGRAM"
-    ctx.user_data["topup_game_cfg"]  = tg_cfg
-
-    # পুরনো game data clear করো
     ctx.user_data.clear()
-    ctx.user_data["topup_game_code"] = "TOPUP_TELEGRAM"
-    ctx.user_data["topup_game_cfg"]  = tg_cfg
-    ctx.user_data["topup_validation_code"] = tg_cfg["validation_code"]  # "telegram"
+    ctx.user_data["topup_game_code"]       = "TOPUP_TELEGRAM"
+    ctx.user_data["topup_game_cfg"]        = tg_cfg
+    ctx.user_data["topup_validation_code"] = tg_cfg["validation_code"]
 
     msg = await update.message.reply_text(
         "✈️ <b>Telegram Topup</b>\n\n⏳ Packages লোড হচ্ছে...",
@@ -126,14 +135,15 @@ async def topup_start_telegram(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         for pkg in packages[:20]:
             label = pkg.get("name") or pkg.get("service_name", "Package")
             price = _markup_price(float(pkg.get("price", 0)))
-            rows.append([InlineKeyboardButton(
+            rows.append([StyledButton(
                 f"{label} — ৳{price}",
+                style="primary",
                 callback_data=f"tp:{pkg.get('service_code', pkg.get('id', ''))}"
             )])
-        rows.append([InlineKeyboardButton("❌ Cancel", callback_data="topup_cancel")])
+        rows.append([StyledButton("❌ Cancel", style="danger", callback_data="topup_cancel")])
 
         await msg.edit_text(
-            f"✈️ <b>Telegram Packages</b>\n\n👇 Package বেছে নাও:",
+            "✈️ <b>Telegram Packages</b>\n\n👇 Package বেছে নাও:",
             reply_markup=InlineKeyboardMarkup(rows),
             parse_mode=ParseMode.HTML
         )
@@ -143,8 +153,6 @@ async def topup_start_telegram(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         logger.error(f"topup_start_telegram error: {e}")
         await msg.edit_text("❌ Error loading packages. Try again later.")
         return ConversationHandler.END
-
-
 
 
 async def topup_game_selected(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -204,11 +212,12 @@ async def topup_game_selected(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     for pkg in packages[:30]:
         cost  = _markup_price(float(pkg.get("price") or 0))
         label = pkg.get("service_name") or pkg["service_code"]
-        rows.append([InlineKeyboardButton(
+        rows.append([StyledButton(
             f"💎 {label} — ৳{cost:.0f}",
+            style="primary",
             callback_data=f"tp:{pkg['service_code'][:40]}"
         )])
-    rows.append([InlineKeyboardButton("❌ Cancel", callback_data="topup_cancel")])
+    rows.append([StyledButton("❌ Cancel", style="danger", callback_data="topup_cancel")])
 
     await query.edit_message_text(
         f"{cfg['name']}\n\n💎 Package বেছে নাও:",
@@ -231,14 +240,12 @@ async def topup_package_selected(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
     packages     = ctx.user_data.get("topup_packages", {})
 
     pkg = None
-    # dict format (game topup)
     if isinstance(packages, dict):
         for code, p in packages.items():
             if code[:40] == service_code:
                 pkg = p
                 service_code = code
                 break
-    # list format (telegram topup)
     elif isinstance(packages, list):
         for p in packages:
             code = str(p.get("service_code", p.get("id", "")))
@@ -270,7 +277,6 @@ async def topup_player_id(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     player_id = update.message.text.strip()
     cfg       = ctx.user_data.get("topup_game_cfg", {})
 
-    # Telegram এর জন্য text ID allow, বাকিদের জন্য শুধু digit
     if not cfg.get("allow_text_id") and not player_id.isdigit():
         await update.message.reply_text(
             "❌ শুধু সংখ্যা দাও (উদাহরণ: 123456789)\n\n"
@@ -278,7 +284,6 @@ async def topup_player_id(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return TOPUP_PLAYER_ID
 
-    # Telegram username — @ ছাড়া দিলে @ যোগ করো
     if cfg.get("allow_text_id") and not player_id.startswith("@") and not player_id.isdigit():
         player_id = "@" + player_id
 
@@ -310,7 +315,6 @@ async def _verify_and_confirm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     cost      = ctx.user_data["topup_cost"]
     val_code  = ctx.user_data.get("topup_validation_code", "")
 
-    # Telegram এর জন্য skip_validation নেই — API দিয়ে validate করো
     if not val_code:
         nickname = player_id
     else:
@@ -361,8 +365,8 @@ async def _verify_and_confirm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     bal_ok  = "✅" if balance >= cost else "❌"
 
     confirm_kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("✅ Confirm", callback_data="topup_confirm")],
-        [InlineKeyboardButton("❌ Cancel",  callback_data="topup_cancel")],
+        [StyledButton("✅ Confirm", style="success", callback_data="topup_confirm")],
+        [StyledButton("❌ Cancel",  style="danger",  callback_data="topup_cancel")],
     ])
 
     await msg.edit_text(
@@ -403,7 +407,7 @@ async def topup_confirm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ok = await db.deduct_balance(user_id, cost, f"Topup: {pkg.get('service_name', service_code)}")
     if not ok:
         await query.edit_message_text(
-            "❌ <b>Balance কম!</b>\n\n💳 Buy Coins থেকে balance বাড়াও।",
+            "❌ <b>Balance কম!</b>\n\n💳 Buy Coins থেকে balance বাড়াও.",
             parse_mode=ParseMode.HTML
         )
         await query.message.reply_text("👇 Menu:", reply_markup=main_keyboard())
@@ -444,7 +448,6 @@ async def topup_confirm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         status=result.get("data", {}).get("status", "Processing"),
     )
 
-    # ── Order log channel এ পাঠাও ──────────────────────────────────
     await send_order_log(
         order_id     = order_id,
         user_id      = user_id,
@@ -457,11 +460,8 @@ async def topup_confirm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         nickname     = nickname,
     )
 
-    is_telegram = cfg.get("validation_code") == "telegram"
-    if is_telegram:
-        delivery_note = "⏳ ৫-১৫ মিনিটের মধ্যে সম্পন্ন হবে!"
-    else:
-        delivery_note = "⏳ ৫-১০ মিনিটের মধ্যে সম্পন্ন হবে!"
+    is_telegram   = cfg.get("validation_code") == "telegram"
+    delivery_note = "⏳ ৫-১৫ মিনিটের মধ্যে সম্পন্ন হবে!" if is_telegram else "⏳ ৫-১০ মিনিটের মধ্যে সম্পন্ন হবে!"
 
     await query.edit_message_text(
         f"✅ <b>Order Successful!</b>\n"
