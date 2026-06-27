@@ -218,7 +218,7 @@ def platform_categories_kb(platform: str, categories: list[str], icons: dict) ->
     rows = []
     for idx, cat in enumerate(categories):
         icon = next((v for k, v in icons.items() if k.lower() in cat.lower()), "\U0001f539")
-        rows.append([StyledButton(f"{icon}  {cat}", style="primary", callback_data=f"catidx:{idx}")])
+        rows.append([StyledButton(f"{icon}  {cat}", style="success", callback_data=f"catidx:{idx}")])
     rows.append([StyledButton("⬅️  Back", style="danger", callback_data="platform_back")])
     return InlineKeyboardMarkup(rows)
 
@@ -228,10 +228,10 @@ def services_kb(services: list[dict], category: str) -> InlineKeyboardMarkup:
     for svc in services[:25]:
         rows.append([StyledButton(
             f"\U0001f4e6  {svc['name']}",
-            style="primary",
+            style="danger",
             callback_data=f"svc:{svc['service_id']}"
         )])
-    rows.append([StyledButton("⬅️  Back", style="danger", callback_data="svc_list_back")])
+    rows.append([StyledButton("⬅️  Back", style="success", callback_data="svc_list_back")])
     return InlineKeyboardMarkup(rows)
 
 
