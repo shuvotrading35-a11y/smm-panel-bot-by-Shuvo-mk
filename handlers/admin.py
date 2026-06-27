@@ -555,7 +555,7 @@ async def force_join_admin(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             )
     else:
         lines.append("<i>No channels set.</i>")
-    lines.append("\n/addchannel @channel link name — Add\n/removechannel — Remove")
+    lines.append("\n/addchannel @channel link [name] — Add\n/removechannel @channel — Remove")
     await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
 
 
@@ -564,13 +564,26 @@ async def add_channel_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
     args = ctx.args
     if not args:
-        await update.message.reply_text("Usage: /addchannel @channel invite_link")
+        await update.message.reply_text("Usage: /addchannel @channel invite_link [name]")
         return
-    ch_id   = args[0]
-    link    = args[1] if len(args) > 1 else ""
-    name    = args[2] if len(args) > 2 else ch_id
+    ch_id = args[0]
+    link  = args[1] if len(args) > 1 else ""
+    name  = args[2] if len(args) > 2 else ""
+
+    # name না দিলে bot দিয়ে channel title fetch করো
+    if not name:
+        try:
+            chat = await ctx.bot.get_chat(ch_id)
+            name = chat.title or ch_id
+        except Exception:
+            name = ch_id
+
     await db.add_force_channel(ch_id, name, link)
-    await update.message.reply_text(f"✅ Channel <code>{ch_id}</code> added to force join.", parse_mode=ParseMode.HTML)
+    await update.message.reply_text(
+        f"✅ Channel <code>{ch_id}</code> added.\n"
+        f"📛 Name: <b>{name}</b>",
+        parse_mode=ParseMode.HTML
+    )
 
 
 async def topup_debug(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
