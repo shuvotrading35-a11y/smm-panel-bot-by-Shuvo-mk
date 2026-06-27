@@ -92,8 +92,8 @@ def vip_plans_kb() -> InlineKeyboardMarkup:
 def leaderboard_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[
         StyledButton("🥇 Referrers", style="primary", callback_data="lb:referrers"),
-        StyledButton("🥈 Buyers",    style="primary", callback_data="lb:buyers"),
-        StyledButton("🥉 Orders",    style="primary", callback_data="lb:orders"),
+        StyledButton("🥈 Buyers",    style="success", callback_data="lb:buyers"),
+        StyledButton("🥉 Orders",    style="danger", callback_data="lb:orders"),
     ]])
 
 
@@ -107,10 +107,10 @@ def wallet_kb() -> InlineKeyboardMarkup:
 def account_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [
-            StyledButton("💳 Deposit History",  style="primary", callback_data="acc_deposits"),
+            StyledButton("💳 Deposit History",  style="danger", callback_data="acc_deposits"),
             StyledButton("📤 Transactions",     style="primary", callback_data="acc_transactions"),
         ],
-        [StyledButton("🔄 Refresh", style="primary", callback_data="acc_refresh")],
+        [StyledButton("🔄 Refresh", style="success", callback_data="acc_refresh")],
     ])
 
 
@@ -124,11 +124,11 @@ def ticket_reply_kb(ticket_id: int, user_id: int) -> InlineKeyboardMarkup:
 def broadcast_type_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [
-            StyledButton("📝 Text",     style="primary", callback_data="bc_type:text"),
+            StyledButton("📝 Text",     style="success", callback_data="bc_type:text"),
             StyledButton("🖼 Photo",    style="primary", callback_data="bc_type:photo"),
         ],
         [
-            StyledButton("🎥 Video",    style="primary", callback_data="bc_type:video"),
+            StyledButton("🎥 Video",    style="danger", callback_data="bc_type:video"),
             StyledButton("📄 Document", style="primary", callback_data="bc_type:document"),
         ],
         [StyledButton("❌ Cancel", style="danger", callback_data="bc_type:cancel")],
@@ -137,7 +137,7 @@ def broadcast_type_kb() -> InlineKeyboardMarkup:
 
 def export_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [StyledButton("👥 Users CSV",  style="primary", callback_data="export:users")],
+        [StyledButton("👥 Users CSV",  style="success", callback_data="export:users")],
         [StyledButton("📦 Orders CSV", style="primary", callback_data="export:orders")],
     ])
 
@@ -162,7 +162,7 @@ def force_join_kb(channels: list[dict]) -> InlineKeyboardMarkup:
         name = ch.get("channel_name") or ch["channel_id"]
         link = ch.get("invite_link") or f"https://t.me/{ch['channel_id'].lstrip('@')}"
         rows.append([InlineKeyboardButton(f"📢 {name}", url=link)])
-    rows.append([StyledButton("✅ I've Joined — Check", style="success", callback_data="fj_check")])
+    rows.append([StyledButton("✅ I've Joined — Check", style="danger", callback_data="fj_check")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -205,7 +205,7 @@ def categories_kb(categories: list[str], icons: dict, updates_channel: str = "")
         row = []
         for p in platforms_present[i:i+2]:
             label = PLATFORM_LABELS.get(p, f"🔹 {p.title()}")
-            row.append(StyledButton(label, style="primary", callback_data=f"platform:{p}"))
+            row.append(StyledButton(label, style="success", callback_data=f"platform:{p}"))
         rows.append(row)
 
     if updates_channel:
