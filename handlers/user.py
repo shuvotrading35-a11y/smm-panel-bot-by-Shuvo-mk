@@ -37,10 +37,15 @@ logger = logging.getLogger(__name__)
 # ═══════════════════════════════════════════════════════════════════
 SHUVOPAY_API = "https://shuvopaycom-production.up.railway.app/api/v1"
 SHUVOPAY_CHECKOUT = "https://shuvopay.vercel.app"
-SHUVOPAY_API_KEY = "spk_4jwdScgIqRvPgYNABohcyBy179mQR0zMg7-7oixZgR_55pot4if8KiNGqTxhnYi7"  # merchant API key
+SHUVOPAY_API_KEY = "YOUR_API_KEY_HERE"  # merchant API key
 
 
-async def create_shuvopay_invoice(amount: float, provider: str = "bkash") -> dict | None:
+async def create_shuvopay_invoice(amount: float, provider: str = "bkash") -> dict:
+    """
+    সফল হলে ShuvoPay-র invoice dict রিটার্ন করে (এতে 'id' থাকবে)।
+    ব্যর্থ হলে {'error': '...'} রিটার্ন করে, যাতে কলার আসল কারণটা
+    ইউজার/অ্যাডমিনকে জানাতে পারে।
+    """
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.post(
@@ -55,9 +60,13 @@ async def create_shuvopay_invoice(amount: float, provider: str = "bkash") -> dic
             )
             if resp.status_code == 200:
                 return resp.json()
-    except Exception:
-        pass
-    return None
+            error_msg = f"HTTP {resp.status_code}: {resp.text[:300]}"
+            logger.error(f"ShuvoPay invoice create failed | {error_msg}")
+            return {"error": error_msg}
+    except Exception as e:
+        error_msg = f"{type(e).__name__}: {e}"
+        logger.error(f"ShuvoPay invoice create exception: {error_msg}")
+        return {"error": error_msg}
 
 
 async def check_shuvopay_invoice(invoice_id: str) -> str:
@@ -68,8 +77,11 @@ async def check_shuvopay_invoice(invoice_id: str) -> str:
             )
             if resp.status_code == 200:
                 return resp.json().get("status", "pending")
-    except Exception:
-        pass
+            logger.error(
+                f"ShuvoPay invoice check failed | status={resp.status_code} | body={resp.text[:500]}"
+            )
+    except Exception as e:
+        logger.error(f"ShuvoPay invoice check exception: {e!r}")
     return "pending"
 
 
@@ -439,12 +451,32 @@ async def payment_method_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE
 
         invoice = await create_shuvopay_invoice(amount, provider="bkash")
 
-        if not invoice:
+        if not invoice or "id" not in invoice:
+            error_detail = invoice.get("error", "Unknown error") if invoice else "No response"
+
             await query.edit_message_text(
                 "❌ Payment gateway সংযোগ করা যায়নি।\n"
                 "অনুগ্রহ করে @shuvo_9882 এ যোগাযোগ করুন।",
                 parse_mode=ParseMode.HTML
             )
+
+            # Admin-কে আসল error জানাও
+            user = query.from_user
+            for admin_id in ADMIN_IDS:
+                try:
+                    await ctx.bot.send_message(
+                        admin_id,
+                        f"🔴 <b>ShuvoPay Gateway Error</b>\n"
+                        f"{'─'*28}\n"
+                        f"👤 User: <code>{user.full_name}</code> (<code>@{user.username or ''}</code>)\n"
+                        f"🆔 User ID: <code>{user.id}</code>\n"
+                        f"💰 Amount: <code>{amount}</code>\n"
+                        f"⚠️ Error: <code>{error_detail}</code>",
+                        parse_mode=ParseMode.HTML
+                    )
+                except Exception:
+                    pass
+
             return DEPOSIT_METHOD
 
         invoice_id = invoice["id"]
