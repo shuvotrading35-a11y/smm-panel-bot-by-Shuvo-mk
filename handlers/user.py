@@ -1,4 +1,5 @@
 import logging
+import httpx
 from telegram import Update
 from telegram.ext import ContextTypes, ConversationHandler, CommandHandler, MessageHandler, filters, ApplicationHandlerStop
 from telegram.constants import ParseMode
@@ -29,6 +30,47 @@ logger = logging.getLogger(__name__)
     ORDER_CONFIRM, REDEEM_INPUT, TICKET_SUBJECT, TICKET_MESSAGE,
     DEPOSIT_METHOD, DEPOSIT_AMOUNT, DEPOSIT_TXN, TRACKER_INPUT,
 ) = range(13)
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  SHUVOPAY — AUTOMATIC PAYMENT GATEWAY
+# ═══════════════════════════════════════════════════════════════════
+SHUVOPAY_API = "https://shuvopaycom-production.up.railway.app/api/v1"
+SHUVOPAY_CHECKOUT = "https://shuvopay.vercel.app"
+SHUVOPAY_API_KEY = "YOUR_API_KEY_HERE"  # merchant API key
+
+
+async def create_shuvopay_invoice(amount: float, provider: str = "bkash") -> dict | None:
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(
+                f"{SHUVOPAY_API}/invoice",
+                json={
+                    "amount": amount,
+                    "provider": provider,
+                    "receiver_account": "01336650725",
+                    "time_window_minutes": 30,
+                },
+                headers={"Authorization": f"Bearer {SHUVOPAY_API_KEY}"},
+            )
+            if resp.status_code == 200:
+                return resp.json()
+    except Exception:
+        pass
+    return None
+
+
+async def check_shuvopay_invoice(invoice_id: str) -> str:
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                f"{SHUVOPAY_API}/invoice/public/{invoice_id}",
+            )
+            if resp.status_code == 200:
+                return resp.json().get("status", "pending")
+    except Exception:
+        pass
+    return "pending"
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -286,346 +328,304 @@ async def wallet_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 
-# =========================
-# SHUVOPAY CONFIG
-# =========================
-
-import os
-import logging
-import httpx
-
-logger = logging.getLogger(__name__)
-
-SHUVOPAY_API = os.getenv(
-    "SHUVOPAY_API",
-    "https://shuvopaycom-production.up.railway.app/api/v1"
-)
-
-SHUVOPAY_CHECKOUT = os.getenv(
-    "SHUVOPAY_CHECKOUT",
-    "https://shuvopay.vercel.app"
-)
-
-SHUVOPAY_API_KEY = os.getenv("SHUVOPAY_API_KEY")
-
-SHUVOPAY_RECEIVER_ACCOUNT = os.getenv(
-    "SHUVOPAY_RECEIVER_ACCOUNT",
-    ""
-)
+# ═══════════════════════════════════════════════════════════════════
+#  BUY COINS / DEPOSIT
+# ═══════════════════════════════════════════════════════════════════
+async def buy_coins(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    text = (
+        "╔══════════════════════╗\n"
+        "      💎 <b>COIN MARKET</b> 💎\n"
+        "╚══════════════════════╝\n\n"
+        "নিচের প্যাকেজ থেকে পছন্দেরটি বেছে নাও\n"
+        "অথবা নিজের ইচ্ছামতো পরিমাণ লিখে কিনো।\n\n"
+        "──────────────────────\n"
+        "⚡ <b>INSTANT DELIVERY</b>\n"
+        "🔒 <b>TRUSTED SERVICE</b>\n"
+        "💬 <b>SUPPORT 24/7</b>\n"
+        "──────────────────────\n\n"
+        "❓ সাহায্য: @shuvo_9882"
+    )
+    if update.message:
+        await update.message.reply_text(text, reply_markup=coin_packages_kb(), parse_mode=ParseMode.HTML)
+    else:
+        query = update.callback_query
+        await query.message.reply_text(text, reply_markup=coin_packages_kb(), parse_mode=ParseMode.HTML)
+    return DEPOSIT_METHOD
 
 
-# =========================
-# SHUVOPAY ADMIN LOGGER
-# =========================
+async def package_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Package selected — show payment methods."""
+    query = update.callback_query
+    await query.answer()
+    data  = query.data
 
-async def notify_shuvopay_admins(bot, message: str):
-    """
-    Send ShuvoPay errors to all configured admins.
-    """
+    if data == "pkg_back":
+        # Back to coin market
+        text = (
+            "╔══════════════════════╗\n"
+            "      💎 <b>COIN MARKET</b> 💎\n"
+            "╚══════════════════════╝\n\n"
+            "নিচের প্যাকেজ থেকে পছন্দেরটি বেছে নাও\n"
+            "অথবা নিজের ইচ্ছামতো পরিমাণ লিখে কিনো।\n\n"
+            "──────────────────────\n"
+            "⚡ <b>INSTANT DELIVERY</b>\n"
+            "🔒 <b>TRUSTED SERVICE</b>\n"
+            "💬 <b>SUPPORT 24/7</b>\n"
+            "──────────────────────\n\n"
+            "❓ সাহায্য: @shuvo_9882"
+        )
+        await query.edit_message_text(text, reply_markup=coin_packages_kb(), parse_mode=ParseMode.HTML)
+        return DEPOSIT_METHOD
 
+    if data == "contact_admin":
+        await query.answer("Contact: @shuvo_9882", show_alert=True)
+        return DEPOSIT_METHOD
+
+    if data == "pkg:custom":
+        ctx.user_data["deposit_package"] = "custom"
+        ctx.user_data["deposit_coins"]   = None
+        await query.edit_message_text(
+            "✏️ <b>Custom Amount</b>\n\n"
+            "কত Coins কিনতে চাও লেখো:\n"
+            "<i>(শুধু সংখ্যা, উদাহরণ: 1500)</i>\n\n"
+            "⬅️ /cancel লিখলে বাতিল হবে।",
+            reply_markup=pkg_payment_kb(),
+            parse_mode=ParseMode.HTML
+        )
+        return DEPOSIT_METHOD
+
+    # Package selected: pkg:1500:৳70
+    parts  = data.split(":")
+    coins  = parts[1]
+    price  = parts[2] if len(parts) > 2 else "?"
+    ctx.user_data["deposit_package"] = coins
+    ctx.user_data["deposit_coins"]   = coins
+    ctx.user_data["deposit_price"]   = price
+
+    await query.edit_message_text(
+        f"🛍️ <b>{int(coins):,} Coins — {price}</b>\n\n"
+        f"💳 পেমেন্ট পদ্ধতি বেছে নাও:",
+        reply_markup=pkg_payment_kb(),
+        parse_mode=ParseMode.HTML
+    )
+    return DEPOSIT_METHOD
+
+
+async def payment_method_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    query  = update.callback_query
+    await query.answer()
+    method = query.data.split(":")[1]
+
+    from config import PAYMENT_METHODS
+    method_name = PAYMENT_METHODS.get(method, method)
+
+    coins  = ctx.user_data.get("deposit_coins", "?")
+    price  = ctx.user_data.get("deposit_price", "")
+
+    # ── Mobile Banking → ShuvoPay automatic gateway ──────────────
+    if method == "mobile":
+        await query.edit_message_text(
+            "⏳ <b>Secure Payment Gateway প্রস্তুত করা হচ্ছে...</b>\n"
+            "অনুগ্রহ করে কয়েক সেকেন্ড অপেক্ষা করুন।",
+            parse_mode=ParseMode.HTML
+        )
+
+        # price থেকে amount বের করো (যেমন "৳70" → 70.0)
+        price_str = str(price).replace("৳", "").replace(",", "").strip()
+        try:
+            amount = float(price_str)
+        except ValueError:
+            amount = float(ctx.user_data.get("deposit_amount", 0))
+
+        invoice = await create_shuvopay_invoice(amount, provider="bkash")
+
+        if not invoice:
+            await query.edit_message_text(
+                "❌ Payment gateway সংযোগ করা যায়নি।\n"
+                "অনুগ্রহ করে @shuvo_9882 এ যোগাযোগ করুন।",
+                parse_mode=ParseMode.HTML
+            )
+            return DEPOSIT_METHOD
+
+        invoice_id = invoice["id"]
+        pay_url = f"{SHUVOPAY_CHECKOUT}?id={invoice_id}"
+
+        # invoice info save করো পরে verify করতে
+        ctx.user_data["shuvopay_invoice_id"] = invoice_id
+        ctx.user_data["deposit_amount"] = amount
+        ctx.user_data["deposit_method"] = "mobile"
+
+        from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+        kb = InlineKeyboardMarkup([[
+            InlineKeyboardButton("💳 Pay Now", url=pay_url)
+        ], [
+            InlineKeyboardButton("✅ আমি পেমেন্ট করেছি", callback_data=f"check_pay:{invoice_id}")
+        ]])
+
+        await query.edit_message_text(
+            f"✅ <b>পেমেন্ট লিংক প্রস্তুত করা হয়েছে!</b>\n\n"
+            f"──────────────────────\n"
+            f"💰 Amount: <b>{price}</b>\n"
+            f"🆔 Order ID: <code>{invoice['invoice_number']}</code>\n"
+            f"──────────────────────\n\n"
+            f"নিচের <b>Pay Now</b> বাটনে ক্লিক করে পেমেন্ট সম্পন্ন করুন।",
+            reply_markup=kb,
+            parse_mode=ParseMode.HTML
+        )
+        return DEPOSIT_METHOD
+
+    # ── অন্য method (Binance, USDT etc.) — manual verify ─────────
+    payment_info = {
+        "binance":  "💵 <b>Binance Pay ID:</b> <code>your_binance_id</code>\n<b>Min:</b> $1",
+        "usdt_trc": "🟢 <b>USDT TRC20 Address:</b>\n<code>TYourWalletAddressHere</code>\n<b>Min:</b> $1",
+        "usdt_bep": "🟡 <b>USDT BEP20 Address:</b>\n<code>0xYourWalletAddressHere</code>\n<b>Min:</b> $1",
+    }
+
+    if method not in payment_info:
+        await query.answer("This method is not available.", show_alert=True)
+        return DEPOSIT_METHOD
+
+    pkg_line = f"🛍️ Package: <b>{int(coins):,} Coins — {price}</b>\n\n" if coins and coins != "?" else ""
+    ctx.user_data["deposit_method"] = method
+
+    await query.edit_message_text(
+        f"💳 <b>{method_name}</b>\n\n"
+        f"{pkg_line}"
+        f"{payment_info[method]}\n\n"
+        f"✅ পেমেন্ট করার পর Transaction ID পাঠাও।\n"
+        f"❓ সাহায্য: @shuvo_9882\n\n"
+        f"👇 Deposit amount লেখো (শুধু সংখ্যা):",
+        parse_mode=ParseMode.HTML
+    )
+    return DEPOSIT_AMOUNT
+
+
+async def check_payment_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Customer বলছে পেমেন্ট করেছে — ShuvoPay তে verify করো।"""
+    query = update.callback_query
+    await query.answer("যাচাই করা হচ্ছে...")
+
+    invoice_id = query.data.split(":")[1]
+    status = await check_shuvopay_invoice(invoice_id)
+
+    if status == "paid":
+        user_id = update.effective_user.id
+        amount  = ctx.user_data.get("deposit_amount", 0)
+        coins   = ctx.user_data.get("deposit_coins", amount)
+
+        # Coins add করো
+        await db.add_coins(user_id, float(coins))
+
+        await query.edit_message_text(
+            f"🎉 <b>পেমেন্ট সফল!</b>\n\n"
+            f"✅ <b>{fmt_coins_full(float(coins))} Coins</b> তোমার account এ যোগ হয়েছে।\n\n"
+            f"ধন্যবাদ! 🙏",
+            parse_mode=ParseMode.HTML,
+            reply_markup=None
+        )
+
+        # Admin notify
+        udata = await db.get_user(user_id)
+        for admin_id in ADMIN_IDS:
+            try:
+                await ctx.bot.send_message(
+                    admin_id,
+                    f"✅ <b>Auto Payment Verified</b>\n"
+                    f"👤 {udata['full_name']} (@{udata.get('username','')})\n"
+                    f"💰 {fmt_coins_full(float(coins))}\n"
+                    f"🆔 Invoice: <code>{invoice_id}</code>",
+                    parse_mode=ParseMode.HTML
+                )
+            except Exception:
+                pass
+
+        ctx.user_data.clear()
+    else:
+        from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+        price = ctx.user_data.get("deposit_price", "")
+        pay_url = f"{SHUVOPAY_CHECKOUT}?id={invoice_id}"
+        kb = InlineKeyboardMarkup([[
+            InlineKeyboardButton("💳 Pay Now", url=pay_url)
+        ], [
+            InlineKeyboardButton("✅ আমি পেমেন্ট করেছি", callback_data=f"check_pay:{invoice_id}")
+        ]])
+
+        await query.edit_message_text(
+            f"⏳ <b>পেমেন্ট এখনো confirm হয়নি।</b>\n\n"
+            f"পেমেন্ট করে থাকলে কিছুক্ষণ অপেক্ষা করুন।\n"
+            f"তারপর আবার <b>আমি পেমেন্ট করেছি</b> বাটনে চাপুন।\n\n"
+            f"❓ সমস্যা হলে: @shuvo_9882",
+            reply_markup=kb,
+            parse_mode=ParseMode.HTML
+        )
+
+
+async def deposit_amount_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip()
+    if not text.replace(".", "", 1).isdigit():
+        await update.message.reply_text("❌ Invalid amount. Enter numbers only (e.g. 10 or 5.50):")
+        return DEPOSIT_AMOUNT
+
+    amount = float(text)
+    from config import MIN_DEPOSIT
+    if amount < MIN_DEPOSIT:
+        await update.message.reply_text(f"❌ Minimum deposit is {MIN_DEPOSIT} coins.")
+        return DEPOSIT_AMOUNT
+
+    ctx.user_data["deposit_amount"] = amount
+    await update.message.reply_text(
+        f"✅ Amount: <b>{fmt_coins_full(amount)}</b>\n\n"
+        f"📝 Now send your <b>Transaction ID / Reference Number</b>:",
+        parse_mode=ParseMode.HTML,
+        reply_markup=cancel_keyboard()
+    )
+    return DEPOSIT_TXN
+
+
+async def deposit_txn_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    txn_id  = update.message.text.strip()
+    user_id = update.effective_user.id
+    method  = ctx.user_data.get("deposit_method", "unknown")
+    amount  = ctx.user_data.get("deposit_amount", 0)
+
+    dep_id = await db.create_deposit(user_id, amount, method, txn_id)
+
+    await update.message.reply_text(
+        f"✅ <b>Deposit Request Submitted!</b>\n\n"
+        f"🆔 Request ID: <code>#{dep_id}</code>\n"
+        f"💰 Amount: <code>{fmt_coins_full(amount)}</code>\n"
+        f"💳 Method: <code>{method}</code>\n"
+        f"📋 TXN ID: <code>{txn_id}</code>\n\n"
+        f"⏳ Admin will verify and approve within 24h.",
+        parse_mode=ParseMode.HTML,
+        reply_markup=main_keyboard()
+    )
+
+    # Notify admins
+    udata = await db.get_user(user_id)
+    admin_msg = (
+        f"💳 <b>New Deposit Request</b>\n"
+        f"{'─'*28}\n"
+        f"👤 User: <code>{udata['full_name']}</code> (<code>@{udata.get('username','')}</code>)\n"
+        f"🆔 User ID: <code>{user_id}</code>\n"
+        f"💰 Amount: <code>{fmt_coins_full(amount)}</code>\n"
+        f"💳 Method: <code>{method}</code>\n"
+        f"📋 TXN ID: <code>{txn_id}</code>\n"
+        f"🆔 Request ID: <code>#{dep_id}</code>"
+    )
+    from keyboards.inline import deposit_approve_kb
     for admin_id in ADMIN_IDS:
         try:
-            await bot.send_message(
-                chat_id=admin_id,
-                text=message,
-                parse_mode="HTML"
-            )
-
+            await ctx.bot.send_message(admin_id, admin_msg,
+                                       reply_markup=deposit_approve_kb(dep_id),
+                                       parse_mode=ParseMode.HTML)
         except Exception:
-            logger.exception(
-                "Failed to send ShuvoPay admin notification"
-            )
+            pass
 
+    ctx.user_data.clear()
+    return ConversationHandler.END
 
-# =========================
-# CREATE SHUVOPAY INVOICE
-# =========================
 
-async def create_shuvopay_invoice(
-    amount: float,
-    provider: str = "bkash"
-):
-    """
-    Create a ShuvoPay invoice.
-
-    Returns:
-        (invoice_data, None) on success
-        (None, error_message) on failure
-    """
-
-    if not SHUVOPAY_API_KEY:
-
-        error = "SHUVOPAY_API_KEY is not configured"
-
-        logger.error(error)
-
-        return None, error
-
-    if not SHUVOPAY_RECEIVER_ACCOUNT:
-
-        error = "SHUVOPAY_RECEIVER_ACCOUNT is not configured"
-
-        logger.error(error)
-
-        return None, error
-
-    try:
-
-        timeout = httpx.Timeout(
-            connect=10.0,
-            read=20.0,
-            write=20.0,
-            pool=10.0
-        )
-
-        async with httpx.AsyncClient(
-            timeout=timeout
-        ) as client:
-
-            response = await client.post(
-
-                f"{SHUVOPAY_API}/invoice",
-
-                json={
-                    "amount": amount,
-                    "provider": provider,
-                    "receiver_account": SHUVOPAY_RECEIVER_ACCOUNT,
-                    "time_window_minutes": 30
-                },
-
-                headers={
-                    "Authorization": (
-                        f"Bearer {SHUVOPAY_API_KEY}"
-                    ),
-                    "Accept": "application/json",
-                    "Content-Type": "application/json"
-                }
-            )
-
-            # =========================
-            # SUCCESS
-            # =========================
-
-            if 200 <= response.status_code < 300:
-
-                try:
-
-                    data = response.json()
-
-                except ValueError:
-
-                    error = (
-                        "ShuvoPay returned invalid JSON"
-                    )
-
-                    logger.error(
-                        "%s | HTTP %s | Response: %s",
-                        error,
-                        response.status_code,
-                        response.text[:1000]
-                    )
-
-                    return None, error
-
-                invoice_id = data.get("id")
-
-                if not invoice_id:
-
-                    error = (
-                        "ShuvoPay response does not contain invoice ID"
-                    )
-
-                    logger.error(
-                        "%s | Response: %s",
-                        error,
-                        str(data)[:1000]
-                    )
-
-                    return None, error
-
-                logger.info(
-                    "ShuvoPay invoice created | "
-                    "amount=%s | provider=%s | invoice=%s",
-                    amount,
-                    provider,
-                    invoice_id
-                )
-
-                return data, None
-
-            # =========================
-            # API ERROR
-            # =========================
-
-            response_text = response.text.strip()
-
-            error = (
-                f"HTTP {response.status_code}: "
-                f"{response_text[:1000]}"
-            )
-
-            logger.error(
-                "ShuvoPay API error | %s",
-                error
-            )
-
-            return None, error
-
-    except httpx.TimeoutException as e:
-
-        error = (
-            f"ShuvoPay timeout: "
-            f"{type(e).__name__}"
-        )
-
-        logger.exception(error)
-
-        return None, error
-
-    except httpx.RequestError as e:
-
-        error = (
-            f"ShuvoPay connection error: "
-            f"{type(e).__name__}: {e}"
-        )
-
-        logger.exception(error)
-
-        return None, error
-
-    except Exception as e:
-
-        error = (
-            f"ShuvoPay unexpected error: "
-            f"{type(e).__name__}: {e}"
-        )
-
-        logger.exception(error)
-
-        return None, error
-
-
-# =========================
-# CHECK SHUVOPAY INVOICE
-# =========================
-
-async def check_shuvopay_invoice(
-    invoice_id: str
-):
-    """
-    Check public ShuvoPay invoice status.
-
-    Returns:
-        (status, None)
-        (pending, error_message)
-    """
-
-    try:
-
-        timeout = httpx.Timeout(
-            connect=10.0,
-            read=15.0,
-            write=15.0,
-            pool=10.0
-        )
-
-        async with httpx.AsyncClient(
-            timeout=timeout
-        ) as client:
-
-            response = await client.get(
-
-                f"{SHUVOPAY_API}/invoice/public/{invoice_id}",
-
-                headers={
-                    "Accept": "application/json"
-                }
-            )
-
-            if response.status_code == 200:
-
-                try:
-
-                    data = response.json()
-
-                except ValueError:
-
-                    error = (
-                        "Invalid JSON received "
-                        "while checking invoice"
-                    )
-
-                    logger.error(
-                        "%s | invoice=%s | response=%s",
-                        error,
-                        invoice_id,
-                        response.text[:1000]
-                    )
-
-                    return "pending", error
-
-                status = str(
-                    data.get(
-                        "status",
-                        "pending"
-                    )
-                ).lower()
-
-                logger.info(
-                    "ShuvoPay invoice check | "
-                    "invoice=%s | status=%s",
-                    invoice_id,
-                    status
-                )
-
-                return status, None
-
-            error = (
-                f"HTTP {response.status_code}: "
-                f"{response.text[:1000]}"
-            )
-
-            logger.error(
-                "ShuvoPay invoice check failed | "
-                "invoice=%s | %s",
-                invoice_id,
-                error
-            )
-
-            return "pending", error
-
-    except httpx.TimeoutException as e:
-
-        error = (
-            f"Invoice check timeout: "
-            f"{type(e).__name__}"
-        )
-
-        logger.exception(error)
-
-        return "pending", error
-
-    except httpx.RequestError as e:
-
-        error = (
-            f"Invoice check connection error: "
-            f"{type(e).__name__}: {e}"
-        )
-
-        logger.exception(error)
-
-        return "pending", error
-
-    except Exception as e:
-
-        error = (
-            f"Invoice check unexpected error: "
-            f"{type(e).__name__}: {e}"
-        )
-
-        logger.exception(error)
-
-        return "pending", error
 # ═══════════════════════════════════════════════════════════════════
 #  SERVICES LIST
 # ═══════════════════════════════════════════════════════════════════
