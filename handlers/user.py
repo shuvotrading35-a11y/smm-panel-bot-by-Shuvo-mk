@@ -286,6 +286,47 @@ async def wallet_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 
+import httpx
+
+SHUVOPAY_API = "https://shuvopaycom-production.up.railway.app/api/v1"
+SHUVOPAY_CHECKOUT = "https://shuvopay.vercel.app"
+SHUVOPAY_API_KEY = "spk_4jwdScgIqRvPgYNABohcyBy179mQR0zMg7-7oixZgR_55pot4if8KiNGqTxhnYi7"  # merchant API key
+
+# ─── ShuvoPay invoice create ─────────────────────────────────────────────────
+
+async def create_shuvopay_invoice(amount: float, provider: str = "bkash") -> dict | None:
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(
+                f"{SHUVOPAY_API}/invoice",
+                json={
+                    "amount": amount,
+                    "provider": provider,
+                    "receiver_account": "01336650725",
+                    "time_window_minutes": 30,
+                },
+                headers={"Authorization": f"Bearer {SHUVOPAY_API_KEY}"},
+            )
+            if resp.status_code == 200:
+                return resp.json()
+    except Exception:
+        pass
+    return None
+
+
+async def check_shuvopay_invoice(invoice_id: str) -> str:
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                f"{SHUVOPAY_API}/invoice/public/{invoice_id}",
+            )
+            if resp.status_code == 200:
+                return resp.json().get("status", "pending")
+    except Exception:
+        pass
+    return "pending"
+
+
 # ═══════════════════════════════════════════════════════════════════
 #  BUY COINS / DEPOSIT
 # ═══════════════════════════════════════════════════════════════════
@@ -318,7 +359,6 @@ async def package_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     data  = query.data
 
     if data == "pkg_back":
-        # Back to coin market
         text = (
             "╔══════════════════════╗\n"
             "      💎 <b>COIN MARKET</b> 💎\n"
@@ -377,33 +417,145 @@ async def payment_method_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE
     from config import PAYMENT_METHODS
     method_name = PAYMENT_METHODS.get(method, method)
 
+    coins  = ctx.user_data.get("deposit_coins", "?")
+    price  = ctx.user_data.get("deposit_price", "")
+
+    # ── Mobile Banking → ShuvoPay automatic ──────────────────────
+    if method == "mobile":
+        await query.edit_message_text(
+            "⏳ <b>Secure Payment Gateway প্রস্তুত করা হচ্ছে...</b>\n"
+            "অনুগ্রহ করে কয়েক সেকেন্ড অপেক্ষা করুন।",
+            parse_mode=ParseMode.HTML
+        )
+
+        # price থেকে amount বের করো (যেমন "৳70" → 70.0)
+        price_str = str(price).replace("৳", "").replace(",", "").strip()
+        try:
+            amount = float(price_str)
+        except ValueError:
+            amount = float(ctx.user_data.get("deposit_amount", 0))
+
+        invoice = await create_shuvopay_invoice(amount, provider="bkash")
+
+        if not invoice:
+            await query.edit_message_text(
+                "❌ Payment gateway সংযোগ করা যায়নি।\n"
+                "অনুগ্রহ করে @shuvo_9882 এ যোগাযোগ করুন।",
+                parse_mode=ParseMode.HTML
+            )
+            return DEPOSIT_METHOD
+
+        invoice_id = invoice["id"]
+        pay_url = f"{SHUVOPAY_CHECKOUT}?id={invoice_id}"
+
+        # invoice info save করো পরে verify করতে
+        ctx.user_data["shuvopay_invoice_id"] = invoice_id
+        ctx.user_data["deposit_amount"] = amount
+        ctx.user_data["deposit_method"] = "mobile"
+
+        from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+        kb = InlineKeyboardMarkup([[
+            InlineKeyboardButton("💳 Pay Now", url=pay_url)
+        ], [
+            InlineKeyboardButton("✅ আমি পেমেন্ট করেছি", callback_data=f"check_pay:{invoice_id}")
+        ]])
+
+        await query.edit_message_text(
+            f"✅ <b>পেমেন্ট লিংক প্রস্তুত করা হয়েছে!</b>\n\n"
+            f"──────────────────────\n"
+            f"💰 Amount: <b>{price}</b>\n"
+            f"🆔 Order ID: <code>{invoice['invoice_number']}</code>\n"
+            f"──────────────────────\n\n"
+            f"নিচের <b>Pay Now</b> বাটনে ক্লিক করে পেমেন্ট সম্পন্ন করুন।",
+            reply_markup=kb,
+            parse_mode=ParseMode.HTML
+        )
+        return DEPOSIT_METHOD
+
+    # ── অন্য method (Binance, USDT etc.) ─────────────────────────
     payment_info = {
         "binance":  "💵 <b>Binance Pay ID:</b> <code>your_binance_id</code>\n<b>Min:</b> $1",
         "usdt_trc": "🟢 <b>USDT TRC20 Address:</b>\n<code>TYourWalletAddressHere</code>\n<b>Min:</b> $1",
         "usdt_bep": "🟡 <b>USDT BEP20 Address:</b>\n<code>0xYourWalletAddressHere</code>\n<b>Min:</b> $1",
-        "mobile":   "📱 <b>Mobile Banking:</b>\nbKash: 01336650725\nNagad: 01336650725\n<b>Min:</b> ৳50",
     }
 
     if method not in payment_info:
         await query.answer("This method is not available.", show_alert=True)
         return DEPOSIT_METHOD
 
-    coins  = ctx.user_data.get("deposit_coins", "?")
-    price  = ctx.user_data.get("deposit_price", "")
     pkg_line = f"🛍️ Package: <b>{int(coins):,} Coins — {price}</b>\n\n" if coins and coins != "?" else ""
-    info   = payment_info[method]
     ctx.user_data["deposit_method"] = method
 
     await query.edit_message_text(
         f"💳 <b>{method_name}</b>\n\n"
         f"{pkg_line}"
-        f"{info}\n\n"
+        f"{payment_info[method]}\n\n"
         f"✅ পেমেন্ট করার পর Transaction ID পাঠাও।\n"
         f"❓ সাহায্য: @shuvo_9882\n\n"
         f"👇 Deposit amount লেখো (শুধু সংখ্যা):",
         parse_mode=ParseMode.HTML
     )
     return DEPOSIT_AMOUNT
+
+
+async def check_payment_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Customer বলছে পেমেন্ট করেছে — ShuvoPay তে verify করো।"""
+    query = update.callback_query
+    await query.answer("যাচাই করা হচ্ছে...")
+
+    invoice_id = query.data.split(":")[1]
+    status = await check_shuvopay_invoice(invoice_id)
+
+    if status == "paid":
+        user_id = update.effective_user.id
+        amount  = ctx.user_data.get("deposit_amount", 0)
+        coins   = ctx.user_data.get("deposit_coins", amount)
+
+        # Coins add করো
+        await db.add_coins(user_id, float(coins))
+
+        await query.edit_message_text(
+            f"🎉 <b>পেমেন্ট সফল!</b>\n\n"
+            f"✅ <b>{fmt_coins_full(float(coins))} Coins</b> তোমার account এ যোগ হয়েছে।\n\n"
+            f"ধন্যবাদ! 🙏",
+            parse_mode=ParseMode.HTML,
+            reply_markup=None
+        )
+
+        # Admin notify
+        udata = await db.get_user(user_id)
+        for admin_id in ADMIN_IDS:
+            try:
+                await ctx.bot.send_message(
+                    admin_id,
+                    f"✅ <b>Auto Payment Verified</b>\n"
+                    f"👤 {udata['full_name']} (@{udata.get('username','')})\n"
+                    f"💰 {fmt_coins_full(float(coins))}\n"
+                    f"🆔 Invoice: <code>{invoice_id}</code>",
+                    parse_mode=ParseMode.HTML
+                )
+            except Exception:
+                pass
+
+        ctx.user_data.clear()
+    else:
+        from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+        price = ctx.user_data.get("deposit_price", "")
+        pay_url = f"{SHUVOPAY_CHECKOUT}?id={invoice_id}"
+        kb = InlineKeyboardMarkup([[
+            InlineKeyboardButton("💳 Pay Now", url=pay_url)
+        ], [
+            InlineKeyboardButton("✅ আমি পেমেন্ট করেছি", callback_data=f"check_pay:{invoice_id}")
+        ]])
+
+        await query.edit_message_text(
+            f"⏳ <b>পেমেন্ট এখনো confirm হয়নি।</b>\n\n"
+            f"পেমেন্ট করে থাকলে কিছুক্ষণ অপেক্ষা করুন।\n"
+            f"তারপর আবার <b>আমি পেমেন্ট করেছি</b> বাটনে চাপুন।\n\n"
+            f"❓ সমস্যা হলে: @shuvo_9882",
+            reply_markup=kb,
+            parse_mode=ParseMode.HTML
+        )
 
 
 async def deposit_amount_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -447,7 +599,6 @@ async def deposit_txn_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         reply_markup=main_keyboard()
     )
 
-    # Notify admins
     udata = await db.get_user(user_id)
     admin_msg = (
         f"💳 <b>New Deposit Request</b>\n"
@@ -470,7 +621,6 @@ async def deposit_txn_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     ctx.user_data.clear()
     return ConversationHandler.END
-
 
 # ═══════════════════════════════════════════════════════════════════
 #  SERVICES LIST
