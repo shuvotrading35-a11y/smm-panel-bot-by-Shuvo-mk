@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 # ═══════════════════════════════════════════════════════════════════
 SHUVOPAY_API = "https://shuvopaycom-production.up.railway.app/api/v1"
 SHUVOPAY_CHECKOUT = "https://shuvopay.vercel.app"
-SHUVOPAY_API_KEY = "YOUR_API_KEY_HERE"  # merchant API key
+SHUVOPAY_API_KEY = "spk_4jwdScgIqRvPgYNABohcyBy179mQR0zMg7-7oixZgR_55pot4if8KiNGqTxhnYi7"  # merchant API key
 
 
 async def create_shuvopay_invoice(amount: float, provider: str = "bkash") -> dict:
