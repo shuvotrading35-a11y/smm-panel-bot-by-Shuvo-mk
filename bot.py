@@ -13,7 +13,7 @@ import database as db
 from handlers.user import (
     start, my_account, account_callback, wallet, wallet_callback,
     global_force_join_check, check_banned,
-    buy_coins, payment_method_callback, deposit_amount_handler,
+    buy_coins, payment_method_callback,check_payment_callback, deposit_amount_handler,
     deposit_txn_handler, package_callback, services_list, search_service_prompt, category_callback,
     service_callback, services_list_smm, services_list_telegram,
     new_order, new_order_smm, new_order_telegram, back_to_main, order_start_callback,
