@@ -514,7 +514,7 @@ async def check_payment_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
         coins   = ctx.user_data.get("deposit_coins", amount)
 
         # Coins add করো
-        await db.add_coins(user_id, float(coins))
+        await db.add_coins(user_id, float(coins), method="ShuvoPay (bKash)", txn_id=invoice_id)
 
         await query.edit_message_text(
             f"🎉 <b>পেমেন্ট সফল!</b>\n\n"
