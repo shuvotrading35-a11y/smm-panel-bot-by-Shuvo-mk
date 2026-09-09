@@ -250,6 +250,32 @@ async def deduct_balance(user_id: int, amount: float, description: str = "Order"
         return True
 
 # ─────────────────────────────────────────────────────────────────
+#  SHUVOPAY AUTO-VERIFIED DEPOSITS
+# ─────────────────────────────────────────────────────────────────
+async def add_coins(user_id: int, amount: float, method: str = "ShuvoPay", txn_id: str = None) -> None:
+    """
+    ShuvoPay গেটওয়ে থেকে অটোমেটিক ভেরিফাই হওয়া পেমেন্টের জন্য।
+    balance ও total_deposited দুটোই আপডেট করে, transaction log রাখে,
+    এবং deposits টেবিলে 'Approved' স্ট্যাটাসে একটা রেকর্ড যোগ করে
+    যাতে ইউজারের Deposit History-তেও এটা দেখা যায়।
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE users SET balance = balance + ?, total_deposited = total_deposited + ? WHERE user_id=?",
+            (amount, amount, user_id)
+        )
+        await db.execute(
+            "INSERT INTO transactions (user_id, type, amount, description, ref_id) VALUES (?,?,?,?,?)",
+            (user_id, "deposit", amount, f"Deposit via {method}", txn_id)
+        )
+        await db.execute(
+            """INSERT INTO deposits (user_id, amount, method, txn_id, status, approved_at)
+               VALUES (?,?,?,?,'Approved',datetime('now'))""",
+            (user_id, amount, method, txn_id)
+        )
+        await db.commit()
+
+# ─────────────────────────────────────────────────────────────────
 #  BAN SYSTEM
 # ─────────────────────────────────────────────────────────────────
 async def ban_user(user_id: int, reason: str = "No reason"):
