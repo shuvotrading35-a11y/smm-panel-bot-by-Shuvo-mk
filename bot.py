@@ -164,8 +164,17 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("stats",          bot_stats))
 
     # ── Standalone CallbackQuery handlers (outside ConversationHandlers) ──
-    app.add_handler(CallbackQueryHandler(force_join_check,            pattern=r"^fj_check$"))
-    app.add_handler(CallbackQueryHandler(account_callback,            pattern=r"^acc_"))
+app.add_handler(CallbackQueryHandler(force_join_check, pattern=r"^fj_check$"))
+
+# ── ShuvoPay Payment Verification ───────────────────────────────
+app.add_handler(
+    CallbackQueryHandler(
+        check_payment_callback,
+        pattern=r"^check_pay:"
+    )
+)
+
+app.add_handler(CallbackQueryHandler(account_callback, pattern=r"^acc_"))
     # wallet_callback handled inside deposit_conv ConversationHandler
     app.add_handler(CallbackQueryHandler(lambda u, c: u.callback_query.answer("📩 যোগাযোগ: @shuvo_9882", show_alert=True), pattern=r"^contact_admin$"))
     app.add_handler(CallbackQueryHandler(leaderboard_callback,        pattern=r"^lb:"))
