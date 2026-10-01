@@ -1,6 +1,11 @@
 """
 Partner API (Instant Delivery) — python-telegram-bot v20+
 LINK / COUPON / READY_ACCOUNT
+
+⚠️ Security:
+   - delivery.link / code / content কখনো log/DB-তে যায় না
+   - API ব্যালেন্স, error code, reqId ইউজারকে দেখানো হয় না
+   - সব internal detail শুধু অ্যাডমিন PM-এ
 """
 import uuid
 import json
@@ -32,6 +37,53 @@ log = logging.getLogger(__name__)
 
 WAITING_ACTION = 1
 WAITING_QTY    = 2
+
+
+# ─────────────────────────────────────────────────────
+#  FRIENDLY ERROR MAP  (ইউজার-facing)
+# ─────────────────────────────────────────────────────
+_FRIENDLY_ERRORS = {
+    "INSUFFICIENT_BALANCE": "⚠️ সাময়িকভাবে অর্ডার নেওয়া যাচ্ছে না। কিছুক্ষণ পরে চেষ্টা করুন অথবা সাপোর্টে যোগাযোগ করুন।",
+    "OUT_OF_STOCK":         "❌ এই প্রোডাক্টটি এইমাত্র স্টক আউট হয়ে গেছে।",
+    "PRODUCT_NOT_FOUND":    "❌ প্রোডাক্টটি খুঁজে পাওয়া যায়নি।",
+    "PRODUCT_UNAVAILABLE":  "⚠️ প্রোডাক্টটি এই মুহূর্তে unavailable।",
+    "PRODUCT_NOT_ALLOWED":  "⚠️ প্রোডাক্টটি এই মুহূর্তে unavailable।",
+    "INVALID_QUANTITY":     "❌ পরিমাণ সঠিক নয়।",
+    "RATE_LIMIT_EXCEEDED":  "⏳ অনেক দ্রুত চেষ্টা করছেন। একটু পরে আবার দিন।",
+    "MAINTENANCE":          "🛠 সার্ভার রক্ষণাবেক্ষণ চলছে। একটু পরে চেষ্টা করুন।",
+    "PARTNER_SUSPENDED":    "🚫 সাময়িকভাবে অর্ডার বন্ধ। সাপোর্টে যোগাযোগ করুন।",
+    "API_ACCESS_DISABLED":  "🚫 সার্ভিস সাময়িক বন্ধ। সাপোর্টে যোগাযোগ করুন।",
+    "USER_BLOCKED":         "🚫 আপনার অ্যাকাউন্ট ব্লকড। সাপোর্টে যোগাযোগ করুন।",
+    "NETWORK":              "📡 নেটওয়ার্ক সমস্যা। আবার চেষ্টা করুন।",
+    "NO_KEY":               "⚠️ সার্ভিসে সাময়িক সমস্যা হচ্ছে। কিছুক্ষণ পরে চেষ্টা করুন।",
+    "BAD_JSON":             "⚠️ সার্ভিসে সাময়িক সমস্যা হচ্ছে। কিছুক্ষণ পরে চেষ্টা করুন।",
+    "INVALID_API_KEY":      "⚠️ সার্ভিসে সাময়িক সমস্যা হচ্ছে। কিছুক্ষণ পরে চেষ্টা করুন।",
+    "API_KEY_EXPIRED":      "⚠️ সার্ভিসে সাময়িক সমস্যা হচ্ছে। কিছুক্ষণ পরে চেষ্টা করুন।",
+}
+
+_GENERIC_ERROR = "⚠️ সার্ভিসে সাময়িক সমস্যা হচ্ছে। কিছুক্ষণ পরে আবার চেষ্টা করুন।"
+
+
+def _friendly_error(code: str) -> str:
+    """ইউজার-ফ্রেন্ডলি মেসেজ — কোনো internal detail ছাড়া।"""
+    return _FRIENDLY_ERRORS.get(code, _GENERIC_ERROR)
+
+
+async def _notify_admins_of_error(context, where: str, e: PartnerAPIError):
+    """শুধু অ্যাডমিনদের কাছে বিস্তারিত এরর পাঠায়। Silent fail-safe।"""
+    for admin_id in ADMIN_IDS:
+        try:
+            await context.bot.send_message(
+                admin_id,
+                f"⚠️ <b>Partner API Error</b>\n"
+                f"📍 Where: <code>{where}</code>\n"
+                f"❌ Code: <code>{e.code}</code>\n"
+                f"💬 {escape(e.message or '')}\n"
+                f"🆔 <code>reqId: {e.request_id or '—'}</code>",
+                parse_mode="HTML",
+            )
+        except Exception:
+            pass
 
 
 # ─────────────────────────────────────────────────────
@@ -109,7 +161,12 @@ async def partner_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
             providers = await papi.providers()
             set_cache("partner:providers", providers, PARTNER_CACHE_TTL)
         except PartnerAPIError as e:
-            await update.effective_message.reply_text(f"❌ {e.code}: {e.message}")
+            log.error("Partner providers failed: code=%s req=%s msg=%s",
+                      e.code, e.request_id, e.message)
+            await _notify_admins_of_error(context, "providers", e)
+            await update.effective_message.reply_text(
+                _friendly_error(e.code), parse_mode="HTML"
+            )
             return ConversationHandler.END
 
     if not providers:
@@ -140,7 +197,10 @@ async def partner_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 providers = await papi.providers()
                 set_cache("partner:providers", providers, PARTNER_CACHE_TTL)
             except PartnerAPIError as e:
-                await q.edit_message_text(f"❌ {e.code}")
+                log.error("Partner pcat providers failed: code=%s req=%s msg=%s",
+                          e.code, e.request_id, e.message)
+                await _notify_admins_of_error(context, "pcat_providers", e)
+                await q.edit_message_text(_friendly_error(e.code))
                 return WAITING_ACTION
         await q.edit_message_text(
             "🛍 <b>Instant Delivery Shop</b>\n\nএকটি ক্যাটাগরি বেছে নিন:",
@@ -160,7 +220,10 @@ async def partner_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 products = await papi.products(provider=key)
                 set_cache(cache_key, products, PARTNER_CACHE_TTL)
             except PartnerAPIError as e:
-                await q.edit_message_text(f"❌ {e.code}: {e.message}")
+                log.error("Partner products(%s) failed: code=%s req=%s msg=%s",
+                          key, e.code, e.request_id, e.message)
+                await _notify_admins_of_error(context, f"products:{key}", e)
+                await q.edit_message_text(_friendly_error(e.code))
                 return WAITING_ACTION
         if not products:
             await q.edit_message_text("এই ক্যাটাগরিতে কোনো পণ্য নেই।")
@@ -185,13 +248,19 @@ async def partner_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             res = await papi.get_order(code)
         except PartnerAPIError as e:
-            await q.message.reply_text(f"❌ {e.code}: {e.message}")
+            log.error("Partner get_order(%s) failed: code=%s req=%s msg=%s",
+                      code, e.code, e.request_id, e.message)
+            await _notify_admins_of_error(context, f"get_order:{code}", e)
+            await q.message.reply_text(_friendly_error(e.code), parse_mode="HTML")
             return WAITING_ACTION
         chunks = _delivery_messages(res)
         if not chunks:
             await q.message.reply_text("ℹ️ এই অর্ডারে ডেলিভারি নেই।")
             return WAITING_ACTION
-        await q.message.reply_text(f"🧾 <b>{code}</b> — {res.get('status', '?')}", parse_mode="HTML")
+        await q.message.reply_text(
+            f"🧾 <b>{code}</b> — {res.get('status', '?')}",
+            parse_mode="HTML",
+        )
         for ch in chunks:
             try:
                 await q.message.reply_text(ch, parse_mode="HTML")
@@ -217,7 +286,10 @@ async def partner_product_selected(update: Update, context: ContextTypes.DEFAULT
             p = await papi.product(slug)
             set_cache(cache_key, p, PARTNER_CACHE_TTL)
         except PartnerAPIError as e:
-            await q.message.reply_text(f"❌ {e.code}: {e.message}")
+            log.error("Partner product(%s) failed: code=%s req=%s msg=%s",
+                      slug, e.code, e.request_id, e.message)
+            await _notify_admins_of_error(context, f"product:{slug}", e)
+            await q.message.reply_text(_friendly_error(e.code), parse_mode="HTML")
             return WAITING_ACTION
 
     stock = p.get("stock") or {}
@@ -291,7 +363,10 @@ async def partner_qty(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         await papi.balance()
     except PartnerAPIError as e:
-        await update.message.reply_text(f"❌ {e.code}: {e.message}")
+        log.error("Partner balance precheck failed: code=%s req=%s msg=%s",
+                  e.code, e.request_id, e.message)
+        await _notify_admins_of_error(context, "balance_precheck", e)
+        await update.message.reply_text(_friendly_error(e.code), parse_mode="HTML")
         context.user_data.pop("partner_pending", None)
         return ConversationHandler.END
 
@@ -302,17 +377,14 @@ async def partner_qty(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         res = await papi.create_order(data["slug"], qty, ext_id)
     except PartnerAPIError as e:
-        msg = f"❌ <b>{e.code}</b>\n{escape(e.message)}"
-        if e.code == "INSUFFICIENT_BALANCE":
-            msg += (
-                f"\n\nদরকার: <b>${e.extra.get('required')}</b>"
-                f"\nআছে: <b>${e.extra.get('balance')}</b>"
-            )
-        if e.request_id:
-            msg += f"\n<code>reqId: {e.request_id}</code>"
-        log.error("Partner order failed user=%s code=%s req=%s",
-                  user_id, e.code, e.request_id)
-        await update.message.reply_text(msg, parse_mode="HTML")
+        log.error("Partner create_order failed user=%s code=%s req=%s msg=%s",
+                  user_id, e.code, e.request_id, e.message)
+        await _notify_admins_of_error(
+            context,
+            f"create_order:{data['slug']}",
+            e,
+        )
+        await update.message.reply_text(_friendly_error(e.code), parse_mode="HTML")
         context.user_data.pop("partner_pending", None)
         return ConversationHandler.END
 
@@ -428,7 +500,7 @@ async def partner_stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"আজ এরর: {u.get('errorCountToday')}"
         )
     except PartnerAPIError as e:
-        api_info = f"\n\n⚠️ API: {e.code}"
+        api_info = f"\n\n⚠️ API: <code>{e.code}</code>"
 
     await update.message.reply_text(
         f"📊 <b>Partner Stats</b>\n\n"
