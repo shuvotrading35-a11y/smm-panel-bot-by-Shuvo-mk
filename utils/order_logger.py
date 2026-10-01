@@ -111,3 +111,79 @@ async def send_order_log(
     except Exception as e:
         logger.error(f"[OrderLogger] Failed to send log: {e}")
         return False
+
+
+# ─────────────────────────────────────────────────────────────────
+#  🛍 PARTNER API ORDER LOG
+# ─────────────────────────────────────────────────────────────────
+async def send_partner_order_log(
+    order_code:    str,
+    user_id:       int | str,
+    product_name:  str,
+    delivery_type: str,
+    quantity:      int,
+    unit_price:    float,
+    total_charged: float,
+    status:        str = "COMPLETED",
+) -> bool:
+    """
+    Partner API অর্ডারের জন্য লগ।
+
+    ⚠️ নিরাপত্তা:
+      - delivery.link / delivery.code / delivery.content কখনো পাঠানো হয় না।
+      - API ব্যালেন্স কখনো দেখানো হয় না।
+      দরকার হলে GET /orders/{order_code} থেকে ডেলিভারি আনতে হবে।
+    """
+    if not LOG_BOT_TOKEN or not LOG_CHAT_ID:
+        return False
+
+    status_icon = {
+        "COMPLETED": "✅",
+        "PENDING":   "🕐",
+        "FAILED":    "❌",
+        "CANCELLED": "🚫",
+        "PARTIAL":   "⚠️",
+    }.get((status or "").upper(), "⏳")
+
+    dtype_icon = {
+        "LINK":          "🔗",
+        "COUPON":        "🎟",
+        "READY_ACCOUNT": "🔐",
+    }.get((delivery_type or "").upper(), "📦")
+
+    text = (
+        f"🛍 𝗣𝗮𝗿𝘁𝗻𝗲𝗿 𝗢𝗿𝗱𝗲𝗿 𝗦𝘂𝗯𝗺𝗶𝘁𝘁𝗲𝗱\n"
+        f"\n"
+        f"🧾 𝗢𝗿𝗱𝗲𝗿 𝗜𝗗: <code>{order_code}</code>\n"
+        f"✅ 𝗦𝘁𝗮𝘁𝘂𝘀: {status} {status_icon}\n"
+        f"🆔 𝗨𝘀𝗲𝗿 𝗜𝗗: {user_id}\n"
+        f"📦 𝗣𝗿𝗼𝗱𝘂𝗰𝘁: {product_name}\n"
+        f"{dtype_icon} 𝗗𝗲𝗹𝗶𝘃𝗲𝗿𝘆: {delivery_type}\n"
+        f"🔢 𝗤𝘂𝗮𝗻𝘁𝗶𝘁𝘆: {quantity}\n"
+        f"💵 𝗨𝗻𝗶𝘁 𝗣𝗿𝗶𝗰𝗲: ${unit_price}\n"
+        f"💳 𝗧𝗼𝘁𝗮𝗹: ${total_charged}\n"
+        f"\n"
+        f"👮🏻‍♂ 𝗕𝗼𝘁: <a href='https://t.me/{LOG_BOT_USERNAME.lstrip('@')}'>𝗖𝗹𝗶𝗰𝗸 𝗛𝗲𝗿𝗲</a>\n"
+        f"📢 𝗢𝗳𝗳𝗶𝗰𝗶𝗮𝗹: <a href='{LOG_OFFICIAL_NAME}'>𝗖𝗹𝗶𝗰𝗸 𝗛𝗲𝗿𝗲</a>\n"
+        f"📢 𝗣𝗮𝘆𝗺𝗲𝗻𝘁 𝗣𝗿𝗼𝗼𝗳: <a href='{LOG_PAYMENT_NAME}'>𝗖𝗹𝗶𝗰𝗸 𝗛𝗲𝗿𝗲</a>"
+    )
+
+    url     = _TG_URL.format(token=LOG_BOT_TOKEN)
+    payload = {
+        "chat_id":    LOG_CHAT_ID,
+        "text":       text,
+        "parse_mode": "HTML",
+    }
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload, timeout=10) as resp:
+                data = await resp.json()
+                if data.get("ok"):
+                    logger.info(f"[OrderLogger] Partner order {order_code} logged")
+                    return True
+                logger.warning(f"[OrderLogger] TG error: {data.get('description')}")
+                return False
+    except Exception as e:
+        logger.error(f"[OrderLogger] Partner log failed: {e}")
+        return False
