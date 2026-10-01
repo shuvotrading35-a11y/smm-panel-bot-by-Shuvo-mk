@@ -99,6 +99,49 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if ref_id and ref_id != user.id:
             await db.process_referral(user.id, ref_id, REFERRAL_REWARD)
 
+        # ── Notify admins about every NEW user ────────────────────
+        try:
+            from telegram.helpers import escape_markdown
+            total_users = await db.get_user_count()
+
+            safe_name = escape_markdown(user.full_name or "Unknown", version=2)
+            username_text = (
+                f"@{escape_markdown(user.username, version=2)}"
+                if user.username else "No username"
+            )
+            referral_text = f"`{ref_id}`" if ref_id else "None"
+
+            notification = (
+                "🆕 *NEW USER JOINED*\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                f"👤 *Name:* {safe_name}\n"
+                f"🔹 *Username:* {username_text}\n"
+                f"🆔 *User ID:* `{user.id}`\n"
+                f"🔗 [Open Profile](tg://user?id={user.id})\n"
+                f"🎁 *Referral ID:* {referral_text}\n"
+                f"👥 *Total Users:* `{total_users}`\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                f"🤖 *{escape_markdown(BOT_NAME, version=2)}*"
+            )
+
+            for admin_id in ADMIN_IDS:
+                try:
+                    await ctx.bot.send_message(
+                        chat_id=admin_id,
+                        text=notification,
+                        parse_mode="MarkdownV2",
+                        disable_web_page_preview=True,
+                    )
+                except Exception as admin_err:
+                    logger.warning(
+                        "Could not send new-user notification to admin %s: %s",
+                        admin_id,
+                        admin_err,
+                    )
+        except Exception as notify_err:
+            # Notification failure must never stop the user's /start flow.
+            logger.warning("New-user notification failed: %s", notify_err)
+
     # Force-join check
     channels = await db.get_force_channels()
     if channels and update.effective_user.id not in ADMIN_IDS:
