@@ -1,40 +1,42 @@
 """
-Partner API — Instant Delivery Shop
-ক্যাটালগ, কেনা, ডেলিভারি, অর্ডার হিস্ট্রি, রিকভারি।
+Partner API (Instant Delivery) — python-telegram-bot v20+ handler
 """
-import json
 import uuid
+import json
 import logging
 from html import escape
 
-from aiogram import Router, F, types
-from aiogram.filters import Command
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import (
+    ContextTypes, ConversationHandler, CommandHandler,
+    MessageHandler, CallbackQueryHandler, filters,
+)
 
 from api import partner_api as papi
 from api.partner_api import PartnerAPIError
-from config import PARTNER_ENABLED, PARTNER_DELIVERY_ICONS, MAX_ORDERS_PER_DAY
+from config import (
+    PARTNER_ENABLED, PARTNER_DELIVERY_ICONS,
+    MAX_ORDERS_PER_DAY, PARTNER_CACHE_TTL, ADMIN_IDS,
+)
 from database import (
     create_partner_order, get_user_partner_orders,
     get_partner_order_by_code, user_partner_orders_today,
-    update_partner_order_status,
+    update_partner_order_status, get_unrecovered_partner_orders,
+    get_partner_stats,
 )
-from utils.partner_cache import get_cache, set_cache
-from utils.partner_cache import invalidate as cache_invalidate
-from config import PARTNER_CACHE_TTL
+from keyboards.reply import (
+    main_keyboard, service_menu_keyboard, cancel_keyboard,
+)
+from utils.partner_cache import get_cache, set_cache, invalidate as cache_invalidate
 
 log = logging.getLogger(__name__)
-router = Router()
 
-
-class PartnerSG(StatesGroup):
-    waiting_qty = State()
+# Conversation state
+WAITING_QTY = 1
 
 
 # ─────────────────────────────────────────────────────
-#  KBD HELPERS
+#  KEYBOARD BUILDERS
 # ─────────────────────────────────────────────────────
 def _providers_kb(providers: list[dict]) -> InlineKeyboardMarkup:
     rows = []
@@ -44,7 +46,7 @@ def _providers_kb(providers: list[dict]) -> InlineKeyboardMarkup:
             text=f"{emoji} {p['name']}",
             callback_data=f"pprov:{p['key']}:1",
         )])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+    return InlineKeyboardMarkup(rows)
 
 
 def _products_kb(products: list[dict], provider_key: str,
@@ -60,23 +62,20 @@ def _products_kb(products: list[dict], provider_key: str,
             text=f"{icon} {p['name']} — ${price}",
             callback_data=f"pprod:{p['slug']}",
         )])
+
     nav = []
     if page > 1:
-        nav.append(InlineKeyboardButton(
-            text="⬅️", callback_data=f"pprov:{provider_key}:{page-1}"
-        ))
+        nav.append(InlineKeyboardButton("⬅️", callback_data=f"pprov:{provider_key}:{page-1}"))
     if start + per_page < len(products):
-        nav.append(InlineKeyboardButton(
-            text="➡️", callback_data=f"pprov:{provider_key}:{page+1}"
-        ))
+        nav.append(InlineKeyboardButton("➡️", callback_data=f"pprov:{provider_key}:{page+1}"))
     if nav:
         rows.append(nav)
-    rows.append([InlineKeyboardButton(text="🔙 Categories", callback_data="pcat")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+    rows.append([InlineKeyboardButton("🔙 Categories", callback_data="pcat")])
+    return InlineKeyboardMarkup(rows)
 
 
-def _delivery_text(res: dict) -> list[str]:
-    """ডেলিভারি মেসেজ তৈরি। delivery.content কখনো log-এ যাবে না।"""
+def _delivery_messages(res: dict) -> list[str]:
+    """ডেলিভারি মেসেজ। delivery.content কখনো log-এ যাবে না।"""
     out = []
     d = res.get("delivery") or {}
 
@@ -89,229 +88,253 @@ def _delivery_text(res: dict) -> list[str]:
             "🔐 <b>Login Credentials (গোপন রাখুন)</b>\n"
             f"<code>{escape(d['content'])}</code>"
         )
-
-    # বাল্ক → lines[]
-    for ln in res.get("lines", []) or []:
+    for ln in res.get("lines") or []:
         if ln.get("code"):
             out.append(f"🎟 <code>{ln['code']}</code>")
         elif ln.get("link"):
             out.append(f"🔗 {ln['link']}")
-
     if d.get("instructions"):
         out.append(f"ℹ️ {d['instructions']}")
-
     return out
 
 
 # ─────────────────────────────────────────────────────
-#  ENTRY
+#  ENTRY: /partner  বা  "🛍 ᴘᴀʀᴛɴᴇʀ ꜱʜᴏᴘ"
 # ─────────────────────────────────────────────────────
-@router.message(Command("partner"))
-@router.message(F.text == "🛍 Partner Shop")
-async def cmd_partner(m: types.Message, state: FSMContext):
+async def partner_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not PARTNER_ENABLED:
-        return await m.answer("⚠️ Partner Shop এখন নিষ্ক্রিয়।")
-    await state.clear()
+        await update.message.reply_text("⚠️ Partner Shop এখন নিষ্ক্রিয়।")
+        return ConversationHandler.END
 
-    cached = get_cache("partner:providers")
-    if cached:
-        providers = cached
-    else:
+    providers = get_cache("partner:providers")
+    if not providers:
         try:
             providers = await papi.providers()
             set_cache("partner:providers", providers, PARTNER_CACHE_TTL)
         except PartnerAPIError as e:
-            return await m.answer(f"❌ {e.code}: {e.message}")
+            await update.message.reply_text(f"❌ {e.code}: {e.message}")
+            return ConversationHandler.END
 
     if not providers:
-        return await m.answer("এই মুহূর্তে কোনো ক্যাটাগরি নেই।")
+        await update.message.reply_text("এই মুহূর্তে কোনো ক্যাটাগরি নেই।")
+        return ConversationHandler.END
 
-    await m.answer(
+    await update.message.reply_text(
         "🛍 <b>Instant Delivery Shop</b>\n\nএকটি ক্যাটাগরি বেছে নিন:",
         reply_markup=_providers_kb(providers),
         parse_mode="HTML",
     )
-
-
-@router.callback_query(F.data == "pcat")
-async def cb_categories(cb: types.CallbackQuery, state: FSMContext):
-    await state.clear()
-    cached = get_cache("partner:providers")
-    if not cached:
-        try:
-            cached = await papi.providers()
-            set_cache("partner:providers", cached, PARTNER_CACHE_TTL)
-        except PartnerAPIError as e:
-            return await cb.answer(f"{e.code}", show_alert=True)
-
-    await cb.message.edit_text(
-        "🛍 <b>Instant Delivery Shop</b>\n\nএকটি ক্যাটাগরি বেছে নিন:",
-        reply_markup=_providers_kb(cached),
-        parse_mode="HTML",
-    )
-    await cb.answer()
+    return ConversationHandler.END
 
 
 # ─────────────────────────────────────────────────────
-#  PROVIDER → PRODUCTS
+#  CALLBACKS
 # ─────────────────────────────────────────────────────
-@router.callback_query(F.data.startswith("pprov:"))
-async def cb_provider(cb: types.CallbackQuery):
-    _, key, page = cb.data.split(":")
-    page = int(page)
+async def partner_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    data = q.data
 
-    cache_key = f"partner:products:{key}"
-    products = get_cache(cache_key)
-    if not products:
-        try:
-            products = await papi.products(provider=key)
-            set_cache(cache_key, products, PARTNER_CACHE_TTL)
-        except PartnerAPIError as e:
-            return await cb.answer(f"{e.code}: {e.message}", show_alert=True)
-
-    if not products:
-        return await cb.answer("এই ক্যাটাগরিতে কোনো পণ্য নেই।", show_alert=True)
-
-    title = f"📦 <b>{key.title()} — Products</b>\nপৃষ্ঠা {page}"
-    try:
-        await cb.message.edit_text(
-            title,
-            reply_markup=_products_kb(products, key, page),
+    # ── ক্যাটাগরি লিস্ট ──
+    if data == "pcat":
+        providers = get_cache("partner:providers")
+        if not providers:
+            try:
+                providers = await papi.providers()
+                set_cache("partner:providers", providers, PARTNER_CACHE_TTL)
+            except PartnerAPIError as e:
+                await q.edit_message_text(f"❌ {e.code}")
+                return
+        await q.edit_message_text(
+            "🛍 <b>Instant Delivery Shop</b>\n\nএকটি ক্যাটাগরি বেছে নিন:",
+            reply_markup=_providers_kb(providers),
             parse_mode="HTML",
         )
-    except Exception:
-        pass
-    await cb.answer()
+        return
 
+    # ── প্রোডাক্ট লিস্ট ──
+    if data.startswith("pprov:"):
+        _, key, page = data.split(":")
+        page = int(page)
+        cache_key = f"partner:products:{key}"
+        products = get_cache(cache_key)
+        if not products:
+            try:
+                products = await papi.products(provider=key)
+                set_cache(cache_key, products, PARTNER_CACHE_TTL)
+            except PartnerAPIError as e:
+                await q.edit_message_text(f"❌ {e.code}: {e.message}")
+                return
 
-# ─────────────────────────────────────────────────────
-#  PRODUCT DETAIL
-# ─────────────────────────────────────────────────────
-@router.callback_query(F.data.startswith("pprod:"))
-async def cb_product(cb: types.CallbackQuery, state: FSMContext):
-    slug = cb.data.split(":", 1)[1]
+        if not products:
+            await q.edit_message_text("এই ক্যাটাগরিতে কোনো পণ্য নেই।")
+            return
 
-    cache_key = f"partner:product:{slug}"
-    p = get_cache(cache_key)
-    if not p:
         try:
-            p = await papi.product(slug)
-            set_cache(cache_key, p, PARTNER_CACHE_TTL)
+            await q.edit_message_text(
+                f"📦 <b>{key.title()} — Products</b> (পৃষ্ঠা {page})",
+                reply_markup=_products_kb(products, key, page),
+                parse_mode="HTML",
+            )
+        except Exception:
+            pass
+        return
+
+    # ── প্রোডাক্ট ডিটেইল → পরিমাণ জিজ্ঞাসা ──
+    if data.startswith("pprod:"):
+        slug = data.split(":", 1)[1]
+        cache_key = f"partner:product:{slug}"
+        p = get_cache(cache_key)
+        if not p:
+            try:
+                p = await papi.product(slug)
+                set_cache(cache_key, p, PARTNER_CACHE_TTL)
+            except PartnerAPIError as e:
+                await q.message.reply_text(f"❌ {e.code}: {e.message}")
+                return
+
+        stock = p.get("stock") or {}
+        if not stock.get("inStock"):
+            await q.message.reply_text("❌ স্টকে নেই।")
+            return
+
+        dtype = p.get("deliveryType", "LINK")
+        icon = PARTNER_DELIVERY_ICONS.get(dtype, "📦")
+
+        text = (
+            f"<b>{p.get('name', slug)}</b>\n\n"
+            f"💰 মূল্য: <b>${p.get('yourPrice', '?')}</b>\n"
+            f"📦 স্টক: <b>{stock.get('count', 0)}</b>\n"
+            f"{icon} ডেলিভারি: <b>{dtype}</b>\n"
+        )
+        if p.get("durationDays"):
+            text += f"⏱ সময়কাল: {p['durationDays']} দিন\n"
+        if (p.get("warranty") or {}).get("enabled"):
+            text += f"🛡 ওয়ারেন্টি: {p['warranty']['days']} দিন\n"
+        if p.get("description"):
+            text += f"\n<i>{escape(p['description'][:200])}</i>\n"
+        text += f"\nকত পিস নিতে চান? (1–{stock.get('maxQuantity', 1)})\nশুধু সংখ্যাটি পাঠান।"
+
+        await q.message.reply_text(text, parse_mode="HTML")
+
+        # state → user_data
+        context.user_data["partner_pending"] = {
+            "slug": slug,
+            "name": p.get("name", slug),
+            "delivery_type": dtype,
+            "unit_price": float(p.get("yourPrice") or 0),
+            "max_qty": int(stock.get("maxQuantity") or 1),
+        }
+        # Conversation state সেট (আলাদা হ্যান্ডলারের মাধ্যমে)
+        context.user_data["_await_partner_qty"] = True
+        return
+
+    # ── পুরনো অর্ডার আবার দেখাও ──
+    if data.startswith("pget:"):
+        code = data.split(":", 1)[1]
+        record = await get_partner_order_by_code(code)
+        if not record or record["user_id"] != q.from_user.id:
+            await q.message.reply_text("❌ এই অর্ডার আপনার নয়।")
+            return
+        try:
+            res = await papi.get_order(code)
         except PartnerAPIError as e:
-            return await cb.answer(f"{e.code}: {e.message}", show_alert=True)
-
-    stock = p.get("stock") or {}
-    if not stock.get("inStock"):
-        return await cb.answer("❌ স্টকে নেই", show_alert=True)
-
-    dtype = p.get("deliveryType", "LINK")
-    icon  = PARTNER_DELIVERY_ICONS.get(dtype, "📦")
-
-    text = (
-        f"<b>{p.get('name', slug)}</b>\n\n"
-        f"💰 মূল্য: <b>${p.get('yourPrice', '?')}</b>\n"
-        f"📦 স্টক: <b>{stock.get('count', 0)}</b>\n"
-        f"{icon} ডেলিভারি: <b>{dtype}</b>\n"
-    )
-    if p.get("durationDays"):
-        text += f"⏱ সময়কাল: {p['durationDays']} দিন\n"
-    if (p.get("warranty") or {}).get("enabled"):
-        text += f"🛡 ওয়ারেন্টি: {p['warranty']['days']} দিন\n"
-    if p.get("description"):
-        text += f"\n<i>{escape(p['description'][:200])}</i>\n"
-    text += f"\nকত পিস নিতে চান? (1–{stock.get('maxQuantity', 1)})\n" \
-            f"নিচে শুধু সংখ্যাটি পাঠান।"
-
-    await cb.message.answer(text, parse_mode="HTML")
-
-    await state.set_state(PartnerSG.waiting_qty)
-    await state.update_data(
-        slug=slug,
-        name=p.get("name", slug),
-        delivery_type=dtype,
-        unit_price=float(p.get("yourPrice") or 0),
-        max_qty=int(stock.get("maxQuantity") or 1),
-    )
-    await cb.answer()
+            await q.message.reply_text(f"❌ {e.code}: {e.message}")
+            return
+        chunks = _delivery_messages(res)
+        if not chunks:
+            await q.message.reply_text("ℹ️ এই অর্ডারে ডেলিভারি নেই।")
+            return
+        await q.message.reply_text(f"🧾 <b>{code}</b> — {res.get('status', '?')}", parse_mode="HTML")
+        for ch in chunks:
+            try:
+                await q.message.reply_text(ch, parse_mode="HTML")
+            except Exception:
+                await q.message.reply_text(ch)
+        return
 
 
 # ─────────────────────────────────────────────────────
-#  QUANTITY → ORDER
+#  QUANTITY INPUT  (ConversationHandler state)
 # ─────────────────────────────────────────────────────
-@router.message(PartnerSG.waiting_qty)
-async def do_order(m: types.Message, state: FSMContext):
-    data = await state.get_data()
-    slug   = data.get("slug")
-    name   = data.get("name", slug)
-    dtype  = data.get("delivery_type", "LINK")
-    price  = data.get("unit_price", 0.0)
-    maxq   = data.get("max_qty", 1)
+async def partner_qty(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    data = context.user_data.get("partner_pending")
+    if not data:
+        return ConversationHandler.END
 
     try:
-        qty = int(m.text.strip())
-        if qty < 1 or qty > maxq:
+        qty = int(update.message.text.strip())
+        if qty < 1 or qty > data["max_qty"]:
             raise ValueError
     except Exception:
-        return await m.answer(f"❌ 1 থেকে {maxq} এর মধ্যে সংখ্যা পাঠান।")
+        await update.message.reply_text(
+            f"❌ 1 থেকে {data['max_qty']} এর মধ্যে সংখ্যা পাঠান।"
+        )
+        return WAITING_QTY
+
+    user_id = update.effective_user.id
 
     # ডেইলি লিমিট
-    used = await user_partner_orders_today(m.from_user.id)
+    used = await user_partner_orders_today(user_id)
     if used >= MAX_ORDERS_PER_DAY:
-        await state.clear()
-        return await m.answer(
-            f"⛔ আজকের অর্ডার লিমিট শেষ ({MAX_ORDERS_PER_DAY})।"
+        await update.message.reply_text(
+            f"⛔ আজকের অর্ডার লিমিট শেষ ({MAX_ORDERS_PER_DAY})।",
+            reply_markup=main_keyboard(),
         )
+        context.user_data.pop("partner_pending", None)
+        return ConversationHandler.END
 
-    # ব্যালেন্স প্রি-চেক (ইউজার-সাইড কয়েন নয়, API-সাইড USD)
+    # API ব্যালেন্স চেক
     try:
-        bal = await papi.balance()
+        await papi.balance()
     except PartnerAPIError as e:
-        await state.clear()
-        return await m.answer(f"❌ {e.code}: {e.message}")
+        await update.message.reply_text(f"❌ {e.code}: {e.message}")
+        context.user_data.pop("partner_pending", None)
+        return ConversationHandler.END
 
-    await m.answer("⏳ অর্ডার প্রসেস হচ্ছে...")
+    await update.message.reply_text("⏳ অর্ডার প্রসেস হচ্ছে...")
 
-    ext_id = f"tg-{m.from_user.id}-{uuid.uuid4().hex[:12]}"
+    ext_id = f"tg-{user_id}-{uuid.uuid4().hex[:12]}"
 
     try:
-        res = await papi.create_order(slug, qty, ext_id)
+        res = await papi.create_order(data["slug"], qty, ext_id)
     except PartnerAPIError as e:
         msg = f"❌ <b>{e.code}</b>\n{escape(e.message)}"
         if e.code == "INSUFFICIENT_BALANCE":
-            req = e.extra.get("required")
-            have = e.extra.get("balance")
-            msg += f"\n\nদরকার: <b>${req}</b>\nআছে: <b>${have}</b>"
+            msg += (
+                f"\n\nদরকার: <b>${e.extra.get('required')}</b>"
+                f"\nআছে: <b>${e.extra.get('balance')}</b>"
+            )
         if e.request_id:
             msg += f"\n<code>reqId: {e.request_id}</code>"
         log.error("Partner order failed user=%s code=%s req=%s",
-                  m.from_user.id, e.code, e.request_id)
-        await state.clear()
-        return await m.answer(msg, parse_mode="HTML")
+                  user_id, e.code, e.request_id)
+        await update.message.reply_text(msg, parse_mode="HTML")
+        context.user_data.pop("partner_pending", None)
+        return ConversationHandler.END
 
-    # DB-তে সেভ (ডেলিভারি নয় — শুধু মেটাডেটা)
+    # DB সেভ
     lines_meta = json.dumps(
         [{"orderCode": ln.get("orderCode")} for ln in res.get("lines", []) or []]
     ) if res.get("lines") else None
 
     await create_partner_order(
-        user_id=m.from_user.id,
+        user_id=user_id,
         external_id=ext_id,
         order_code=res.get("orderCode", ""),
-        product_slug=slug,
-        product_name=name,
-        delivery_type=dtype,
+        product_slug=data["slug"],
+        product_name=data["name"],
+        delivery_type=data["delivery_type"],
         quantity=qty,
-        unit_price=float(res.get("unitPrice") or price),
-        total_charged=float(res.get("totalCharged") or price * qty),
+        unit_price=float(res.get("unitPrice") or data["unit_price"]),
+        total_charged=float(res.get("totalCharged") or data["unit_price"] * qty),
         status=res.get("status", "COMPLETED"),
         lines_json=lines_meta,
     )
 
-    # ইনভেন্টরি ক্যাশ ক্লিয়ার
     cache_invalidate("partner:product:")
     cache_invalidate("partner:products:")
 
-    # হেডার মেসেজ
     head = (
         f"✅ <b>অর্ডার সম্পন্ন</b>\n"
         f"🧾 <code>{res.get('orderCode', '')}</code>\n"
@@ -319,29 +342,35 @@ async def do_order(m: types.Message, state: FSMContext):
     )
     if res.get("balanceAfter"):
         head += f"\n💰 API ব্যালেন্স: <b>${res['balanceAfter']}</b>"
-    await m.answer(head, parse_mode="HTML")
+    await update.message.reply_text(head, parse_mode="HTML")
 
-    # ডেলিভারি (sensitive content এখানে সরাসরি ইউজারকে)
-    for chunk in _delivery_text(res):
+    for chunk in _delivery_messages(res):
         try:
-            await m.answer(chunk, parse_mode="HTML")
+            await update.message.reply_text(chunk, parse_mode="HTML")
         except Exception:
-            await m.answer(chunk)
+            await update.message.reply_text(chunk)
 
-    await state.clear()
+    context.user_data.pop("partner_pending", None)
+    return ConversationHandler.END
+
+
+async def partner_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.pop("partner_pending", None)
+    await update.message.reply_text("বাতিল করা হলো।", reply_markup=main_keyboard())
+    return ConversationHandler.END
 
 
 # ─────────────────────────────────────────────────────
-#  MY ORDERS
+#  MY PARTNER ORDERS
 # ─────────────────────────────────────────────────────
-@router.message(Command("myorders"))
-async def my_orders(m: types.Message):
-    orders = await get_user_partner_orders(m.from_user.id, limit=10)
+async def my_partner_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    orders = await get_user_partner_orders(update.effective_user.id, limit=10)
     if not orders:
-        return await m.answer("📭 আপনার কোনো Partner অর্ডার নেই।")
+        await update.message.reply_text("📭 আপনার কোনো Partner অর্ডার নেই।")
+        return
 
-    rows = []
     lines = ["📦 <b>সর্বশেষ Partner অর্ডার:</b>\n"]
+    rows = []
     for i, o in enumerate(orders, 1):
         lines.append(
             f"{i}. <code>{o['order_code']}</code>\n"
@@ -353,55 +382,20 @@ async def my_orders(m: types.Message):
             callback_data=f"pget:{o['order_code']}",
         )])
 
-    await m.answer("\n".join(lines),
-                   reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
-                   parse_mode="HTML")
-
-
-@router.callback_query(F.data.startswith("pget:"))
-async def cb_get_order(cb: types.CallbackQuery):
-    code = cb.data.split(":", 1)[1]
-
-    # ownership চেক
-    record = await get_partner_order_by_code(code)
-    if not record or record["user_id"] != cb.from_user.id:
-        return await cb.answer("❌ এই অর্ডার আপনার নয়।", show_alert=True)
-
-    try:
-        res = await papi.get_order(code)
-    except PartnerAPIError as e:
-        return await cb.answer(f"{e.code}: {e.message}", show_alert=True)
-
-    chunks = _delivery_text(res)
-    if not chunks:
-        return await cb.answer("ℹ️ এই অর্ডারে ডেলিভারি নেই।", show_alert=True)
-
-    await cb.message.answer(
-        f"🧾 <b>{code}</b> — {res.get('status', '?')}",
+    await update.message.reply_text(
+        "\n".join(lines),
+        reply_markup=InlineKeyboardMarkup(rows),
         parse_mode="HTML",
     )
-    for chunk in chunks:
-        try:
-            await cb.message.answer(chunk, parse_mode="HTML")
-        except Exception:
-            await cb.message.answer(chunk)
-    await cb.answer("পাঠানো হলো ✅")
 
 
 # ─────────────────────────────────────────────────────
 #  ADMIN STATS
 # ─────────────────────────────────────────────────────
-from config import ADMIN_IDS  # noqa: E402
-
-
-@router.message(Command("partnerstats"))
-async def cmd_stats(m: types.Message):
-    if m.from_user.id not in ADMIN_IDS:
+async def partner_stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
         return
-
-    from database import get_partner_stats
     stats = await get_partner_stats()
-
     api_info = ""
     try:
         u = await papi.usage()
@@ -416,7 +410,7 @@ async def cmd_stats(m: types.Message):
     except PartnerAPIError as e:
         api_info = f"\n\n⚠️ API: {e.code}"
 
-    await m.answer(
+    await update.message.reply_text(
         f"📊 <b>Partner Stats</b>\n\n"
         f"মোট অর্ডার: <b>{stats['total_orders']}</b>\n"
         f"মোট খরচ: <b>${stats['total_spend']}</b>\n"
@@ -428,16 +422,15 @@ async def cmd_stats(m: types.Message):
 
 
 # ─────────────────────────────────────────────────────
-#  STARTUP RECONCILE
+#  RECONCILE (startup-এ কল করুন)
 # ─────────────────────────────────────────────────────
-async def reconcile_partner_orders(bot):
-    """যেসব অর্ডার COMPLETED নয় — API থেকে সত্যি অবস্থা জেনে ইউজারকে ডেলিভারি।"""
-    from database import get_unrecovered_partner_orders
+async def reconcile_partner_orders(application):
+    """bot startup-এ চালান। bot = application.bot দিয়ে মেসেজ পাঠায়।"""
     pending = await get_unrecovered_partner_orders()
     if not pending:
         return
-
     log.info("Reconciling %d partner orders...", len(pending))
+    bot = application.bot
     for o in pending:
         code = o.get("order_code")
         if not code:
@@ -448,25 +441,51 @@ async def reconcile_partner_orders(bot):
             log.warning("Reconcile %s failed: %s", code, e.code)
             continue
 
-        await update_partner_order_status(
-            code, res.get("status", "COMPLETED"), recovered=1
-        )
-
-        chunks = _delivery_text(res)
+        await update_partner_order_status(code, res.get("status", "COMPLETED"), recovered=1)
+        chunks = _delivery_messages(res)
         if not chunks:
             continue
-
         try:
             await bot.send_message(
                 o["user_id"],
-                f"🔄 <b>পুনরুদ্ধার করা অর্ডার</b>\n"
-                f"🧾 <code>{code}</code>",
+                f"🔄 <b>পুনরুদ্ধার করা অর্ডার</b>\n🧾 <code>{code}</code>",
                 parse_mode="HTML",
             )
-            for chunk in chunks:
+            for ch in chunks:
                 try:
-                    await bot.send_message(o["user_id"], chunk, parse_mode="HTML")
+                    await bot.send_message(o["user_id"], ch, parse_mode="HTML")
                 except Exception:
-                    await bot.send_message(o["user_id"], chunk)
+                    await bot.send_message(o["user_id"], ch)
         except Exception as e:
-            log.warning("Could not notify user %s: %s", o["user_id"], e)
+            log.warning("Notify user %s failed: %s", o["user_id"], e)
+
+
+# ─────────────────────────────────────────────────────
+#  CONVERSATION HANDLER FACTORY
+# ─────────────────────────────────────────────────────
+def build_partner_conversation() -> ConversationHandler:
+    return ConversationHandler(
+        entry_points=[
+            CommandHandler("partner", partner_entry),
+            MessageHandler(
+                filters.Regex("^🛍 ᴘᴀʀᴛɴᴇʀ ꜱʜᴏᴘ$") | filters.Regex("^🛍 ᴘᴀʀᴛɴᴇʀ ᴏʀᴅᴇʀ$"),
+                partner_entry,
+            ),
+        ],
+        states={
+            WAITING_QTY: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND
+                    & ~filters.Regex("^❌ ᴄᴀɴᴄᴇʟ$")
+                    & ~filters.Regex("^🔙 ʙᴀᴄᴋ$"),
+                    partner_qty,
+                ),
+            ],
+        },
+        fallbacks=[
+            CommandHandler("cancel", partner_cancel),
+            MessageHandler(filters.Regex("^❌ ᴄᴀɴᴄᴇʟ$"), partner_cancel),
+        ],
+        per_user=True,
+        per_chat=True,
+    )
