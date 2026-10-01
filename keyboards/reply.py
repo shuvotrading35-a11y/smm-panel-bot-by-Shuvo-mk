@@ -9,7 +9,7 @@ def service_menu_keyboard() -> ReplyKeyboardMarkup:
         [{"text": "🌐 ꜱᴍᴍ ꜱᴇʀᴠɪᴄᴇ", "style": "success"}],
         [{"text": "🎮 ᴛᴏᴘ ᴜᴘ ꜱᴇʀᴠɪᴄᴇ", "style": "danger"}],
         [{"text": "✈️ ᴛᴇʟᴇɢʀᴀᴍ ꜱᴇʀᴠɪᴄᴇ", "style": "primary"}],
-        [{"text": "🛍 ᴘᴀʀᴛɴᴇʀ ꜱʜᴏᴘ", "style": "success"}],   # ← NEW
+        [{"text": "🛍 ᴘᴀʀᴛɴᴇʀ ꜱʜᴏᴘ", "style": "success"}],
         [{"text": "🔙 ʙᴀᴄᴋ", "style": "success"}],
     ], resize_keyboard=True, input_field_placeholder="📊 BY SHUVO......")
 
@@ -22,7 +22,7 @@ def order_menu_keyboard() -> ReplyKeyboardMarkup:
         [{"text": "🌐 ꜱᴍᴍ ᴏʀᴅᴇʀ", "style": "success"}],
         [{"text": "🎮 ᴛᴏᴘ ᴜᴘ ᴏʀᴅᴇʀ", "style": "danger"}],
         [{"text": "✈️ ᴛᴇʟᴇɢʀᴀᴍ ᴏʀᴅᴇʀ", "style": "primary"}],
-        [{"text": "🛍 ᴘᴀʀᴛɴᴇʀ ᴏʀᴅᴇʀ", "style": "success"}],  # ← NEW
+        [{"text": "🛍 ᴘᴀʀᴛɴᴇʀ ᴏʀᴅᴇʀ", "style": "success"}],
         [{"text": "🔙 ʙᴀᴄᴋ", "style": "success"}],
     ], resize_keyboard=True, input_field_placeholder="🛒 BY SHUVO......")
 
@@ -53,9 +53,9 @@ def admin_keyboard() -> ReplyKeyboardMarkup:
         [{"text": "📢 ʙʀᴏᴀᴅᴄᴀꜱᴛ", "style": "danger"}, {"text": "🔔 ɴᴏᴛɪꜰɪᴄᴀᴛɪᴏɴ", "style": "primary"}],
         [{"text": "💰 ʙᴀʟᴀɴᴄᴇ ᴍᴀɴᴀɢᴇʀ", "style": "success"}, {"text": "🎁 ᴄᴏᴅᴇ ᴍᴀɴᴀɢᴇʀ", "style": "danger"}],
         [{"text": "📦 ᴏʀᴅᴇʀ ᴍᴀɴᴀɢᴇʀ", "style": "primary"}, {"text": "📊 ʙᴏᴛ ꜱᴛᴀᴛɪꜱᴛɪᴄꜱ", "style": "success"}],
+        [{"text": "📊 ᴘᴀʀᴛɴᴇʀ ꜱᴛᴀᴛꜱ", "style": "primary"}, {"text": "⚙️ ᴀᴘɪ ᴍᴀɴᴀɢᴇʀ", "style": "danger"}],  # ← NEW row
         [{"text": "📣 ꜰᴏʀᴄᴇ ᴊᴏɪɴ", "style": "danger"}, {"text": "🚫 ʙᴀɴ ꜱʏꜱᴛᴇᴍ", "style": "primary"}],
-        [{"text": "☎️ ꜱᴜᴘᴘᴏʀᴛ ᴍᴀɴᴀɢᴇʀ", "style": "success"}, {"text": "⚙️ ᴀᴘɪ ᴍᴀɴᴀɢᴇʀ", "style": "danger"}],
-        [{"text": "🛒 ꜱᴇʀᴠɪᴄᴇ ᴍᴀɴᴀɢᴇʀ", "style": "primary"}],
+        [{"text": "☎️ ꜱᴜᴘᴘᴏʀᴛ ᴍᴀɴᴀɢᴇʀ", "style": "success"}, {"text": "🛒 ꜱᴇʀᴠɪᴄᴇ ᴍᴀɴᴀɢᴇʀ", "style": "primary"}],
         [{"text": "🏆 ʟᴇᴀᴅᴇʀʙᴏᴀʀᴅ", "style": "success"}, {"text": "📤 ᴇxᴘᴏʀᴛ ᴅᴀᴛᴀ", "style": "danger"}],
         [{"text": "🗄 ᴅᴀᴛᴀʙᴀꜱᴇ ᴍᴀɴᴀɢᴇʀ", "style": "primary"}],
         [{"text": "🧹 ᴄʟᴇᴀɴ ᴜᴘ", "style": "success"}, {"text": "🔄 ʀᴇꜱᴛᴀʀᴛ ʙᴏᴛ", "style": "danger"}],
@@ -81,10 +81,10 @@ def back_keyboard() -> ReplyKeyboardMarkup:
 
 
 # ─────────────────────────────────────────────────────
-#  🛍 PARTNER SHOP SUB-MENU  (NEW)
+#  🛍 PARTNER SHOP SUB-MENU  (optional — future use)
 # ─────────────────────────────────────────────────────
 def partner_menu_keyboard() -> ReplyKeyboardMarkup:
-    """🛍 ᴘᴀʀᴛɴᴇʀ ꜱʜᴏᴘ-এ ক্লিক করলে এই সাব-মেনু আসবে।"""
+    """🛍 ᴘᴀʀᴛɴᴇʀ ꜱʜᴏᴘ-এ ক্লিক করলে এই সাব-মেনু আসবে (এখনো ব্যবহৃত নয়)।"""
     return ReplyKeyboardMarkup([
         [{"text": "📦 ʙʀᴏᴡꜱᴇ ꜱʜᴏᴘ", "style": "success"}],
         [{"text": "🧾 ᴍʏ ᴘᴀʀᴛɴᴇʀ ᴏʀᴅᴇʀꜱ", "style": "primary"}],
