@@ -287,7 +287,7 @@ async def partner_qty(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop("partner_pending", None)
         return ConversationHandler.END
 
-    # API ব্যালেন্স প্রি-চেক
+    # API ব্যালেন্স প্রি-চেক (ইউজারকে দেখানো হয় না, শুধু যাচাই)
     try:
         await papi.balance()
     except PartnerAPIError as e:
@@ -338,13 +338,12 @@ async def partner_qty(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cache_invalidate("partner:product:")
     cache_invalidate("partner:products:")
 
+    # ── ইউজারের কাছে সাকসেস মেসেজ (API ব্যালেন্স হাইড) ──
     head = (
         f"✅ <b>অর্ডার সম্পন্ন</b>\n"
         f"🧾 <code>{res.get('orderCode', '')}</code>\n"
         f"💵 চার্জ: <b>${res.get('totalCharged', '?')}</b>"
     )
-    if res.get("balanceAfter"):
-        head += f"\n💰 API ব্যালেন্স: <b>${res['balanceAfter']}</b>"
     await update.message.reply_text(head, parse_mode="HTML")
 
     for chunk in _delivery_messages(res):
@@ -352,6 +351,23 @@ async def partner_qty(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(chunk, parse_mode="HTML")
         except Exception:
             await update.message.reply_text(chunk)
+
+    # ── লগ বটে fire-and-forget (API ব্যালেন্স ছাড়া) ──
+    try:
+        import asyncio
+        from utils.order_logger import send_partner_order_log
+        asyncio.create_task(send_partner_order_log(
+            order_code=res.get("orderCode", ""),
+            user_id=user_id,
+            product_name=data["name"],
+            delivery_type=data["delivery_type"],
+            quantity=qty,
+            unit_price=float(res.get("unitPrice") or data["unit_price"]),
+            total_charged=float(res.get("totalCharged") or data["unit_price"] * qty),
+            status=res.get("status", "COMPLETED"),
+        ))
+    except Exception as e:
+        log.warning("Partner log dispatch failed: %s", e)
 
     context.user_data.pop("partner_pending", None)
     return ConversationHandler.END
@@ -395,7 +411,7 @@ async def my_partner_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ─────────────────────────────────────────────────────
-#  ADMIN STATS
+#  ADMIN STATS  (API ব্যালেন্স হাইড)
 # ─────────────────────────────────────────────────────
 async def partner_stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
@@ -406,7 +422,6 @@ async def partner_stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         u = await papi.usage()
         api_info = (
             f"\n\n🌐 <b>Live API</b>\n"
-            f"ব্যালেন্স: <b>${u.get('balance')}</b>\n"
             f"24h অর্ডার: {u.get('apiOrders24h')}\n"
             f"24h খরচ: ${u.get('apiSpend24h')}\n"
             f"আজ রিকোয়েস্ট: {u.get('requestCountToday')}\n"
