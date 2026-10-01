@@ -494,6 +494,7 @@ async def partner_stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         u = await papi.usage()
         api_info = (
             f"\n\n🌐 <b>Live API</b>\n"
+            f"💰 ব্যালেন্স: <b>${u.get('balance')}</b>\n"        # ← অ্যাডমিন-only
             f"24h অর্ডার: {u.get('apiOrders24h')}\n"
             f"24h খরচ: ${u.get('apiSpend24h')}\n"
             f"আজ রিকোয়েস্ট: {u.get('requestCountToday')}\n"
