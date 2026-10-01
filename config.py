@@ -14,7 +14,6 @@ _raw = os.getenv("ADMIN_IDS", "")
 ADMIN_IDS: list[int] = [int(x.strip()) for x in _raw.split(",") if x.strip().isdigit()]
 
 # ── Maintenance Mode ─────────────────────────────────
-# true = normal users cannot use the bot; admins can still use it.
 MAINTENANCE_MODE = os.getenv("MAINTENANCE_MODE", "false").strip().lower() in ("1", "true", "yes", "on")
 
 # ── SMM API ──────────────────────────────────────────
@@ -25,6 +24,12 @@ SMM_API_KEY = os.getenv("SMM_API_KEY", "")
 FLASHTOPUP_API_ID  = os.getenv("FLASHTOPUP_API_ID", "")
 FLASHTOPUP_API_KEY = os.getenv("FLASHTOPUP_API_KEY", "")
 
+# ── Partner API (Instant Delivery) ───────────────────
+PARTNER_API_BASE  = os.getenv("PARTNER_API_BASE", "https://ggsoma.store/api/partner/v1")
+PARTNER_API_KEY   = os.getenv("PARTNER_API_KEY",  "")
+PARTNER_ENABLED   = os.getenv("PARTNER_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
+PARTNER_CACHE_TTL = int(os.getenv("PARTNER_CACHE_TTL", "90"))
+
 # ── Database ─────────────────────────────────────────
 DB_PATH = os.getenv("DB_PATH", "data/database.db")
 
@@ -32,7 +37,7 @@ DB_PATH = os.getenv("DB_PATH", "data/database.db")
 DAILY_BONUS_AMOUNT = float(os.getenv("DAILY_BONUS_AMOUNT", "1"))
 REFERRAL_REWARD    = float(os.getenv("REFERRAL_REWARD", "5"))
 MIN_DEPOSIT        = float(os.getenv("MIN_DEPOSIT", "1.00"))
-COIN_RATE          = float(os.getenv("COIN_RATE", "0.0074"))  # 1 coin = 1 BDT
+COIN_RATE          = float(os.getenv("COIN_RATE", "0.0074"))
 
 # ── VIP Plans ────────────────────────────────────────
 VIP_PLANS = {
@@ -62,6 +67,13 @@ CATEGORY_ICONS = {
     "website":   "🌐",
 }
 
+# ── Partner Delivery Types ────────────────────────────
+PARTNER_DELIVERY_ICONS = {
+    "LINK":          "🔗",
+    "COUPON":        "🎟",
+    "READY_ACCOUNT": "🔐",
+}
+
 # ── Order Log Bot ────────────────────────────────────
 LOG_BOT_TOKEN     = os.getenv("LOG_BOT_TOKEN", "")
 LOG_CHAT_ID       = os.getenv("LOG_CHAT_ID",   "")
@@ -73,18 +85,17 @@ LOG_PAYMENT_NAME  = os.getenv("LOG_PAYMENT_NAME",  "CSB")
 RATE_LIMIT_SECONDS = 1
 MAX_ORDERS_PER_DAY = 50
 
-
 # ── Pricing Markup ────────────────────────────────────
-SERVICE_MARKUP_PCT = float(os.getenv("SERVICE_MARKUP_PCT", "30"))   # SMM services markup
-TOPUP_MARKUP_PCT   = float(os.getenv("TOPUP_MARKUP_PCT",   "20"))   # Game topup markup
+SERVICE_MARKUP_PCT = float(os.getenv("SERVICE_MARKUP_PCT", "30"))
+TOPUP_MARKUP_PCT   = float(os.getenv("TOPUP_MARKUP_PCT",   "20"))
 
 # ── Coin Packages ─────────────────────────────────────
 COIN_PACKAGES = [
     (50,   "৳50"),
-    (100,   "৳100"),
+    (100,  "৳100"),
     (200,  "৳200"),
     (300,  "৳300"),
     (500,  "৳500"),
     (700,  "৳700"),
-				(1000,   "৳1000")
+    (1000, "৳1000"),
 ]
