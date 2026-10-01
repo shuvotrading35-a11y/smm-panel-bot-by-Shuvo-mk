@@ -58,6 +58,15 @@ from handlers.admin import (
     SET_VIP_ID, SET_VIP_PLAN, NOTIFICATION_TEXT,
 )
 
+# ── Partner API handlers ──────────────────────────────────────────
+from handlers.partner import (
+    build_partner_conversation,
+    my_partner_orders,
+    partner_stats_cmd,
+    reconcile_partner_orders,
+)
+from api.partner_api import close_session as close_partner_session
+
 # ── Logging ───────────────────────────────────────────────────────
 logging.basicConfig(
     format="%(asctime)s | %(name)s | %(levelname)s | %(message)s",
@@ -113,7 +122,6 @@ async def error_handler(update: object, context) -> None:
     import traceback
     err = context.error
 
-    # Harmless Telegram errors — silently ignore, no admin alert needed
     harmless = (
         "Message is not modified",
         "Query is too old",
@@ -126,7 +134,6 @@ async def error_handler(update: object, context) -> None:
     tb = "".join(traceback.format_exception(type(err), err, err.__traceback__))
     logger.error(f"Exception: {tb}")
 
-    # Admin-কে error জানাও
     from config import ADMIN_IDS
     for admin_id in ADMIN_IDS:
         try:
@@ -148,7 +155,6 @@ def build_app() -> Application:
     # ── Global middlewares (run BEFORE every other handler) ────────
     from telegram.ext import MessageHandler as _MH, CallbackQueryHandler as _CQH, filters as _filters
 
-    # Maintenance runs first. Admins bypass it.
     app.add_handler(_MH(_filters.ALL, maintenance_check), group=-3)
     app.add_handler(_CQH(maintenance_check), group=-3)
 
@@ -157,7 +163,6 @@ def build_app() -> Application:
     app.add_handler(_MH(_filters.ALL, global_force_join_check), group=-1)
     app.add_handler(_CQH(global_force_join_check), group=-1)
 
-    # Register global error handler
     # ── Game Topup ConversationHandler ───────────────────────────
     topup_conv = ConversationHandler(
         entry_points=[
@@ -181,10 +186,18 @@ def build_app() -> Application:
     )
     app.add_handler(topup_conv)
 
+    # ── 🛍 Partner Shop ConversationHandler ──────────────────────
+    app.add_handler(build_partner_conversation())
+
     app.add_error_handler(error_handler)
 
     # ── /start ────────────────────────────────────────────────────
     app.add_handler(CommandHandler("start", start))
+
+    # ── Partner API commands ─────────────────────────────────────
+    app.add_handler(CommandHandler("partner",       __import__("handlers.partner", fromlist=["partner_entry"]).partner_entry))
+    app.add_handler(CommandHandler("partnerorders", my_partner_orders))
+    app.add_handler(CommandHandler("partnerstats",  partner_stats_cmd))
 
     # ── Admin commands ────────────────────────────────────────────
     app.add_handler(CommandHandler("admin",          admin_panel))
@@ -199,27 +212,21 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("export",         export_data))
     app.add_handler(CommandHandler("stats",          bot_stats))
 
-    # ── Standalone CallbackQuery handlers (outside ConversationHandlers) ──
+    # ── Standalone CallbackQuery handlers ────────────────────────
     app.add_handler(CallbackQueryHandler(force_join_check, pattern=r"^fj_check$"))
-
-    # ── ShuvoPay Payment Verification ───────────────────────────────
-    app.add_handler(
-        CallbackQueryHandler(
-            check_payment_callback,
-            pattern=r"^check_pay:"
-        )
-    )
-
+    app.add_handler(CallbackQueryHandler(check_payment_callback, pattern=r"^check_pay:"))
     app.add_handler(CallbackQueryHandler(account_callback, pattern=r"^acc_"))
-    # wallet_callback handled inside deposit_conv ConversationHandler
-    app.add_handler(CallbackQueryHandler(lambda u, c: u.callback_query.answer("📩 যোগাযোগ: @shuvo_9882", show_alert=True), pattern=r"^contact_admin$"))
+    app.add_handler(CallbackQueryHandler(
+        lambda u, c: u.callback_query.answer("📩 যোগাযোগ: @shuvo_9882", show_alert=True),
+        pattern=r"^contact_admin$"
+    ))
     app.add_handler(CallbackQueryHandler(leaderboard_callback,        pattern=r"^lb:"))
     app.add_handler(CallbackQueryHandler(vip_buy_callback,            pattern=r"^vip_buy:"))
     app.add_handler(CallbackQueryHandler(order_refresh_callback,      pattern=r"^order_refresh:"))
     app.add_handler(CallbackQueryHandler(order_refill_callback,       pattern=r"^order_refill:"))
     app.add_handler(CallbackQueryHandler(order_cancel_api_callback,   pattern=r"^order_cancel_api:"))
     app.add_handler(CallbackQueryHandler(category_callback,           pattern=r"^(cat(_back|:.+)|svc_list_back|platform(:.+|_back)|catidx:\d+)$"))
-    app.add_handler(CallbackQueryHandler(service_callback,            pattern=r"^svc(_back|:.+)$"))  # svc_back = service detail → service list
+    app.add_handler(CallbackQueryHandler(service_callback,            pattern=r"^svc(_back|:.+)$"))
     app.add_handler(CallbackQueryHandler(admin_user_callback,         pattern=r"^adm_(ban|unban|bal_add|bal_rem|msg):"))
     app.add_handler(CallbackQueryHandler(deposit_approve_callback,    pattern=r"^dep_approve:"))
     app.add_handler(CallbackQueryHandler(deposit_reject_callback,     pattern=r"^dep_reject:"))
@@ -230,7 +237,6 @@ def build_app() -> Application:
     #  USER CONVERSATIONS
     # ═══════════════════════════════════════════════════════════════
 
-    # ── New Order ─────────────────────────────────────────────────
     order_conv = ConversationHandler(
         entry_points=[
             MessageHandler(filters.Regex(r"^🛒 ɴᴇᴡ ᴏʀᴅᴇʀ$"), new_order),
@@ -252,7 +258,6 @@ def build_app() -> Application:
     )
     app.add_handler(order_conv)
 
-    # ── Order Tracker ─────────────────────────────────────────────
     tracker_conv = ConversationHandler(
         entry_points=[MessageHandler(filters.Regex(r"^🔎 ᴏʀᴅᴇʀ ᴛʀᴀᴄᴋᴇʀ$"), order_tracker)],
         states={
@@ -264,7 +269,6 @@ def build_app() -> Application:
     )
     app.add_handler(tracker_conv)
 
-    # ── Redeem Code ───────────────────────────────────────────────
     redeem_conv = ConversationHandler(
         entry_points=[MessageHandler(filters.Regex(r"^🎁 ʀᴇᴅᴇᴇᴍ ᴄᴏᴅᴇ$"), redeem_code)],
         states={
@@ -276,7 +280,6 @@ def build_app() -> Application:
     )
     app.add_handler(redeem_conv)
 
-    # ── Support Ticket ────────────────────────────────────────────
     support_conv = ConversationHandler(
         entry_points=[MessageHandler(filters.Regex(r"^☎️ ꜱᴜᴘᴘᴏʀᴛ$"), support)],
         states={
@@ -289,7 +292,6 @@ def build_app() -> Application:
     )
     app.add_handler(support_conv)
 
-    # ── Deposit / Buy Coins ───────────────────────────────────────
     deposit_conv = ConversationHandler(
         entry_points=[
             MessageHandler(filters.Regex(r"^💳 ʙᴜʏ ᴄᴏɪɴꜱ$"), buy_coins),
@@ -320,7 +322,6 @@ def build_app() -> Application:
     #  ADMIN CONVERSATIONS
     # ═══════════════════════════════════════════════════════════════
 
-    # ── User Management ───────────────────────────────────────────
     user_mgmt_conv = ConversationHandler(
         entry_points=[MessageHandler(
             filters.Regex(r"^👥 ᴜꜱᴇʀ ᴍᴀɴᴀɢᴇᴍᴇɴᴛ$") & ADMIN_FILTER,
@@ -335,7 +336,6 @@ def build_app() -> Application:
     )
     app.add_handler(user_mgmt_conv)
 
-    # ── Balance Manager ───────────────────────────────────────────
     bal_conv = ConversationHandler(
         entry_points=[MessageHandler(
             filters.Regex(r"^💰 ʙᴀʟᴀɴᴄᴇ ᴍᴀɴᴀɢᴇʀ$") & ADMIN_FILTER,
@@ -351,7 +351,6 @@ def build_app() -> Application:
     )
     app.add_handler(bal_conv)
 
-    # ── Code Manager ─────────────────────────────────────────────
     code_conv = ConversationHandler(
         entry_points=[MessageHandler(
             filters.Regex(r"^🎁 ᴄᴏᴅᴇ ᴍᴀɴᴀɢᴇʀ$") & ADMIN_FILTER,
@@ -368,7 +367,6 @@ def build_app() -> Application:
     )
     app.add_handler(code_conv)
 
-    # ── Broadcast ─────────────────────────────────────────────────
     bc_conv = ConversationHandler(
         entry_points=[MessageHandler(
             filters.Regex(r"^📢 ʙʀᴏᴀᴅᴄᴀꜱᴛ$") & ADMIN_FILTER,
@@ -388,7 +386,6 @@ def build_app() -> Application:
     )
     app.add_handler(bc_conv)
 
-    # ── Ban System ────────────────────────────────────────────────
     ban_conv = ConversationHandler(
         entry_points=[MessageHandler(
             filters.Regex(r"^🚫 ʙᴀɴ ꜱʏꜱᴛᴇᴍ$") & ADMIN_FILTER,
@@ -403,7 +400,6 @@ def build_app() -> Application:
     )
     app.add_handler(ban_conv)
 
-    # ── Support Manager (ticket reply) ────────────────────────────
     ticket_reply_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(ticket_reply_callback, pattern=r"^ticket_reply:")],
         states={
@@ -415,7 +411,6 @@ def build_app() -> Application:
     )
     app.add_handler(ticket_reply_conv)
 
-    # ── Order Manager ─────────────────────────────────────────────
     order_mgr_conv = ConversationHandler(
         entry_points=[MessageHandler(
             filters.Regex(r"^📦 ᴏʀᴅᴇʀ ᴍᴀɴᴀɢᴇʀ$") & ADMIN_FILTER,
@@ -430,7 +425,6 @@ def build_app() -> Application:
     )
     app.add_handler(order_mgr_conv)
 
-    # ── VIP Manager ───────────────────────────────────────────────
     vip_conv = ConversationHandler(
         entry_points=[MessageHandler(
             filters.Regex(r"^💎 ᴠɪᴘ ᴍᴀɴᴀɢᴇʀ$") & ADMIN_FILTER,
@@ -446,7 +440,6 @@ def build_app() -> Application:
     )
     app.add_handler(vip_conv)
 
-    # ── Notification ──────────────────────────────────────────────
     notif_conv = ConversationHandler(
         entry_points=[MessageHandler(
             filters.Regex(r"^🔔 ɴᴏᴛɪꜰɪᴄᴀᴛɪᴏɴ$") & ADMIN_FILTER,
@@ -462,7 +455,7 @@ def build_app() -> Application:
     app.add_handler(notif_conv)
 
     # ═══════════════════════════════════════════════════════════════
-    #  SIMPLE REPLY KEYBOARD HANDLERS (MessageHandlers)
+    #  SIMPLE REPLY KEYBOARD HANDLERS
     # ═══════════════════════════════════════════════════════════════
     app.add_handler(MessageHandler(filters.Regex(r"^📊 ꜱᴇʀᴠɪᴄᴇꜱ ʟɪꜱᴛ$"),  services_list))
     app.add_handler(MessageHandler(filters.Regex(r"^🌐 ꜱᴍᴍ ꜱᴇʀᴠɪᴄᴇ$"),    services_list_smm))
@@ -479,9 +472,17 @@ def build_app() -> Application:
     app.add_handler(MessageHandler(filters.Regex(r"^⭐ ᴠɪᴘ ᴍᴇᴍʙᴇʀꜱʜɪᴘ$"), vip_membership))
     app.add_handler(MessageHandler(filters.Regex(r"^📢 ᴜᴘᴅᴀᴛᴇꜱ$"),        updates_channel))
 
+    # ── Partner: my orders shortcut (reply keyboard) ──────────────
+    app.add_handler(MessageHandler(
+        filters.Regex(r"^🧾 ᴍʏ ᴘᴀʀᴛɴᴇʀ ᴏʀᴅᴇʀꜱ$"),
+        my_partner_orders,
+    ))
+
     # ── Admin reply keyboard ──────────────────────────────────────
     app.add_handler(MessageHandler(
         filters.Regex(r"^📊 ʙᴏᴛ ꜱᴛᴀᴛɪꜱᴛɪᴄꜱ$") & ADMIN_FILTER,   bot_stats))
+    app.add_handler(MessageHandler(
+        filters.Regex(r"^📊 ᴘᴀʀᴛɴᴇʀ ꜱᴛᴀᴛꜱ$") & ADMIN_FILTER,     partner_stats_cmd))
     app.add_handler(MessageHandler(
         filters.Regex(r"^⚙️ ᴀᴘɪ ᴍᴀɴᴀɢᴇʀ$") & ADMIN_FILTER,      api_manager))
     app.add_handler(MessageHandler(
@@ -522,6 +523,14 @@ async def on_startup(app: Application):
     logger.info("Initialising database...")
     await db.init_db()
     logger.info("Database ready.")
+
+    # ── Partner API: background reconcile of pending orders ────────
+    if not MAINTENANCE_MODE:
+        try:
+            asyncio.create_task(reconcile_partner_orders(app))
+        except Exception as e:
+            logger.warning("Partner reconcile schedule failed: %s", e)
+
     for admin_id in ADMIN_IDS:
         try:
             await app.bot.send_message(admin_id, "🚀 Bot started successfully!")
@@ -530,9 +539,20 @@ async def on_startup(app: Application):
 
 
 async def on_shutdown(app: Application):
-    from api.smm_api import smm_api
-    await smm_api.close()
-    logger.info("API session closed.")
+    # ── SMM API session ──
+    try:
+        from api.smm_api import smm_api
+        await smm_api.close()
+        logger.info("SMM API session closed.")
+    except Exception as e:
+        logger.warning("SMM API close failed: %s", e)
+
+    # ── Partner API session ──
+    try:
+        await close_partner_session()
+        logger.info("Partner API session closed.")
+    except Exception as e:
+        logger.warning("Partner session close failed: %s", e)
 
 
 # ─────────────────────────────────────────────────────────────────
