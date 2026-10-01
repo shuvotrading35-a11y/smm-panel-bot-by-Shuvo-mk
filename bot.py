@@ -4,9 +4,9 @@ import os
 from telegram import Update
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, CallbackQueryHandler,
-    ConversationHandler, filters
+    ConversationHandler, filters, ApplicationHandlerStop
 )
-from config import BOT_TOKEN, ADMIN_IDS
+from config import BOT_TOKEN, ADMIN_IDS, MAINTENANCE_MODE
 import database as db
 
 # ── Import handlers ───────────────────────────────────────────────
@@ -76,6 +76,37 @@ ADMIN_FILTER  = filters.User(user_id=ADMIN_IDS)
 
 
 # ─────────────────────────────────────────────────────────────────
+#  MAINTENANCE MODE
+# ─────────────────────────────────────────────────────────────────
+async def maintenance_check(update: Update, context) -> None:
+    """Block normal users while maintenance mode is enabled. Admins bypass it."""
+    if not MAINTENANCE_MODE:
+        return
+
+    user = update.effective_user
+    if not user or user.id in ADMIN_IDS:
+        return
+
+    message = (
+        "🛠️ <b>Bot Maintenance Mode</b>\n\n"
+        "বর্তমানে আমাদের বটে সাময়িক রক্ষণাবেক্ষণের কাজ চলছে।\n"
+        "অনুগ্রহ করে কিছুক্ষণ পরে আবার চেষ্টা করুন।\n\n"
+        "🔄 আমরা খুব শীঘ্রই আবার চালু করছি।\n\n"
+        f"👨‍💻 Developer: {__import__('config').DEVELOPER}"
+    )
+
+    try:
+        if update.callback_query:
+            await update.callback_query.answer("🛠️ Bot is under maintenance", show_alert=True)
+        elif update.effective_message:
+            await update.effective_message.reply_text(message, parse_mode="HTML")
+    except Exception as exc:
+        logger.warning("Maintenance response failed: %s", exc)
+
+    raise ApplicationHandlerStop
+
+
+# ─────────────────────────────────────────────────────────────────
 #  ERROR HANDLER
 # ─────────────────────────────────────────────────────────────────
 async def error_handler(update: object, context) -> None:
@@ -116,6 +147,11 @@ def build_app() -> Application:
 
     # ── Global middlewares (run BEFORE every other handler) ────────
     from telegram.ext import MessageHandler as _MH, CallbackQueryHandler as _CQH, filters as _filters
+
+    # Maintenance runs first. Admins bypass it.
+    app.add_handler(_MH(_filters.ALL, maintenance_check), group=-3)
+    app.add_handler(_CQH(maintenance_check), group=-3)
+
     app.add_handler(_MH(_filters.ALL, check_banned), group=-2)
     app.add_handler(_CQH(check_banned), group=-2)
     app.add_handler(_MH(_filters.ALL, global_force_join_check), group=-1)
