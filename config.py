@@ -13,6 +13,10 @@ DEVELOPER      = os.getenv("DEVELOPER", "@shuvo_9882")
 _raw = os.getenv("ADMIN_IDS", "")
 ADMIN_IDS: list[int] = [int(x.strip()) for x in _raw.split(",") if x.strip().isdigit()]
 
+# ── Maintenance Mode ─────────────────────────────────
+# true = normal users cannot use the bot; admins can still use it.
+MAINTENANCE_MODE = os.getenv("MAINTENANCE_MODE", "false").strip().lower() in ("1", "true", "yes", "on")
+
 # ── SMM API ──────────────────────────────────────────
 SMM_API_URL = os.getenv("SMM_API_URL", "")
 SMM_API_KEY = os.getenv("SMM_API_KEY", "")
