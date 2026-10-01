@@ -166,10 +166,34 @@ async def init_db():
             synced_at       TEXT    DEFAULT (datetime('now'))
         );
 
+        -- ── Partner API (Instant Delivery: LINK / COUPON / READY_ACCOUNT) ──
+        CREATE TABLE IF NOT EXISTS partner_orders (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id         INTEGER NOT NULL,
+            external_id     TEXT    NOT NULL UNIQUE,
+            order_code      TEXT    UNIQUE,
+            product_slug    TEXT    NOT NULL,
+            product_name    TEXT,
+            delivery_type   TEXT,
+            quantity        INTEGER DEFAULT 1,
+            unit_price      REAL,
+            total_charged   REAL,
+            currency        TEXT    DEFAULT 'USD',
+            status          TEXT    DEFAULT 'COMPLETED',
+            lines_json      TEXT,
+            recovered       INTEGER DEFAULT 0,
+            created_at      TEXT    DEFAULT (datetime('now')),
+            FOREIGN KEY (user_id) REFERENCES users(user_id)
+        );
+
         CREATE INDEX IF NOT EXISTS idx_orders_user   ON orders(user_id);
         CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
         CREATE INDEX IF NOT EXISTS idx_txn_user      ON transactions(user_id);
         CREATE INDEX IF NOT EXISTS idx_deposits_user ON deposits(user_id);
+        CREATE INDEX IF NOT EXISTS idx_partner_user     ON partner_orders(user_id);
+        CREATE INDEX IF NOT EXISTS idx_partner_external ON partner_orders(external_id);
+        CREATE INDEX IF NOT EXISTS idx_partner_code     ON partner_orders(order_code);
+        CREATE INDEX IF NOT EXISTS idx_partner_status   ON partner_orders(status);
         """)
         await db.commit()
 
@@ -815,6 +839,183 @@ async def get_topup_orders(user_id: int, limit: int = 10) -> list[dict]:
             rows = await cur.fetchall()
             return [dict(r) for r in rows]
 
+# ─────────────────────────────────────────────────────────────────
+#  PARTNER API ORDERS  (Instant Delivery — LINK / COUPON / READY_ACCOUNT)
+# ─────────────────────────────────────────────────────────────────
+async def create_partner_order(
+    user_id: int,
+    external_id: str,
+    order_code: str,
+    product_slug: str,
+    product_name: str,
+    delivery_type: str,
+    quantity: int,
+    unit_price: float,
+    total_charged: float,
+    status: str = "COMPLETED",
+    lines_json: str = None,
+) -> int:
+    """
+    Partner API অর্ডার সফল হলে সেভ করার জন্য।
+    ⚠️ delivery.link / delivery.code / delivery.content কখনো এখানে পাঠাবেন না।
+       সেগুলো sensitive — শুধু GET /orders/:orderCode দিয়ে live আনবেন।
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            """INSERT OR IGNORE INTO partner_orders
+               (user_id, external_id, order_code, product_slug, product_name,
+                delivery_type, quantity, unit_price, total_charged, status, lines_json)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            (user_id, external_id, order_code, product_slug, product_name,
+             delivery_type, quantity, unit_price, total_charged, status, lines_json)
+        )
+        await db.execute(
+            "UPDATE users SET total_orders = total_orders + 1 WHERE user_id=?",
+            (user_id,)
+        )
+        await db.commit()
+        return cur.lastrowid
+
+
+async def get_partner_order_by_external(external_id: str) -> dict | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM partner_orders WHERE external_id=?", (external_id,)
+        ) as cur:
+            row = await cur.fetchone()
+            return dict(row) if row else None
+
+
+async def get_partner_order_by_code(order_code: str) -> dict | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM partner_orders WHERE order_code=?", (order_code,)
+        ) as cur:
+            row = await cur.fetchone()
+            return dict(row) if row else None
+
+
+async def get_user_partner_orders(user_id: int, limit: int = 10) -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM partner_orders WHERE user_id=? "
+            "ORDER BY created_at DESC LIMIT ?", (user_id, limit)
+        ) as cur:
+            rows = await cur.fetchall()
+            return [dict(r) for r in rows]
+
+
+async def update_partner_order_status(
+    order_code: str, status: str, recovered: int = 0
+):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE partner_orders SET status=?, recovered=? WHERE order_code=?",
+            (status, recovered, order_code)
+        )
+        await db.commit()
+
+
+async def get_partner_order_count(user_id: int | None = None) -> int:
+    async with aiosqlite.connect(DB_PATH) as db:
+        if user_id is None:
+            async with db.execute("SELECT COUNT(*) FROM partner_orders") as cur:
+                row = await cur.fetchone()
+        else:
+            async with db.execute(
+                "SELECT COUNT(*) FROM partner_orders WHERE user_id=?", (user_id,)
+            ) as cur:
+                row = await cur.fetchone()
+        return row[0] if row else 0
+
+
+async def get_partner_spend_total(user_id: int | None = None) -> float:
+    async with aiosqlite.connect(DB_PATH) as db:
+        if user_id is None:
+            async with db.execute(
+                "SELECT COALESCE(SUM(total_charged),0) FROM partner_orders"
+            ) as cur:
+                row = await cur.fetchone()
+        else:
+            async with db.execute(
+                "SELECT COALESCE(SUM(total_charged),0) FROM partner_orders WHERE user_id=?",
+                (user_id,)
+            ) as cur:
+                row = await cur.fetchone()
+        return row[0] if row else 0.0
+
+
+async def get_partner_orders_today() -> int:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM partner_orders WHERE DATE(created_at)=DATE('now')"
+        ) as cur:
+            row = await cur.fetchone()
+            return row[0] if row else 0
+
+
+async def user_partner_orders_today(user_id: int) -> int:
+    """আপনার MAX_ORDERS_PER_DAY চেকের সাথে মিলিয়ে ব্যবহার করবেন।"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM partner_orders "
+            "WHERE user_id=? AND DATE(created_at)=DATE('now')",
+            (user_id,)
+        ) as cur:
+            row = await cur.fetchone()
+            return row[0] if row else 0
+
+
+async def get_partner_stats() -> dict:
+    """অ্যাডমিন /partnerstats কমান্ডের জন্য সংক্ষিপ্ত পরিসংখ্যান।"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT COUNT(*), COALESCE(SUM(total_charged),0) FROM partner_orders"
+        ) as cur:
+            total, spend = await cur.fetchone()
+        async with db.execute(
+            "SELECT COUNT(*), COALESCE(SUM(total_charged),0) "
+            "FROM partner_orders WHERE DATE(created_at)=DATE('now')"
+        ) as cur:
+            today, today_spend = await cur.fetchone()
+    return {
+        "total_orders": total or 0,
+        "total_spend":  round(spend or 0.0, 2),
+        "today_orders": today or 0,
+        "today_spend":  round(today_spend or 0.0, 2),
+    }
+
+
+async def get_unrecovered_partner_orders(limit: int = 50) -> list[dict]:
+    """
+    startup reconcile-এর জন্য। যেসব অর্ডার COMPLETED নয় বা recovered=0,
+    সেগুলো GET /orders/:orderCode দিয়ে আবার যাচাই করে ডেলিভারি পাঠানো হবে।
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM partner_orders "
+            "WHERE status != 'COMPLETED' AND recovered = 0 "
+            "ORDER BY created_at DESC LIMIT ?", (limit,)
+        ) as cur:
+            rows = await cur.fetchall()
+            return [dict(r) for r in rows]
+
+
+async def get_all_partner_orders(limit: int = 50) -> list[dict]:
+    """অ্যাডমিন প্যানেলের জন্য — user info সহ।"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT p.*, u.username, u.full_name FROM partner_orders p "
+            "LEFT JOIN users u ON p.user_id=u.user_id "
+            "ORDER BY p.created_at DESC LIMIT ?", (limit,)
+        ) as cur:
+            rows = await cur.fetchall()
+            return [dict(r) for r in rows]
 
 # ─────────────────────────────────────────────────────────────────
 #  EXPORT
@@ -839,5 +1040,19 @@ async def export_orders_csv() -> str:
             f"{o['id']},{o['user_id']},{o.get('api_order_id','')},"
             f"\"{o.get('service_name','')}\",{o['link']},"
             f"{o['quantity']},{o['charge']},{o['status']},{o['created_at']}"
+        )
+    return "\n".join(lines)
+
+async def export_partner_orders_csv() -> str:
+    """⚠️ ডেলিভারি কনটেন্ট (link/code/content) এই export-এ নেই।"""
+    orders = await get_all_partner_orders(limit=99999)
+    lines = ["id,user_id,external_id,order_code,product,delivery_type,"
+             "quantity,unit_price,total,status,created_at"]
+    for r in orders:
+        lines.append(
+            f"{r['id']},{r['user_id']},{r['external_id']},{r['order_code']},"
+            f"\"{r.get('product_name','')}\",{r.get('delivery_type','')},"
+            f"{r['quantity']},{r['unit_price']},{r['total_charged']},"
+            f"{r['status']},{r['created_at']}"
         )
     return "\n".join(lines)
