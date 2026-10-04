@@ -87,39 +87,84 @@ async def _notify_admins_of_error(context, where: str, e: PartnerAPIError):
 
 
 # ─────────────────────────────────────────────────────
-#  KEYBOARDS
+#  KEYBOARDS  (GGSoma-style 2-column grid with colors)
 # ─────────────────────────────────────────────────────
+STYLE_PRIMARY = "primary"
+STYLE_SUCCESS = "success"
+STYLE_DANGER  = "danger"
+
+
+def _btn(text: str, callback_data: str, style: str | None = None):
+    """InlineKeyboardButton with safe fallback for older PTB versions."""
+    try:
+        return InlineKeyboardButton(
+            text=text, callback_data=callback_data, style=style
+        )
+    except TypeError:
+        # PTB পুরোনো হলে style বাদ পড়বে
+        return InlineKeyboardButton(text=text, callback_data=callback_data)
+
+
+def _trim(text: str, limit: int = 16) -> str:
+    """বাটনের লেবেল ছোট করে দেয় যাতে ২ কলামে ফিট করে।"""
+    text = str(text)
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
 def _providers_kb(providers: list[dict]) -> InlineKeyboardMarkup:
-    rows = []
+    """ক্যাটাগরি ২ কলামে, সব সবুজ (success)।"""
+    rows, row = [], []
     for p in providers:
         emoji = (p.get("emoji") or {}).get("normal") or "📦"
-        rows.append([InlineKeyboardButton(
-            text=f"{emoji} {p['name']}",
-            callback_data=f"pprov:{p['key']}:1",
-        )])
+        row.append(_btn(
+            f"{emoji} {_trim(p['name'], 14)}",
+            f"pprov:{p['key']}:1",
+            STYLE_SUCCESS,
+        ))
+        if len(row) == 2:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
     return InlineKeyboardMarkup(rows)
 
 
-def _products_kb(products, provider_key, page, per_page=8) -> InlineKeyboardMarkup:
+def _products_kb(products, provider_key, page, per_page=10) -> InlineKeyboardMarkup:
+    """
+    প্রোডাক্ট ২ কলামে —
+    ✅ স্টকে থাকলে সবুজ (success) | ❌ স্টক আউট হলে লাল (danger)
+    """
     start = (page - 1) * per_page
     chunk = products[start:start + per_page]
-    rows = []
+    rows, row = [], []
+
     for p in chunk:
-        price = p.get("yourPrice", "?")
-        stock = (p.get("stock") or {}).get("count", 0)
-        icon = "✅" if stock > 0 else "❌"
-        rows.append([InlineKeyboardButton(
-            text=f"{icon} {p['name']} — ${price}",
-            callback_data=f"pprod:{p['slug']}",
-        )])
+        stock   = (p.get("stock") or {}).get("count", 0)
+        in_stk  = stock > 0
+        icon    = "✅" if in_stk else "❌"
+        name    = _trim(p["name"], 14)
+
+        row.append(_btn(
+            f"{icon} {name}",
+            f"pprod:{p['slug']}",
+            STYLE_SUCCESS if in_stk else STYLE_DANGER,
+        ))
+        if len(row) == 2:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+
+    # ── Pagination ──
     nav = []
     if page > 1:
-        nav.append(InlineKeyboardButton("⬅️", callback_data=f"pprov:{provider_key}:{page-1}"))
+        nav.append(_btn("⬅️", f"pprov:{provider_key}:{page-1}", STYLE_PRIMARY))
     if start + per_page < len(products):
-        nav.append(InlineKeyboardButton("➡️", callback_data=f"pprov:{provider_key}:{page+1}"))
+        nav.append(_btn("➡️", f"pprov:{provider_key}:{page+1}", STYLE_PRIMARY))
     if nav:
         rows.append(nav)
-    rows.append([InlineKeyboardButton("🔙 Categories", callback_data="pcat")])
+
+    rows.append([_btn("🔙 Categories", "pcat", STYLE_DANGER)])
     return InlineKeyboardMarkup(rows)
 
 
@@ -174,7 +219,7 @@ async def partner_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
     await update.effective_message.reply_text(
-        "🛍 <b>Instant Delivery Shop</b>\n\nএকটি ক্যাটাগরি বেছে নিন:",
+        "🛍 <b>Choose a service:</b>",
         reply_markup=_providers_kb(providers),
         parse_mode="HTML",
     )
@@ -203,7 +248,7 @@ async def partner_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await q.edit_message_text(_friendly_error(e.code))
                 return WAITING_ACTION
         await q.edit_message_text(
-            "🛍 <b>Instant Delivery Shop</b>\n\nএকটি ক্যাটাগরি বেছে নিন:",
+            "🛍 <b>Choose a service:</b>",
             reply_markup=_providers_kb(providers),
             parse_mode="HTML",
         )
@@ -230,7 +275,7 @@ async def partner_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return WAITING_ACTION
         try:
             await q.edit_message_text(
-                f"📦 <b>{key.title()} — Products</b> (পৃষ্ঠা {page})",
+                f"🛍 <b>{key.title()}</b>\nনিচ থেকে একটি সার্ভিস বেছে নিন:",
                 reply_markup=_products_kb(products, key, page),
                 parse_mode="HTML",
             )
@@ -483,7 +528,7 @@ async def my_partner_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ─────────────────────────────────────────────────────
-#  ADMIN STATS  (API ব্যালেন্স হাইড)
+#  ADMIN STATS  (API ব্যালেন্স দেখাবে — অ্যাডমিন-only)
 # ─────────────────────────────────────────────────────
 async def partner_stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
@@ -494,7 +539,7 @@ async def partner_stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         u = await papi.usage()
         api_info = (
             f"\n\n🌐 <b>Live API</b>\n"
-            f"💰 ব্যালেন্স: <b>${u.get('balance')}</b>\n"        # ← অ্যাডমিন-only
+            f"💰 ব্যালেন্স: <b>${u.get('balance')}</b>\n"
             f"24h অর্ডার: {u.get('apiOrders24h')}\n"
             f"24h খরচ: ${u.get('apiSpend24h')}\n"
             f"আজ রিকোয়েস্ট: {u.get('requestCountToday')}\n"
