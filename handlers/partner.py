@@ -12,7 +12,10 @@ import json
 import logging
 from html import escape
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import (
+    Update, InlineKeyboardButton, InlineKeyboardMarkup,
+    ReplyKeyboardRemove,
+)
 from telegram.ext import (
     ContextTypes, ConversationHandler, CommandHandler,
     MessageHandler, CallbackQueryHandler, filters,
@@ -63,10 +66,19 @@ _FRIENDLY_ERRORS = {
 
 _GENERIC_ERROR = "⚠️ সার্ভিসে সাময়িক সমস্যা হচ্ছে। কিছুক্ষণ পরে আবার চেষ্টা করুন।"
 
+# BACK / cancel টেক্সট যা যেকোনো ফ্রি-টেক্সট স্টেটে ধরা হবে
+_BACK_TEXTS = {
+    "back", "🔙 back", "⬅️ back", "⬅ back", "« back",
+    "❌ cancel", "❌ ᴄᴀɴᴄᴇʟ", "cancel", "/cancel",
+}
+
 
 def _friendly_error(code: str) -> str:
-    """ইউজার-ফ্রেন্ডলি মেসেজ — কোনো internal detail ছাড়া।"""
     return _FRIENDLY_ERRORS.get(code, _GENERIC_ERROR)
+
+
+def _is_back_or_cancel(text: str) -> bool:
+    return (text or "").strip().lower() in _BACK_TEXTS
 
 
 async def _notify_admins_of_error(context, where: str, e: PartnerAPIError):
@@ -101,18 +113,15 @@ def _btn(text: str, callback_data: str, style: str | None = None):
             text=text, callback_data=callback_data, style=style
         )
     except TypeError:
-        # PTB পুরোনো হলে style বাদ পড়বে
         return InlineKeyboardButton(text=text, callback_data=callback_data)
 
 
 def _trim(text: str, limit: int = 16) -> str:
-    """বাটনের লেবেল ছোট করে দেয় যাতে ২ কলামে ফিট করে।"""
     text = str(text)
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
 def _providers_kb(providers: list[dict]) -> InlineKeyboardMarkup:
-    """ক্যাটাগরি ২ কলামে, সব সবুজ (success)।"""
     rows, row = [], []
     for p in providers:
         emoji = (p.get("emoji") or {}).get("normal") or "📦"
@@ -130,10 +139,6 @@ def _providers_kb(providers: list[dict]) -> InlineKeyboardMarkup:
 
 
 def _products_kb(products, provider_key, page, per_page=10) -> InlineKeyboardMarkup:
-    """
-    প্রোডাক্ট ২ কলামে —
-    ✅ স্টকে থাকলে সবুজ (success) | ❌ স্টক আউট হলে লাল (danger)
-    """
     start = (page - 1) * per_page
     chunk = products[start:start + per_page]
     rows, row = [], []
@@ -155,7 +160,6 @@ def _products_kb(products, provider_key, page, per_page=10) -> InlineKeyboardMar
     if row:
         rows.append(row)
 
-    # ── Pagination ──
     nav = []
     if page > 1:
         nav.append(_btn("⬅️", f"pprov:{provider_key}:{page-1}", STYLE_PRIMARY))
@@ -227,7 +231,7 @@ async def partner_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ─────────────────────────────────────────────────────
-#  STATE: WAITING_ACTION — nav + category
+#  STATE: WAITING_ACTION — nav + category + product select
 # ─────────────────────────────────────────────────────
 async def partner_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
@@ -357,19 +361,27 @@ async def partner_product_selected(update: Update, context: ContextTypes.DEFAULT
         text += f"🛡 ওয়ারেন্টি: {p['warranty']['days']} দিন\n"
     if p.get("description"):
         text += f"\n<i>{escape(p['description'][:200])}</i>\n"
+
+    max_qty = int(stock.get("maxQuantity") or 1)
     text += (
-        f"\nকত পিস নিতে চান? (1–{stock.get('maxQuantity', 1)})\n"
-        f"শুধু সংখ্যাটি পাঠান। বাতিল করতে <code>/cancel</code>।"
+        f"\nকত পিস নিতে চান? (1–{max_qty})\n"
+        f"শুধু সংখ্যাটি পাঠান। বাতিল করতে /cancel।"
     )
 
-    await q.message.reply_text(text, parse_mode="HTML")
+    # ⚠️ ফিক্স ১: qty নেওয়ার আগে reply keyboard সরিয়ে দিচ্ছি,
+    # যাতে BACK বাটন আর না আসে।
+    await q.message.reply_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=ReplyKeyboardRemove(),
+    )
 
     context.user_data["partner_pending"] = {
         "slug": slug,
         "name": p.get("name", slug),
         "delivery_type": dtype,
         "unit_price": float(p.get("yourPrice") or 0),
-        "max_qty": int(stock.get("maxQuantity") or 1),
+        "max_qty": max_qty,
     }
     return WAITING_QTY
 
@@ -382,19 +394,47 @@ async def partner_qty(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not data:
         return ConversationHandler.END
 
+    raw = (update.message.text or "").strip()
+
+    # ⚠️ ফিক্স ২: BACK / cancel আগে হ্যান্ডেল করি — int() করার আগেই।
+    if _is_back_or_cancel(raw):
+        context.user_data.pop("partner_pending", None)
+
+        providers = get_cache("partner:providers")
+        if not providers:
+            try:
+                providers = await papi.providers()
+                set_cache("partner:providers", providers, PARTNER_CACHE_TTL)
+            except PartnerAPIError as e:
+                log.error("Partner back-nav providers failed: %s", e.code)
+                await update.message.reply_text(
+                    "👇 Menu:", reply_markup=main_keyboard()
+                )
+                return ConversationHandler.END
+
+        await update.message.reply_text(
+            "🛍 <b>Choose a service:</b>",
+            reply_markup=_providers_kb(providers),
+            parse_mode="HTML",
+        )
+        return WAITING_ACTION
+
+    # ── সংখ্যা যাচাই ──
     try:
-        qty = int(update.message.text.strip())
+        qty = int(raw)
         if qty < 1 or qty > data["max_qty"]:
             raise ValueError
     except Exception:
         await update.message.reply_text(
-            f"❌ 1 থেকে {data['max_qty']} এর মধ্যে সংখ্যা পাঠান।"
+            f"❌ 1 থেকে {data['max_qty']} এর মধ্যে সংখ্যা পাঠান।\n"
+            f"ফিরে যেতে <b>BACK</b> লিখুন, বাতিল করতে /cancel।",
+            parse_mode="HTML",
         )
         return WAITING_QTY
 
     user_id = update.effective_user.id
 
-    # ডেইলি লিমিট
+    # ── ডেইলি লিমিট ──
     used = await user_partner_orders_today(user_id)
     if used >= MAX_ORDERS_PER_DAY:
         await update.message.reply_text(
@@ -404,7 +444,7 @@ async def partner_qty(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop("partner_pending", None)
         return ConversationHandler.END
 
-    # API ব্যালেন্স প্রি-চেক (ইউজারকে দেখানো হয় না, শুধু যাচাই)
+    # ── API ব্যালেন্স প্রি-চেক ──
     try:
         await papi.balance()
     except PartnerAPIError as e:
@@ -425,15 +465,13 @@ async def partner_qty(update: Update, context: ContextTypes.DEFAULT_TYPE):
         log.error("Partner create_order failed user=%s code=%s req=%s msg=%s",
                   user_id, e.code, e.request_id, e.message)
         await _notify_admins_of_error(
-            context,
-            f"create_order:{data['slug']}",
-            e,
+            context, f"create_order:{data['slug']}", e,
         )
         await update.message.reply_text(_friendly_error(e.code), parse_mode="HTML")
         context.user_data.pop("partner_pending", None)
         return ConversationHandler.END
 
-    # DB সেভ (delivery নয়, শুধু মেটাডেটা)
+    # ── DB সেভ (delivery নয়, শুধু মেটাডেটা) ──
     lines_meta = json.dumps(
         [{"orderCode": ln.get("orderCode")} for ln in res.get("lines", []) or []]
     ) if res.get("lines") else None
@@ -455,7 +493,7 @@ async def partner_qty(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cache_invalidate("partner:product:")
     cache_invalidate("partner:products:")
 
-    # ── ইউজারের কাছে সাকসেস মেসেজ (API ব্যালেন্স হাইড) ──
+    # ── ইউজারের কাছে সাকসেস মেসেজ ──
     head = (
         f"✅ <b>অর্ডার সম্পন্ন</b>\n"
         f"🧾 <code>{res.get('orderCode', '')}</code>\n"
@@ -469,7 +507,7 @@ async def partner_qty(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             await update.message.reply_text(chunk)
 
-    # ── লগ বটে fire-and-forget (API ব্যালেন্স ছাড়া) ──
+    # ── লগ বটে fire-and-forget ──
     try:
         import asyncio
         from utils.order_logger import send_partner_order_log
@@ -487,6 +525,11 @@ async def partner_qty(update: Update, context: ContextTypes.DEFAULT_TYPE):
         log.warning("Partner log dispatch failed: %s", e)
 
     context.user_data.pop("partner_pending", None)
+
+    # ⚠️ ফিক্স ৩: সফল অর্ডারের শেষে মূল reply keyboard ফিরিয়ে দিচ্ছি
+    await update.message.reply_text(
+        "👇 Menu:", reply_markup=main_keyboard()
+    )
     return ConversationHandler.END
 
 
@@ -528,7 +571,7 @@ async def my_partner_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ─────────────────────────────────────────────────────
-#  ADMIN STATS  (API ব্যালেন্স দেখাবে — অ্যাডমিন-only)
+#  ADMIN STATS
 # ─────────────────────────────────────────────────────
 async def partner_stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
@@ -599,7 +642,7 @@ async def reconcile_partner_orders(application):
 # ─────────────────────────────────────────────────────
 #  CONVERSATION FACTORY
 # ─────────────────────────────────────────────────────
-PARTNER_CANCEL = filters.Regex(r"^(❌ ᴄᴀɴᴄᴇʟ|❌ Cancel|/cancel)$")
+PARTNER_CANCEL = filters.Regex(r"^(❌ ᴄᴀɴᴄᴇʟ|❌ Cancel|cancel|/cancel|BACK|🔙 BACK)$")
 
 
 def build_partner_conversation() -> ConversationHandler:
@@ -622,7 +665,7 @@ def build_partner_conversation() -> ConversationHandler:
             ],
             WAITING_QTY: [
                 MessageHandler(
-                    filters.TEXT & ~filters.COMMAND & ~PARTNER_CANCEL,
+                    filters.TEXT & ~filters.COMMAND,
                     partner_qty,
                 ),
             ],
