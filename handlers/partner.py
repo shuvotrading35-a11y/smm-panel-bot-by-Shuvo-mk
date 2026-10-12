@@ -11,6 +11,7 @@ Features:
    ✔ Stock Alert (subscribe + auto notify)
    ✔ Price History (sparkline trend)
    ✔ Related Products (same category)
+   ✔ Stock count on product buttons
 
 ⚠️ Security:
    - delivery.link / code / content কখনো log/DB-তে যায় না
@@ -38,15 +39,12 @@ from config import (
     MAX_ORDERS_PER_DAY, PARTNER_CACHE_TTL, ADMIN_IDS,
 )
 from database import (
-    # existing
     create_partner_order, get_user_partner_orders,
     get_partner_order_by_code, user_partner_orders_today,
     update_partner_order_status, get_unrecovered_partner_orders,
     get_partner_stats,
-    # NEW ── Stock alerts
     add_stock_alert, remove_stock_alert, has_stock_alert,
     get_pending_stock_alerts, mark_alert_notified, get_user_alerts,
-    # NEW ── Price history
     record_price, get_price_history,
 )
 from keyboards.reply import main_keyboard
@@ -117,7 +115,6 @@ async def _notify_admins_of_error(context, where: str, e: PartnerAPIError):
 #  SPARKLINE + TREND HELPERS
 # ─────────────────────────────────────────────────────
 def _sparkline(values: list[float]) -> str:
-    """সাধারণ টেক্সট-চার্ট: ▁▂▃▅▇"""
     if not values:
         return ""
     lo, hi = min(values), max(values)
@@ -132,7 +129,6 @@ def _sparkline(values: list[float]) -> str:
 
 
 def _price_trend(history: list[dict]) -> str:
-    """Price history থেকে trend summary তৈরি করে।"""
     if not history:
         return ""
     prices = [h["price"] for h in history]
@@ -165,7 +161,6 @@ def _price_trend(history: list[dict]) -> str:
 async def _related_products_kb(slug: str, provider_key: str | None,
                                current_slug: str,
                                limit: int = 4) -> InlineKeyboardMarkup | None:
-    """একই ক্যাটাগরির আরো প্রোডাক্ট।"""
     if not provider_key:
         return None
     products = get_cache(f"partner:products:{provider_key}")
@@ -239,7 +234,10 @@ def _providers_kb(providers: list[dict]) -> InlineKeyboardMarkup:
 
 
 def _products_kb(products, provider_key, page, per_page=8) -> InlineKeyboardMarkup:
-    """প্রোডাক্ট — ১ কলাম, পুরো চওড়া।"""
+    """
+    প্রোডাক্ট — ১ কলাম, পুরো চওড়া।
+    ✅ স্টকে থাকলে সবুজ + স্টক count  |  ❌ স্টক আউট হলে লাল
+    """
     start = (page - 1) * per_page
     chunk = products[start:start + per_page]
     rows = []
@@ -250,11 +248,17 @@ def _products_kb(products, provider_key, page, per_page=8) -> InlineKeyboardMark
         icon    = "✅" if in_stk else "❌"
         price   = p.get("yourPrice", "?")
         name    = p["name"]
-        if len(name) > 42:
-            name = name[:41] + "…"
+        if len(name) > 32:
+            name = name[:31] + "…"
+
+        # ✅ বাটনে স্টক count
+        if in_stk:
+            label = f"{icon} {name}\n💵 ${price}  •  📦 {stock}"
+        else:
+            label = f"{icon} {name}\n💵 ${price}  •  📦 শেষ"
 
         rows.append([_btn(
-            f"{icon} {name} — ${price}",
+            label,
             f"pprod:{p['slug']}",
             STYLE_SUCCESS if in_stk else STYLE_DANGER,
         )])
@@ -504,14 +508,12 @@ async def partner_product_selected(update: Update, context: ContextTypes.DEFAULT
     in_stk = bool(stock.get("inStock"))
     max_qty = int(stock.get("maxQuantity") or 1)
 
-    # ── Price history রেকর্ড ──
     try:
         price = float(p.get("yourPrice") or 0)
         await record_price(slug, price, stock_count)
     except Exception as e:
         log.warning("record_price failed: %s", e)
 
-    # ── provider key খোঁজা ──
     provider_key = None
     providers = get_cache("partner:providers") or []
     for prov in providers:
@@ -540,7 +542,6 @@ async def partner_product_selected(update: Update, context: ContextTypes.DEFAULT
     if p.get("description"):
         text += f"\n<i>{escape(p['description'][:200])}</i>\n"
 
-    # ── Price history sparkline ──
     try:
         history = await get_price_history(slug, limit=30)
         trend = _price_trend(history)
@@ -549,14 +550,12 @@ async def partner_product_selected(update: Update, context: ContextTypes.DEFAULT
     except Exception as e:
         log.warning("price history failed: %s", e)
 
-    # ── Related products ──
     related_kb = None
     try:
         related_kb = await _related_products_kb(slug, provider_key, slug, limit=4)
     except Exception as e:
         log.warning("related products failed: %s", e)
 
-    # ── Build keyboard ──
     rows = []
 
     if in_stk:
@@ -594,12 +593,10 @@ async def partner_product_selected(update: Update, context: ContextTypes.DEFAULT
 
         rows.append([_btn("🔙 Back", f"pback:{slug}", STYLE_DANGER)])
 
-    # ── Related ──
     if related_kb:
         text += "\n\n🔎 <b>একই ক্যাটাগরির আরো:</b>"
         rows.extend(related_kb.inline_keyboard)
 
-    # ── store pending ──
     context.user_data["partner_pending"] = {
         "slug": slug,
         "name": p.get("name", slug),
@@ -881,13 +878,9 @@ async def my_stock_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ─────────────────────────────────────────────────────
-#  STOCK CHECK JOB — scheduler-এ কল হবে
+#  STOCK CHECK JOB
 # ─────────────────────────────────────────────────────
 async def check_stock_alerts_job(application):
-    """
-    প্রতি ৫ মিনিটে চেক — notified=0 আলার্টের প্রোডাক্ট স্টকে এলে
-    ইউজারকে মেসেজ পাঠায়।
-    """
     pending = await get_pending_stock_alerts(limit=100)
     if not pending:
         return
@@ -1102,10 +1095,16 @@ async def partner_search_input(update: Update, context: ContextTypes.DEFAULT_TYP
         icon   = "✅" if in_stk else "❌"
         price  = p.get("yourPrice", "?")
         name   = p["name"]
-        if len(name) > 42:
-            name = name[:41] + "…"
+        if len(name) > 32:
+            name = name[:31] + "…"
+
+        if in_stk:
+            label = f"{icon} {name}\n💵 ${price}  •  📦 {stock}"
+        else:
+            label = f"{icon} {name}\n💵 ${price}  •  📦 শেষ"
+
         rows.append([_btn(
-            f"{icon} {name} — ${price}",
+            label,
             f"pprod:{p['slug']}",
             STYLE_SUCCESS if in_stk else STYLE_DANGER,
         )])
@@ -1186,7 +1185,7 @@ async def partner_stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"মোট অর্ডার: <b>{stats['total_orders']}</b>\n"
         f"মোট খরচ: <b>${stats['total_spend']}</b>\n"
         f"আজ অর্ডার: <b>{stats['today_orders']}</b>\n"
-        f"আজ খরচ: <b>${stats['today_spend']}</b>"
+        f"আজ খরচ: <b>{stats['today_spend']}</b>"
         f"{api_info}",
         parse_mode="HTML",
     )
@@ -1256,7 +1255,6 @@ def build_partner_conversation() -> ConversationHandler:
                     pattern=r"^pback:.+$"),
                 CallbackQueryHandler(partner_confirm,
                     pattern=r"^pconfirm:.+$"),
-                # NEW — stock alerts
                 CallbackQueryHandler(partner_alert_on,
                     pattern=r"^palert:.+$"),
                 CallbackQueryHandler(partner_alert_off,
