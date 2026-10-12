@@ -1,6 +1,7 @@
 import logging
+import re
 import httpx
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler, CommandHandler, MessageHandler, filters, ApplicationHandlerStop
 from telegram.constants import ParseMode
 
@@ -33,19 +34,116 @@ logger = logging.getLogger(__name__)
 
 
 # ═══════════════════════════════════════════════════════════════════
+#  SUB-CATEGORY AUTO-DETECTION
+# ═══════════════════════════════════════════════════════════════════
+_SUBCAT_RULES = {
+    "facebook": [
+        (r'\bgroup\s*members?\b',            "👨‍👩‍👧 Group Members"),
+        (r'\bstory\s*views?\b',              "📖 Story Views"),
+        (r'\bvideo\s*views?\b|\bviews?\b|\bplays?\b|\bvideo\b', "👁 Views/Plays"),
+        (r'\breactions?\b',                  "❤️ Reactions"),
+        (r'\bcomments?\b',                   "💬 Comments"),
+        (r'\bfollowers?\b',                  "👥 Followers"),
+        (r'\bshares?\b',                     "🔄 Shares"),
+        (r'\bpost\s*likes?\b',               "👍 Post Likes"),
+        (r'\blikes?\b',                      "👍 Likes"),
+        (r'\bbangladesh\b',                  "🇧🇩 Bangladesh"),
+    ],
+    "instagram": [
+        (r'\bstory\b',                       "📖 Story"),
+        (r'\breels?\b',                      "🎬 Reels"),
+        (r'\bviews?\b|\bplays?\b',           "👁 Views"),
+        (r'\bfollowers?\b',                  "👥 Followers"),
+        (r'\blikes?\b',                      "👍 Likes"),
+        (r'\bcomments?\b',                   "💬 Comments"),
+        (r'\bsaves?\b',                      "🔖 Saves"),
+    ],
+    "youtube": [
+        (r'\bsubscribers?\b',                "🔔 Subscribers"),
+        (r'\bwatch\s*hours?\b',              "⏱ Watch Hours"),
+        (r'\bshorts?\b',                     "🎬 Shorts"),
+        (r'\bviews?\b',                      "👁 Views"),
+        (r'\blikes?\b',                      "👍 Likes"),
+        (r'\bcomments?\b',                   "💬 Comments"),
+        (r'\blive\b',                        "📡 Live Stream"),
+    ],
+    "tiktok": [
+        (r'\bfollowers?\b',                  "👥 Followers"),
+        (r'\blikes?\b',                      "👍 Likes"),
+        (r'\bviews?\b',                      "👁 Views"),
+        (r'\bshares?\b',                     "🔄 Shares"),
+        (r'\bcomments?\b',                   "💬 Comments"),
+        (r'\blive\b',                        "📡 Live"),
+    ],
+    "telegram": [
+        (r'\bmembers?\b',                    "👥 Members"),
+        (r'\bsubscribers?\b',                "🔔 Subscribers"),
+        (r'\bviews?\b',                      "👁 Views"),
+        (r'\breactions?\b',                  "❤️ Reactions"),
+        (r'\bvotes?\b',                      "🗳 Votes"),
+    ],
+    "twitter": [
+        (r'\bfollowers?\b',                  "👥 Followers"),
+        (r'\blikes?\b',                      "❤️ Likes"),
+        (r'\bviews?\b|\bimpressions?\b',     "👁 Views"),
+        (r'\bretweets?\b|\breposts?\b',      "🔁 Retweets"),
+        (r'\bcomments?\b|\breplies?\b',      "💬 Comments"),
+    ],
+    "spotify": [
+        (r'\bplays?\b',                      "▶️ Plays"),
+        (r'\bfollowers?\b',                  "👥 Followers"),
+        (r'\bmonthly\b|\blisteners?\b',      "🎧 Monthly Listeners"),
+    ],
+}
+
+
+def _detect_platform(services: list[dict]) -> str | None:
+    """সার্ভিস নামের প্রিফিক্স দেখে প্ল্যাটফর্ম ডিটেক্ট করে।"""
+    if not services:
+        return None
+    for s in services[:5]:
+        name = (s.get("name") or "").lower()
+        for plat in _SUBCAT_RULES.keys():
+            if plat in name:
+                return plat
+    return None
+
+
+def _get_subcat(platform: str, service_name: str) -> str:
+    """সার্ভিসের নাম থেকে সাব-ক্যাটাগরি লেবেল ফেরত দেয়।"""
+    rules = _SUBCAT_RULES.get(platform)
+    if not rules:
+        return "📦 Others"
+    name = service_name or ""
+    for pattern, label in rules:
+        if re.search(pattern, name, re.IGNORECASE):
+            return label
+    return "📦 Others"
+
+
+def _group_services(services: list[dict], platform: str) -> dict[str, list[dict]]:
+    """সার্ভিস লিস্ট → {সাব-ক্যাটাগরি: [services]}"""
+    grouped: dict[str, list] = {}
+    for s in services:
+        label = _get_subcat(platform, s.get("name", ""))
+        grouped.setdefault(label, []).append(s)
+    return grouped
+
+
+def _should_show_subcat(services: list[dict], grouped: dict[str, list]) -> bool:
+    """সাব-ক্যাটাগরি মেনু দেখাব কি না?"""
+    return len(services) >= 8 and len(grouped) >= 2
+
+
+# ═══════════════════════════════════════════════════════════════════
 #  SHUVOPAY — AUTOMATIC PAYMENT GATEWAY
 # ═══════════════════════════════════════════════════════════════════
 SHUVOPAY_API = "https://shuvopaycom-production.up.railway.app/api/v1"
 SHUVOPAY_CHECKOUT = "https://shuvopay.vercel.app"
-SHUVOPAY_API_KEY = "spk_4jwdScgIqRvPgYNABohcyBy179mQR0zMg7-7oixZgR_55pot4if8KiNGqTxhnYi7"  # merchant API key
+SHUVOPAY_API_KEY = "spk_4jwdScgIqRvPgYNABohcyBy179mQR0zMg7-7oixZgR_55pot4if8KiNGqTxhnYi7"
 
 
 async def create_shuvopay_invoice(amount: float, provider: str = "bkash") -> dict:
-    """
-    সফল হলে ShuvoPay-র invoice dict রিটার্ন করে (এতে 'id' থাকবে)।
-    ব্যর্থ হলে {'error': '...'} রিটার্ন করে, যাতে কলার আসল কারণটা
-    ইউজার/অ্যাডমিনকে জানাতে পারে।
-    """
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.post(
@@ -99,7 +197,6 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if ref_id and ref_id != user.id:
             await db.process_referral(user.id, ref_id, REFERRAL_REWARD)
 
-        # ── Notify admins about every NEW user ────────────────────
         try:
             from telegram.helpers import escape_markdown
             total_users = await db.get_user_count()
@@ -139,10 +236,8 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                         admin_err,
                     )
         except Exception as notify_err:
-            # Notification failure must never stop the user's /start flow.
             logger.warning("New-user notification failed: %s", notify_err)
 
-    # Force-join check
     channels = await db.get_force_channels()
     if channels and update.effective_user.id not in ADMIN_IDS:
         not_joined = await check_force_join(ctx.bot, user.id, channels)
@@ -190,6 +285,7 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         parse_mode=ParseMode.HTML
     )
 
+
 # ═══════════════════════════════════════════════════════════════════
 #  FORCE JOIN CALLBACK CHECK
 # ═══════════════════════════════════════════════════════════════════
@@ -236,6 +332,8 @@ async def force_join_check(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown",
             reply_markup=main_keyboard()
         )
+
+
 # ═══════════════════════════════════════════════════════════════════
 #  MY ACCOUNT
 # ═══════════════════════════════════════════════════════════════════
@@ -333,9 +431,6 @@ async def wallet(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not udata:
         await update.message.reply_text("⚠️ Use /start first.")
         return
-    txns = await db.get_transactions(user_id, limit=50)
-    total_in  = sum(t["amount"] for t in txns if t["type"] in ("credit","deposit","redeem","daily","referral"))
-    total_out = sum(t["amount"] for t in txns if t["type"] in ("debit","order"))
     text = (
         f"💰 <b>My Wallet</b>\n"
         f"{'─'*28}\n"
@@ -409,13 +504,11 @@ async def buy_coins(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def package_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    """Package selected — show payment methods."""
     query = update.callback_query
     await query.answer()
     data  = query.data
 
     if data == "pkg_back":
-        # Back to coin market
         text = (
             "╔══════════════════════╗\n"
             "      💎 <b>COIN MARKET</b> 💎\n"
@@ -449,7 +542,6 @@ async def package_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return DEPOSIT_METHOD
 
-    # Package selected: pkg:1500:৳70
     parts  = data.split(":")
     coins  = parts[1]
     price  = parts[2] if len(parts) > 2 else "?"
@@ -477,7 +569,6 @@ async def payment_method_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE
     coins  = ctx.user_data.get("deposit_coins", "?")
     price  = ctx.user_data.get("deposit_price", "")
 
-    # ── Mobile Banking → ShuvoPay automatic gateway ──────────────
     if method == "mobile":
         await query.edit_message_text(
             "⏳ <b>Secure Payment Gateway প্রস্তুত করা হচ্ছে...</b>\n"
@@ -485,7 +576,6 @@ async def payment_method_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE
             parse_mode=ParseMode.HTML
         )
 
-        # price থেকে amount বের করো (যেমন "৳70" → 70.0)
         price_str = str(price).replace("৳", "").replace(",", "").strip()
         try:
             amount = float(price_str)
@@ -503,7 +593,6 @@ async def payment_method_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE
                 parse_mode=ParseMode.HTML
             )
 
-            # Admin-কে আসল error জানাও
             user = query.from_user
             for admin_id in ADMIN_IDS:
                 try:
@@ -525,12 +614,10 @@ async def payment_method_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE
         invoice_id = invoice["id"]
         pay_url = f"{SHUVOPAY_CHECKOUT}?id={invoice_id}"
 
-        # invoice info save করো পরে verify করতে
         ctx.user_data["shuvopay_invoice_id"] = invoice_id
         ctx.user_data["deposit_amount"] = amount
         ctx.user_data["deposit_method"] = "mobile"
 
-        from telegram import InlineKeyboardMarkup, InlineKeyboardButton
         kb = InlineKeyboardMarkup([[
             InlineKeyboardButton("💳 Pay Now", url=pay_url)
         ], [
@@ -549,7 +636,6 @@ async def payment_method_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE
         )
         return DEPOSIT_METHOD
 
-    # ── অন্য method (Binance, USDT etc.) — manual verify ─────────
     payment_info = {
         "binance":  "💵 <b>Binance Pay ID:</b> <code>your_binance_id</code>\n<b>Min:</b> $1",
         "usdt_trc": "🟢 <b>USDT TRC20 Address:</b>\n<code>TYourWalletAddressHere</code>\n<b>Min:</b> $1",
@@ -576,7 +662,6 @@ async def payment_method_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE
 
 
 async def check_payment_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    """Customer বলছে পেমেন্ট করেছে — ShuvoPay তে verify করো।"""
     query = update.callback_query
     await query.answer("যাচাই করা হচ্ছে...")
 
@@ -588,7 +673,6 @@ async def check_payment_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
         amount  = ctx.user_data.get("deposit_amount", 0)
         coins   = ctx.user_data.get("deposit_coins", amount)
 
-        # Coins add করো
         await db.add_coins(user_id, float(coins), method="ShuvoPay (bKash)", txn_id=invoice_id)
 
         await query.edit_message_text(
@@ -599,7 +683,6 @@ async def check_payment_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
             reply_markup=None
         )
 
-        # Admin notify
         udata = await db.get_user(user_id)
         for admin_id in ADMIN_IDS:
             try:
@@ -616,7 +699,6 @@ async def check_payment_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
 
         ctx.user_data.clear()
     else:
-        from telegram import InlineKeyboardMarkup, InlineKeyboardButton
         price = ctx.user_data.get("deposit_price", "")
         pay_url = f"{SHUVOPAY_CHECKOUT}?id={invoice_id}"
         kb = InlineKeyboardMarkup([[
@@ -676,7 +758,6 @@ async def deposit_txn_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         reply_markup=main_keyboard()
     )
 
-    # Notify admins
     udata = await db.get_user(user_id)
     admin_msg = (
         f"💳 <b>New Deposit Request</b>\n"
@@ -705,7 +786,6 @@ async def deposit_txn_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 #  SERVICES LIST
 # ═══════════════════════════════════════════════════════════════════
 async def search_service_prompt(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    """Button handler: 🔍 Search Service — prompts user to send /search <id>."""
     await update.message.reply_text(
         "🔍 <b>Service Search</b>\n\n"
         "Service ID লেখো এভাবে:\n"
@@ -724,7 +804,6 @@ async def services_list(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def services_list_smm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    """SMM Service — সব categories দেখাবে"""
     cats = await db.get_categories()
     if not cats:
         await update.message.reply_text(
@@ -741,9 +820,23 @@ async def services_list_smm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def services_list_telegram(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    """Telegram Service — flashtopup এর Telegram product দেখাবে"""
     from handlers.topup import topup_start_telegram
     await topup_start_telegram(update, ctx)
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  CATEGORY CALLBACK  (with sub-category support)
+# ═══════════════════════════════════════════════════════════════════
+PLATFORM_LABELS = {
+    "facebook":  "📘 Facebook",
+    "instagram": "📱 Instagram",
+    "tiktok":    "🎵 TikTok",
+    "youtube":   "📺 YouTube",
+    "telegram":  "✈️ Telegram",
+    "twitter":   "🐦 Twitter / X",
+    "spotify":   "🎧 Spotify",
+    "website":   "🌐 Website",
+}
 
 
 async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -751,31 +844,14 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     data     = query.data
 
-    PLATFORM_LABELS = {
-        "facebook":  "📘 Facebook",
-        "instagram": "📱 Instagram",
-        "tiktok":    "🎵 TikTok",
-        "youtube":   "📺 YouTube",
-        "telegram":  "✈️ Telegram",
-        "twitter":   "🐦 Twitter / X",
-        "spotify":   "🎧 Spotify",
-        "website":   "🌐 Website",
-    }
-
-    # ── cat_back: Service list → back to Category list under platform ──
+    # ── cat_back / svc_list_back: Service list → Category list ──
     if data in ("cat_back", "svc_list_back"):
         platform = ctx.user_data.get("current_platform", "")
         all_cats = await db.get_categories()
         filtered = [c for c in all_cats if platform in c.lower()] if platform else all_cats
         if not filtered:
             filtered = all_cats
-        PLABELS = {
-            "facebook": "📘 Facebook", "instagram": "📱 Instagram",
-            "tiktok": "🎵 TikTok", "youtube": "📺 YouTube",
-            "telegram": "✈️ Telegram", "twitter": "🐦 Twitter / X",
-            "spotify": "🎧 Spotify", "website": "🌐 Website",
-        }
-        label = PLABELS.get(platform, f"🔹 {platform.title()}")
+        label = PLATFORM_LABELS.get(platform, f"🔹 {platform.title()}")
         await query.edit_message_text(
             f"{label}\n\nChoose a category:",
             reply_markup=platform_categories_kb(platform, filtered, CATEGORY_ICONS),
@@ -783,7 +859,7 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # ── platform_back: Category list → back to Platform buttons ────
+    # ── platform_back: Category list → Platform buttons ──
     if data == "platform_back":
         cats   = await db.get_categories()
         upd_ch = await db.get_setting("updates_channel", "")
@@ -794,7 +870,7 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # ── Platform button tapped → show sub-categories ───────────────
+    # ── Platform button tapped ──
     if data.startswith("platform:"):
         platform = data[9:]
         ctx.user_data["current_platform"] = platform
@@ -810,7 +886,67 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # ── Category by index (from platform sub-menu) ───────────────
+    # ── sub_back: Sub-cat services → Sub-cat menu ──
+    if data == "sub_back":
+        category = ctx.user_data.get("current_category", "")
+        grouped  = ctx.user_data.get("current_grouped", {})
+        platform = ctx.user_data.get("sub_platform") or ctx.user_data.get("current_platform", "")
+
+        if not grouped:
+            services = await db.get_services_by_category(category)
+            platform = platform or (_detect_platform(services) or "")
+            grouped  = _group_services(services, platform)
+
+        rows = []
+        for label, items in sorted(grouped.items(), key=lambda x: -len(x[1])):
+            rows.append([InlineKeyboardButton(
+                text=f"{label} ({len(items)})",
+                callback_data=f"subcat:{label}",
+                style="success",
+            )])
+        rows.append([InlineKeyboardButton(
+            text="🔙 Back",
+            callback_data="cat_back",
+            style="danger",
+        )])
+
+        icon = category_icon(category)
+        await query.edit_message_text(
+            f"{icon} <b>{category}</b>\n\nকোন ধরনের সার্ভিস চান?",
+            reply_markup=InlineKeyboardMarkup(rows),
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # ── subcat:<label> — Show services of chosen sub-cat ──
+    if data.startswith("subcat:"):
+        label    = data[7:]
+        category = ctx.user_data.get("current_category", "")
+        services = await db.get_services_by_category(category)
+
+        platform = ctx.user_data.get("sub_platform") or ctx.user_data.get("current_platform", "")
+        if not platform:
+            platform = _detect_platform(services) or ""
+
+        filtered = [s for s in services
+                    if _get_subcat(platform, s.get("name", "")) == label]
+
+        if not filtered:
+            await query.answer("এই সাব-ক্যাটাগরিতে কিছু নেই।", show_alert=True)
+            return
+
+        ctx.user_data["current_subcat"] = label
+        ctx.user_data["current_subcat_services"] = filtered
+
+        icon = category_icon(category)
+        await query.edit_message_text(
+            f"{icon} <b>{label}</b> — {len(filtered)}টি সার্ভিস\n\nChoose one:",
+            reply_markup=services_kb(filtered, f"{category}::{label}"),
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # ── catidx:<idx> — Category by index ──
     if data.startswith("catidx:"):
         idx = int(data[7:])
         platform = ctx.user_data.get("current_platform", "")
@@ -822,43 +958,111 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await query.answer("Category not found.", show_alert=True)
             return
         category = filtered[idx]
-        ctx.user_data["current_category"] = category
-        services = await db.get_services_by_category(category)
-        if not services:
-            await query.answer("No services in this category.", show_alert=True)
-            return
-        icon = category_icon(category)
-        await query.edit_message_text(
-            f"{icon} <b>{category}</b>\n\nChoose a service:",
-            reply_markup=services_kb(services, category),
-            parse_mode=ParseMode.HTML
-        )
+        await _show_category_services(query, ctx, category)
         return
 
-    # ── Category tapped → show services ───────────────────────────
-    category = data[4:]  # strip "cat:"
+    # ── cat:<category> — Category by name ──
+    if data.startswith("cat:"):
+        category = data[4:]
+        await _show_category_services(query, ctx, category)
+        return
+
+
+async def _show_category_services(query, ctx, category: str):
+    """ক্যাটাগরি ক্লিকের কেন্দ্রীয় হ্যান্ডলার।"""
     services = await db.get_services_by_category(category)
     if not services:
         await query.answer("No services in this category.", show_alert=True)
         return
 
     ctx.user_data["current_category"] = category
-    icon = category_icon(category)
-    await query.edit_message_text(
-        f"{icon} <b>{category}</b>\n\nChoose a service:",
-        reply_markup=services_kb(services, category),
-        parse_mode=ParseMode.HTML
-    )
+    ctx.user_data.pop("current_subcat", None)
+    ctx.user_data.pop("current_subcat_services", None)
+
+    platform = _detect_platform(services) or ctx.user_data.get("current_platform", "")
+    ctx.user_data["sub_platform"] = platform
+
+    grouped = _group_services(services, platform) if platform else {}
+
+    if platform and _should_show_subcat(services, grouped):
+        ctx.user_data["current_grouped"] = grouped
+
+        rows = []
+        for label, items in sorted(grouped.items(), key=lambda x: -len(x[1])):
+            rows.append([InlineKeyboardButton(
+                text=f"{label} ({len(items)})",
+                callback_data=f"subcat:{label}",
+                style="success",
+            )])
+        rows.append([InlineKeyboardButton(
+            text="🔙 Back",
+            callback_data="cat_back",
+            style="danger",
+        )])
+
+        icon = category_icon(category)
+        await query.edit_message_text(
+            f"{icon} <b>{category}</b>\n\nকোন ধরনের সার্ভিস চান?",
+            reply_markup=InlineKeyboardMarkup(rows),
+            parse_mode=ParseMode.HTML
+        )
+    else:
+        icon = category_icon(category)
+        await query.edit_message_text(
+            f"{icon} <b>{category}</b>\n\nChoose a service:",
+            reply_markup=services_kb(services, category),
+            parse_mode=ParseMode.HTML
+        )
 
 
+# ═══════════════════════════════════════════════════════════════════
+#  SERVICE DETAIL
+# ═══════════════════════════════════════════════════════════════════
 async def service_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    query      = update.callback_query
+    query = update.callback_query
     await query.answer()
-    data       = query.data
+    data  = query.data
 
+    # ── svc_back: Service detail → sub-cat list / full list ──
     if data == "svc_back":
-        # Service detail → back to service list
+        subcat = ctx.user_data.get("current_subcat")
+        if subcat:
+            services = ctx.user_data.get("current_subcat_services") or []
+            category = ctx.user_data.get("current_category", "")
+            if services:
+                icon = category_icon(category)
+                await query.edit_message_text(
+                    f"{icon} <b>{subcat}</b> — {len(services)}টি সার্ভিস\n\nChoose one:",
+                    reply_markup=services_kb(services, f"{category}::{subcat}"),
+                    parse_mode=ParseMode.HTML
+                )
+                return
+
         category = ctx.user_data.get("current_category", "")
+        grouped  = ctx.user_data.get("current_grouped", {})
+        platform = ctx.user_data.get("sub_platform", "")
+
+        if grouped and platform:
+            rows = []
+            for label, items in sorted(grouped.items(), key=lambda x: -len(x[1])):
+                rows.append([InlineKeyboardButton(
+                    text=f"{label} ({len(items)})",
+                    callback_data=f"subcat:{label}",
+                    style="success",
+                )])
+            rows.append([InlineKeyboardButton(
+                text="🔙 Back",
+                callback_data="cat_back",
+                style="danger",
+            )])
+            icon = category_icon(category)
+            await query.edit_message_text(
+                f"{icon} <b>{category}</b>\n\nকোন ধরনের সার্ভিস চান?",
+                reply_markup=InlineKeyboardMarkup(rows),
+                parse_mode=ParseMode.HTML
+            )
+            return
+
         services = await db.get_services_by_category(category)
         if not services:
             await query.answer("No services.", show_alert=True)
@@ -871,7 +1075,7 @@ async def service_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    service_id = data[4:]  # strip "svc:"
+    service_id = data[4:]
     svc        = await db.get_service(service_id)
     if not svc:
         await query.answer("Service not found.", show_alert=True)
@@ -914,7 +1118,6 @@ async def new_order(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def new_order_smm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    """SMM Order — সব categories দিয়ে order শুরু"""
     cats = await db.get_categories()
     if not cats:
         await update.message.reply_text("⚠️ No services available. Try again later.")
@@ -929,14 +1132,11 @@ async def new_order_smm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def new_order_telegram(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    """Telegram Order — flashtopup Telegram product (ID 191) এ route করে"""
     from handlers.topup import topup_start_telegram
     return await topup_start_telegram(update, ctx)
 
 
-
 async def order_start_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    """Start order from service detail button."""
     query      = update.callback_query
     await query.answer()
     service_id = query.data.split(":")[1]
@@ -960,21 +1160,9 @@ async def order_start_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def order_platform_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    """ORDER_PLATFORM state: handles platform: and catidx: and platform_back."""
     query = update.callback_query
     await query.answer()
     data  = query.data
-
-    PLATFORM_LABELS = {
-        "facebook":  "📘 Facebook",
-        "instagram": "📱 Instagram",
-        "tiktok":    "🎵 TikTok",
-        "youtube":   "📺 YouTube",
-        "telegram":  "✈️ Telegram",
-        "twitter":   "🐦 Twitter / X",
-        "spotify":   "🎧 Spotify",
-        "website":   "🌐 Website",
-    }
 
     if data == "platform_back" or data == "order_platform_back":
         cats   = await db.get_categories()
@@ -1029,7 +1217,6 @@ async def order_platform_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
 
 
 async def order_category_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    """ORDER_CATEGORY state: direct cat: callback (legacy/fallback)."""
     query    = update.callback_query
     await query.answer()
     category = query.data[4:]
@@ -1106,24 +1293,20 @@ async def order_quantity_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
         )
         return ORDER_QUANTITY
 
-    # Calculate cost — rate is USD per 1000 from API
     from config import SERVICE_MARKUP_PCT
-    USD_TO_BDT  = 135    # 1 USD = ৳135
-    COIN_TO_BDT = 1.0    # 1 coin = ৳1
+    USD_TO_BDT  = 135
+    COIN_TO_BDT = 1.0
     rate_usd    = float(svc.get("rate", 0))
-    # Markup যোগ করো — এটাই তোমার profit
     rate_usd    = round(rate_usd * (1 + SERVICE_MARKUP_PCT / 100), 6)
-    charge_usd  = round((qty / 1000) * rate_usd, 6)   # USD cost (with markup)
-    charge_bdt  = round(charge_usd * USD_TO_BDT, 2)   # BDT cost
-    charge      = round(charge_bdt / COIN_TO_BDT, 2)  # coins = BDT (1 coin = ৳1)
+    charge_usd  = round((qty / 1000) * rate_usd, 6)
+    charge_bdt  = round(charge_usd * USD_TO_BDT, 2)
+    charge      = round(charge_bdt / COIN_TO_BDT, 2)
     user_id     = update.effective_user.id
 
-    # VIP discount
     udata   = await db.get_user(user_id)
     vip_ok  = await db.is_vip_active(udata)
     discount = 0
     if vip_ok and udata.get("vip_plan"):
-        from config import VIP_PLANS
         discount   = VIP_PLANS.get(udata["vip_plan"], {}).get("discount", 0)
         charge_usd = round(charge_usd * (1 - discount / 100), 6)
         charge     = round(charge * (1 - discount / 100), 4)
@@ -1138,16 +1321,10 @@ async def order_quantity_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
     name = ctx.user_data.get("order_service_name", "")
     disc_str = f"\n🏷️ VIP Discount: <code>{discount}%</code>" if discount else ""
 
-    # Balance display
-    bal_coins = udata['balance']
-    bal_usd   = round(bal_coins * COIN_RATE, 4)
-    bal_bdt   = round(bal_usd * USD_TO_BDT, 2)
-
     bal_coins = float(udata['balance'])
     bal_bdt   = round(bal_coins * COIN_TO_BDT, 1)
     bal_usd   = round(bal_bdt / USD_TO_BDT, 3)
 
-    # Balance sufficient check
     if bal_coins < charge:
         needed = round(charge - bal_coins, 2)
         await update.effective_message.reply_text(
@@ -1193,7 +1370,6 @@ async def order_confirm_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
         ctx.user_data.clear()
         return ConversationHandler.END
 
-    # Check daily limit
     today_orders = await db.user_orders_today(user_id)
     if today_orders >= MAX_ORDERS_PER_DAY:
         await query.edit_message_text(
@@ -1209,7 +1385,6 @@ async def order_confirm_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
     qty        = ctx.user_data.get("order_quantity")
     charge     = ctx.user_data.get("order_charge")
 
-    # Deduct balance
     if not charge or charge <= 0:
         await query.edit_message_text("⚠️ Order data lost. Please start again.")
         ctx.user_data.clear()
@@ -1228,12 +1403,10 @@ async def order_confirm_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
             f"💳 <b>Buy Coins</b> থেকে balance বাড়াও।",
             parse_mode=ParseMode.HTML
         )
-        # Reply keyboard restore করো (edit_message_text inline keyboard touch করে, reply keyboard না)
         await query.message.reply_text("👇 Menu:", reply_markup=main_keyboard())
         ctx.user_data.clear()
         return ConversationHandler.END
 
-    # Place API order
     api_order_id = None
     api_status   = "Pending"
     api_result   = await smm_api.add_order(service_id, link, qty)
@@ -1241,11 +1414,9 @@ async def order_confirm_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
         api_order_id = str(api_result["order"])
         api_status   = "Processing"
     elif "error" in api_result:
-        # Refund user's coins
         await db.add_balance(user_id, charge, "Refund: API error")
         error_msg = str(api_result.get("error", ""))
 
-        # API balance কম — user-কে দেখাবো না, pending রাখবো
         if "balance" in error_msg.lower() or "insufficient" in error_msg.lower():
             await query.edit_message_text(
                 "⏳ <b>Order queued!</b>\n\n"
@@ -1254,7 +1425,6 @@ async def order_confirm_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
                 "❓ সমস্যা হলে যোগাযোগ: @shuvo_9882",
                 parse_mode=ParseMode.HTML
             )
-            # Admin-কে notify করো
             from config import ADMIN_IDS
             for admin_id in ADMIN_IDS:
                 try:
@@ -1283,7 +1453,6 @@ async def order_confirm_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
         link, qty, charge, api_order_id
     )
 
-    # ── Send order log notification to log bot / channel ──────────
     await send_order_log(
         order_id     = order_id,
         user_id      = user_id,
@@ -1317,7 +1486,6 @@ async def order_confirm_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
 #  MY ORDERS
 # ═══════════════════════════════════════════════════════════════════
 async def my_orders(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    from telegram import InlineKeyboardMarkup, InlineKeyboardButton
     user_id = update.effective_user.id
     orders  = await db.get_user_orders(user_id, 10)
     if not orders:
@@ -1343,7 +1511,6 @@ async def my_orders(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             f"📅 {fmt_date(o['created_at'])}\n"
         )
 
-        # Buttons
         buttons = [[
             InlineKeyboardButton("🔄 Refresh", callback_data=f"orefresh:{o['id']}"),
         ]]
@@ -1415,14 +1582,13 @@ async def order_cancel_api_callback(update: Update, ctx: ContextTypes.DEFAULT_TY
     if "cancel" in result or result.get("status") == "1":
         await db.update_order_status(order_id, "Cancelled")
 
-        # Coin refund — remains অনুযায়ী partial refund
         charge   = float(order.get("charge", 0))
         quantity = int(order.get("quantity", 1))
         remains  = int(order.get("remains", 0))
         if remains > 0 and quantity > 0:
             refund = round(charge * (remains / quantity), 2)
         else:
-            refund = charge  # পুরো refund
+            refund = charge
 
         if refund > 0:
             await db.add_balance(
@@ -1467,7 +1633,6 @@ async def tracker_input_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Order not found or doesn't belong to you.", reply_markup=main_keyboard())
         return ConversationHandler.END
 
-    # Try refreshing from API
     if order.get("api_order_id"):
         result = await smm_api.order_status(order["api_order_id"])
         if "status" in result:
@@ -1651,7 +1816,7 @@ async def vip_buy_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     user_id = query.from_user.id
     udata   = await db.get_user(user_id)
-    cost    = plan["price"] / COIN_RATE  # convert $ to coins
+    cost    = plan["price"] / COIN_RATE
 
     ok = await db.deduct_balance(user_id, cost, f"VIP: {plan['name']}")
     if not ok:
@@ -1716,7 +1881,6 @@ async def ticket_message_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
         reply_markup=main_keyboard()
     )
 
-    # Notify admins
     udata = await db.get_user(user_id)
     admin_msg = (
         f"☎️ <b>New Support Ticket #{ticket_id}</b>\n"
@@ -1747,7 +1911,6 @@ async def ticket_message_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
 async def updates_channel(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     channel = await db.get_setting("updates_channel", "")
     if channel:
-        from telegram import InlineKeyboardMarkup, InlineKeyboardButton
         kb = InlineKeyboardMarkup([[
             InlineKeyboardButton("📢 Join Updates Channel", url=channel)
         ]])
@@ -1762,10 +1925,9 @@ async def updates_channel(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  CANCEL
+#  BACK / CANCEL
 # ═══════════════════════════════════════════════════════════════════
 async def back_to_main(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    """🔙 Back বাটন — main menu তে ফেরত"""
     ctx.user_data.clear()
     await update.message.reply_text(
         "🏠 Main Menu",
@@ -1797,22 +1959,18 @@ async def check_banned(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  GLOBAL FORCE-JOIN MIDDLEWARE — runs before every message/callback
+#  GLOBAL FORCE-JOIN MIDDLEWARE
 # ═══════════════════════════════════════════════════════════════════
 async def global_force_join_check(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    """Blocks ANY interaction (not just /start) until user joins all channels."""
     if not update.effective_user:
         return
 
-    # /start কে block করো না — start handler নিজেই force-join দেখাবে
     if update.message and update.message.text and update.message.text.startswith("/start"):
         return
 
-    # fj_check বাটনকেও block করো না — সেটাই verify করার বাটন
     if update.callback_query and update.callback_query.data == "fj_check":
         return
 
-    # Admin-দের force-join লাগবে না
     if update.effective_user.id in ADMIN_IDS:
         return
 
