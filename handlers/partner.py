@@ -24,11 +24,13 @@ import uuid
 import json
 import logging
 from html import escape
+from typing import Optional
 
 from telegram import (
     Update, InlineKeyboardButton, InlineKeyboardMarkup,
     ReplyKeyboardRemove,
 )
+from telegram._utils.types import JSONDict
 from telegram.ext import (
     ContextTypes, ConversationHandler, CommandHandler,
     MessageHandler, CallbackQueryHandler, filters,
@@ -66,6 +68,32 @@ WAITING_SEARCH      = 3
 STYLE_PRIMARY = "primary"
 STYLE_SUCCESS = "success"
 STYLE_DANGER  = "danger"
+
+
+# ─────────────────────────────────────────────────────
+#  STYLED BUTTON
+# ─────────────────────────────────────────────────────
+# NOTE: move to keyboards/style.py and import everywhere.
+
+class StyledButton(InlineKeyboardButton):
+    """InlineKeyboardButton with an optional `style` field."""
+
+    __slots__ = ("_style",)
+
+    def __init__(self, text: str, style: Optional[str] = None, **kwargs):
+        super().__init__(text=text, **kwargs)
+        object.__setattr__(self, "_style", style)
+
+    def to_dict(self, recursive: bool = True) -> JSONDict:
+        data = super().to_dict(recursive=recursive)
+        if self._style:
+            data["style"] = self._style
+        return data
+
+
+def _btn(text: str, callback_data: str, style: str | None = None) -> StyledButton:
+    """Styled inline button helper."""
+    return StyledButton(text=text, callback_data=callback_data, style=style)
 
 
 # ─────────────────────────────────────────────────────
@@ -397,16 +425,6 @@ async def _related_products_kb(slug: str, provider_key: str | None,
 # ─────────────────────────────────────────────────────
 #  KEYBOARD BUILDERS
 # ─────────────────────────────────────────────────────
-def _btn(text: str, callback_data: str, style: str | None = None):
-    """PTB-র ওপর নির্ভর করে style সাপোর্ট। পুরোনো হলে চুপচাপ বাদ।"""
-    try:
-        return InlineKeyboardButton(
-            text=text, callback_data=callback_data, style=style
-        )
-    except TypeError:
-        return InlineKeyboardButton(text=text, callback_data=callback_data)
-
-
 def _trim(text: str, limit: int = 16) -> str:
     text = str(text)
     return text if len(text) <= limit else text[: limit - 1] + "…"
@@ -1351,9 +1369,10 @@ async def my_partner_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"   {escape(o['product_name'] or o['product_slug'])} · "
             f"${o['total_charged']} · {o['status']}"
         )
-        rows.append([InlineKeyboardButton(
-            text=f"🔍 {o['order_code']}",
-            callback_data=f"pget:{o['order_code']}",
+        rows.append([_btn(
+            f"🔍 {o['order_code']}",
+            f"pget:{o['order_code']}",
+            STYLE_PRIMARY,
         )])
 
     await update.message.reply_text(
