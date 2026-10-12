@@ -61,9 +61,12 @@ from handlers.admin import (
 # ── Partner API handlers ──────────────────────────────────────────
 from handlers.partner import (
     build_partner_conversation,
+    partner_entry,              # ← /partner কমান্ডের জন্য
     my_partner_orders,
     partner_stats_cmd,
     reconcile_partner_orders,
+    my_stock_alerts,            # ← NEW: /myalerts
+    check_stock_alerts_job,     # ← NEW: scheduler job
 )
 from api.partner_api import close_session as close_partner_session
 
@@ -195,9 +198,10 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("start", start))
 
     # ── Partner API commands ─────────────────────────────────────
-    app.add_handler(CommandHandler("partner",       __import__("handlers.partner", fromlist=["partner_entry"]).partner_entry))
+    app.add_handler(CommandHandler("partner",       partner_entry))
     app.add_handler(CommandHandler("partnerorders", my_partner_orders))
     app.add_handler(CommandHandler("partnerstats",  partner_stats_cmd))
+    app.add_handler(CommandHandler("myalerts",      my_stock_alerts))   # ← NEW
 
     # ── Admin commands ────────────────────────────────────────────
     app.add_handler(CommandHandler("admin",          admin_panel))
@@ -524,12 +528,29 @@ async def on_startup(app: Application):
     await db.init_db()
     logger.info("Database ready.")
 
-    # ── Partner API: background reconcile of pending orders ────────
+    # ── Partner API: background jobs ──────────────────────────────
     if not MAINTENANCE_MODE:
+        # 1. Reconcile pending orders (একবার)
         try:
             asyncio.create_task(reconcile_partner_orders(app))
         except Exception as e:
             logger.warning("Partner reconcile schedule failed: %s", e)
+
+        # 2. Stock alerts — প্রতি ৫ মিনিটে চেক
+        try:
+            if app.job_queue:
+                app.job_queue.run_repeating(
+                    check_stock_alerts_job,
+                    interval=300,       # ৫ মিনিট
+                    first=60,           # ১ মিনিট পর প্রথম চেক
+                    name="partner_stock_alerts",
+                )
+                logger.info("✅ Stock alert job scheduled (every 5 min)")
+            else:
+                logger.warning("⚠️ JobQueue unavailable — install "
+                               "python-telegram-bot[job-queue]")
+        except Exception as e:
+            logger.warning("Stock alert job failed to schedule: %s", e)
 
     for admin_id in ADMIN_IDS:
         try:
