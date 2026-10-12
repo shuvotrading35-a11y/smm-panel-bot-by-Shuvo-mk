@@ -2,6 +2,16 @@
 Partner API (Instant Delivery) — python-telegram-bot v20+
 LINK / COUPON / READY_ACCOUNT
 
+Features:
+   ✔ Inline quantity buttons (1/2/3/5/10 + Custom)
+   ✔ Confirm screen
+   ✔ Search across all providers
+   ✔ Refresh from live API
+   ✔ Back navigation
+   ✔ Stock Alert (subscribe + auto notify)
+   ✔ Price History (sparkline trend)
+   ✔ Related Products (same category)
+
 ⚠️ Security:
    - delivery.link / code / content কখনো log/DB-তে যায় না
    - API ব্যালেন্স, error code, reqId ইউজারকে দেখানো হয় না
@@ -28,22 +38,30 @@ from config import (
     MAX_ORDERS_PER_DAY, PARTNER_CACHE_TTL, ADMIN_IDS,
 )
 from database import (
+    # existing
     create_partner_order, get_user_partner_orders,
     get_partner_order_by_code, user_partner_orders_today,
     update_partner_order_status, get_unrecovered_partner_orders,
     get_partner_stats,
+    # NEW ── Stock alerts
+    add_stock_alert, remove_stock_alert, has_stock_alert,
+    get_pending_stock_alerts, mark_alert_notified, get_user_alerts,
+    # NEW ── Price history
+    record_price, get_price_history,
 )
 from keyboards.reply import main_keyboard
 from utils.partner_cache import get_cache, set_cache, invalidate as cache_invalidate
 
 log = logging.getLogger(__name__)
 
-WAITING_ACTION = 1
-WAITING_QTY    = 2
+# ── States ──
+WAITING_ACTION      = 1
+WAITING_CUSTOM_QTY  = 2
+WAITING_SEARCH      = 3
 
 
 # ─────────────────────────────────────────────────────
-#  FRIENDLY ERROR MAP  (ইউজার-facing)
+#  FRIENDLY ERROR MAP
 # ─────────────────────────────────────────────────────
 _FRIENDLY_ERRORS = {
     "INSUFFICIENT_BALANCE": "⚠️ সাময়িকভাবে অর্ডার নেওয়া যাচ্ছে না। কিছুক্ষণ পরে চেষ্টা করুন অথবা সাপোর্টে যোগাযোগ করুন।",
@@ -63,10 +81,8 @@ _FRIENDLY_ERRORS = {
     "INVALID_API_KEY":      "⚠️ সার্ভিসে সাময়িক সমস্যা হচ্ছে। কিছুক্ষণ পরে চেষ্টা করুন।",
     "API_KEY_EXPIRED":      "⚠️ সার্ভিসে সাময়িক সমস্যা হচ্ছে। কিছুক্ষণ পরে চেষ্টা করুন।",
 }
-
 _GENERIC_ERROR = "⚠️ সার্ভিসে সাময়িক সমস্যা হচ্ছে। কিছুক্ষণ পরে আবার চেষ্টা করুন।"
 
-# BACK / cancel টেক্সট যা যেকোনো ফ্রি-টেক্সট স্টেটে ধরা হবে
 _BACK_TEXTS = {
     "back", "🔙 back", "⬅️ back", "⬅ back", "« back",
     "❌ cancel", "❌ ᴄᴀɴᴄᴇʟ", "cancel", "/cancel",
@@ -82,7 +98,6 @@ def _is_back_or_cancel(text: str) -> bool:
 
 
 async def _notify_admins_of_error(context, where: str, e: PartnerAPIError):
-    """শুধু অ্যাডমিনদের কাছে বিস্তারিত এরর পাঠায়। Silent fail-safe।"""
     for admin_id in ADMIN_IDS:
         try:
             await context.bot.send_message(
@@ -99,7 +114,87 @@ async def _notify_admins_of_error(context, where: str, e: PartnerAPIError):
 
 
 # ─────────────────────────────────────────────────────
-#  KEYBOARDS  (GGSoma-style 2-column grid with colors)
+#  SPARKLINE + TREND HELPERS
+# ─────────────────────────────────────────────────────
+def _sparkline(values: list[float]) -> str:
+    """সাধারণ টেক্সট-চার্ট: ▁▂▃▅▇"""
+    if not values:
+        return ""
+    lo, hi = min(values), max(values)
+    if hi == lo:
+        return "▄" * len(values)
+    bars = "▁▂▃▄▅▆▇█"
+    out = []
+    for v in values:
+        idx = int((v - lo) / (hi - lo) * (len(bars) - 1))
+        out.append(bars[idx])
+    return "".join(out)
+
+
+def _price_trend(history: list[dict]) -> str:
+    """Price history থেকে trend summary তৈরি করে।"""
+    if not history:
+        return ""
+    prices = [h["price"] for h in history]
+    if len(prices) < 2:
+        return ""
+
+    current = prices[-1]
+    first   = prices[0]
+    lo      = min(prices)
+    hi      = max(prices)
+    diff    = current - first
+    pct     = (diff / first * 100) if first else 0
+
+    if diff > 0:
+        arrow = f"🔺 +{pct:.1f}%"
+    elif diff < 0:
+        arrow = f"🔻 {pct:.1f}%"
+    else:
+        arrow = "➖ অপরিবর্তিত"
+
+    spark = _sparkline(prices[-15:])
+    return (
+        f"\n📈 <b>দামের ট্রেন্ড</b>\n"
+        f"<code>{spark}</code>\n"
+        f"সর্বনিম্ন: ${lo:.2f} | সর্বোচ্চ: ${hi:.2f}\n"
+        f"শেষ পরিবর্তন: {arrow}"
+    )
+
+
+async def _related_products_kb(slug: str, provider_key: str | None,
+                               current_slug: str,
+                               limit: int = 4) -> InlineKeyboardMarkup | None:
+    """একই ক্যাটাগরির আরো প্রোডাক্ট।"""
+    if not provider_key:
+        return None
+    products = get_cache(f"partner:products:{provider_key}")
+    if not products:
+        return None
+
+    rows = []
+    for p in products:
+        if p.get("slug") == current_slug:
+            continue
+        stock  = (p.get("stock") or {}).get("count", 0)
+        in_stk = stock > 0
+        icon   = "✅" if in_stk else "❌"
+        price  = p.get("yourPrice", "?")
+        name   = p["name"]
+        if len(name) > 32:
+            name = name[:31] + "…"
+        rows.append([_btn(
+            f"{icon} {name} — ${price}",
+            f"pprod:{p['slug']}",
+            STYLE_SUCCESS if in_stk else STYLE_DANGER,
+        )])
+        if len(rows) >= limit:
+            break
+    return InlineKeyboardMarkup(rows) if rows else None
+
+
+# ─────────────────────────────────────────────────────
+#  KEYBOARD BUILDERS
 # ─────────────────────────────────────────────────────
 STYLE_PRIMARY = "primary"
 STYLE_SUCCESS = "success"
@@ -107,7 +202,6 @@ STYLE_DANGER  = "danger"
 
 
 def _btn(text: str, callback_data: str, style: str | None = None):
-    """InlineKeyboardButton with safe fallback for older PTB versions."""
     try:
         return InlineKeyboardButton(
             text=text, callback_data=callback_data, style=style
@@ -122,6 +216,7 @@ def _trim(text: str, limit: int = 16) -> str:
 
 
 def _providers_kb(providers: list[dict]) -> InlineKeyboardMarkup:
+    """ক্যাটাগরি — ২ কলাম, সব সবুজ।"""
     rows, row = [], []
     for p in providers:
         emoji = (p.get("emoji") or {}).get("normal") or "📦"
@@ -135,30 +230,34 @@ def _providers_kb(providers: list[dict]) -> InlineKeyboardMarkup:
             row = []
     if row:
         rows.append(row)
+
+    rows.append([
+        _btn("🔍 Search", "psearch", STYLE_PRIMARY),
+        _btn("🔄 Refresh", "prefresh:_all:1", STYLE_PRIMARY),
+    ])
     return InlineKeyboardMarkup(rows)
 
 
-def _products_kb(products, provider_key, page, per_page=10) -> InlineKeyboardMarkup:
+def _products_kb(products, provider_key, page, per_page=8) -> InlineKeyboardMarkup:
+    """প্রোডাক্ট — ১ কলাম, পুরো চওড়া।"""
     start = (page - 1) * per_page
     chunk = products[start:start + per_page]
-    rows, row = [], []
+    rows = []
 
     for p in chunk:
         stock   = (p.get("stock") or {}).get("count", 0)
         in_stk  = stock > 0
         icon    = "✅" if in_stk else "❌"
-        name    = _trim(p["name"], 14)
+        price   = p.get("yourPrice", "?")
+        name    = p["name"]
+        if len(name) > 42:
+            name = name[:41] + "…"
 
-        row.append(_btn(
-            f"{icon} {name}",
+        rows.append([_btn(
+            f"{icon} {name} — ${price}",
             f"pprod:{p['slug']}",
             STYLE_SUCCESS if in_stk else STYLE_DANGER,
-        ))
-        if len(row) == 2:
-            rows.append(row)
-            row = []
-    if row:
-        rows.append(row)
+        )])
 
     nav = []
     if page > 1:
@@ -168,12 +267,22 @@ def _products_kb(products, provider_key, page, per_page=10) -> InlineKeyboardMar
     if nav:
         rows.append(nav)
 
-    rows.append([_btn("🔙 Categories", "pcat", STYLE_DANGER)])
+    rows.append([
+        _btn("🔄 Refresh", f"prefresh:{provider_key}:{page}", STYLE_PRIMARY),
+        _btn("🔙 Categories", "pcat", STYLE_DANGER),
+    ])
     return InlineKeyboardMarkup(rows)
 
 
+def _confirm_kb(slug: str, qty: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [_btn("✅ Confirm", f"pconfirm:{slug}:{qty}", STYLE_SUCCESS)],
+        [_btn("✏️ Change qty", f"pcustom:{slug}", STYLE_PRIMARY)],
+        [_btn("❌ Cancel", f"pback:{slug}", STYLE_DANGER)],
+    ])
+
+
 def _delivery_messages(res: dict) -> list[str]:
-    """⚠️ delivery.content কখনো log-এ যাবে না।"""
     out = []
     d = res.get("delivery") or {}
 
@@ -204,6 +313,9 @@ async def partner_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.effective_message.reply_text("⚠️ Partner Shop এখন নিষ্ক্রিয়।")
         return ConversationHandler.END
 
+    context.user_data.pop("partner_pending", None)
+    context.user_data.pop("partner_search_results", None)
+
     providers = get_cache("partner:providers")
     if not providers:
         try:
@@ -231,23 +343,24 @@ async def partner_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ─────────────────────────────────────────────────────
-#  STATE: WAITING_ACTION — nav + category + product select
+#  CALLBACK ROUTER — main navigation
 # ─────────────────────────────────────────────────────
-async def partner_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def partner_nav(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
     data = q.data
 
-    # ── ক্যাটাগরি তালিকায় ফেরা ──
     if data == "pcat":
+        context.user_data.pop("partner_pending", None)
+        context.user_data.pop("partner_search_results", None)
+
         providers = get_cache("partner:providers")
         if not providers:
             try:
                 providers = await papi.providers()
                 set_cache("partner:providers", providers, PARTNER_CACHE_TTL)
             except PartnerAPIError as e:
-                log.error("Partner pcat providers failed: code=%s req=%s msg=%s",
-                          e.code, e.request_id, e.message)
+                log.error("pcat providers failed: %s", e.code)
                 await _notify_admins_of_error(context, "pcat_providers", e)
                 await q.edit_message_text(_friendly_error(e.code))
                 return WAITING_ACTION
@@ -258,10 +371,10 @@ async def partner_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return WAITING_ACTION
 
-    # ── নির্দিষ্ট প্রোভাইডারের প্রোডাক্ট লিস্ট ──
     if data.startswith("pprov:"):
         _, key, page = data.split(":")
         page = int(page)
+
         cache_key = f"partner:products:{key}"
         products = get_cache(cache_key)
         if not products:
@@ -269,17 +382,19 @@ async def partner_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 products = await papi.products(provider=key)
                 set_cache(cache_key, products, PARTNER_CACHE_TTL)
             except PartnerAPIError as e:
-                log.error("Partner products(%s) failed: code=%s req=%s msg=%s",
-                          key, e.code, e.request_id, e.message)
+                log.error("products(%s): %s", key, e.code)
                 await _notify_admins_of_error(context, f"products:{key}", e)
                 await q.edit_message_text(_friendly_error(e.code))
                 return WAITING_ACTION
+
         if not products:
             await q.edit_message_text("এই ক্যাটাগরিতে কোনো পণ্য নেই।")
             return WAITING_ACTION
+
         try:
             await q.edit_message_text(
-                f"🛍 <b>{key.title()}</b>\nনিচ থেকে একটি সার্ভিস বেছে নিন:",
+                f"🛍 <b>{key.title()}</b>\n"
+                f"নিচ থেকে একটি সার্ভিস বেছে নিন:",
                 reply_markup=_products_kb(products, key, page),
                 parse_mode="HTML",
             )
@@ -287,7 +402,52 @@ async def partner_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
         return WAITING_ACTION
 
-    # ── পুরনো অর্ডার রি-ডেলিভারি ──
+    if data.startswith("prefresh:"):
+        _, key, page = data.split(":")
+        page = int(page)
+
+        if key == "_all":
+            cache_invalidate("partner:providers")
+            try:
+                providers = await papi.providers()
+                set_cache("partner:providers", providers, PARTNER_CACHE_TTL)
+                await q.edit_message_text(
+                    "🛍 <b>Choose a service:</b>",
+                    reply_markup=_providers_kb(providers),
+                    parse_mode="HTML",
+                )
+            except PartnerAPIError as e:
+                await _notify_admins_of_error(context, "refresh_providers", e)
+                await q.answer(_friendly_error(e.code), show_alert=True)
+            return WAITING_ACTION
+
+        cache_invalidate(f"partner:products:{key}")
+        try:
+            products = await papi.products(provider=key)
+            set_cache(f"partner:products:{key}", products, PARTNER_CACHE_TTL)
+            await q.edit_message_text(
+                f"🛍 <b>{key.title()}</b>\n"
+                f"নিচ থেকে একটি সার্ভিস বেছে নিন:",
+                reply_markup=_products_kb(products, key, page),
+                parse_mode="HTML",
+            )
+            await q.answer("✅ Refreshed")
+        except PartnerAPIError as e:
+            await _notify_admins_of_error(context, f"refresh_products:{key}", e)
+            await q.answer(_friendly_error(e.code), show_alert=True)
+        return WAITING_ACTION
+
+    if data == "psearch":
+        context.user_data.pop("partner_search_results", None)
+        await q.message.reply_text(
+            "🔍 <b>Search products</b>\n\n"
+            "প্রোডাক্টের নামের কিছু অংশ লিখুন।\n"
+            "বাতিল করতে /cancel।",
+            parse_mode="HTML",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return WAITING_SEARCH
+
     if data.startswith("pget:"):
         code = data.split(":", 1)[1]
         record = await get_partner_order_by_code(code)
@@ -297,8 +457,7 @@ async def partner_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             res = await papi.get_order(code)
         except PartnerAPIError as e:
-            log.error("Partner get_order(%s) failed: code=%s req=%s msg=%s",
-                      code, e.code, e.request_id, e.message)
+            log.error("get_order(%s): %s", code, e.code)
             await _notify_admins_of_error(context, f"get_order:{code}", e)
             await q.message.reply_text(_friendly_error(e.code), parse_mode="HTML")
             return WAITING_ACTION
@@ -321,7 +480,7 @@ async def partner_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ─────────────────────────────────────────────────────
-#  STATE: WAITING_ACTION → WAITING_QTY (product chosen)
+#  PRODUCT DETAIL — qty buttons + price history + related + alert
 # ─────────────────────────────────────────────────────
 async def partner_product_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
@@ -335,26 +494,45 @@ async def partner_product_selected(update: Update, context: ContextTypes.DEFAULT
             p = await papi.product(slug)
             set_cache(cache_key, p, PARTNER_CACHE_TTL)
         except PartnerAPIError as e:
-            log.error("Partner product(%s) failed: code=%s req=%s msg=%s",
-                      slug, e.code, e.request_id, e.message)
+            log.error("product(%s): %s", slug, e.code)
             await _notify_admins_of_error(context, f"product:{slug}", e)
             await q.message.reply_text(_friendly_error(e.code), parse_mode="HTML")
             return WAITING_ACTION
 
     stock = p.get("stock") or {}
-    if not stock.get("inStock"):
-        await q.message.reply_text("❌ স্টকে নেই।")
-        return WAITING_ACTION
+    stock_count = stock.get("count", 0)
+    in_stk = bool(stock.get("inStock"))
+    max_qty = int(stock.get("maxQuantity") or 1)
+
+    # ── Price history রেকর্ড ──
+    try:
+        price = float(p.get("yourPrice") or 0)
+        await record_price(slug, price, stock_count)
+    except Exception as e:
+        log.warning("record_price failed: %s", e)
+
+    # ── provider key খোঁজা ──
+    provider_key = None
+    providers = get_cache("partner:providers") or []
+    for prov in providers:
+        prods = get_cache(f"partner:products:{prov['key']}") or []
+        if any(x.get("slug") == slug for x in prods):
+            provider_key = prov["key"]
+            break
 
     dtype = p.get("deliveryType", "LINK")
-    icon = PARTNER_DELIVERY_ICONS.get(dtype, "📦")
+    icon  = PARTNER_DELIVERY_ICONS.get(dtype, "📦")
 
     text = (
         f"<b>{p.get('name', slug)}</b>\n\n"
         f"💰 মূল্য: <b>${p.get('yourPrice', '?')}</b>\n"
-        f"📦 স্টক: <b>{stock.get('count', 0)}</b>\n"
-        f"{icon} ডেলিভারি: <b>{dtype}</b>\n"
     )
+    if in_stk:
+        text += f"📦 স্টক: <b>{stock_count}</b>\n"
+    else:
+        text += "📦 স্টক: <b>❌ শেষ</b>\n"
+    text += f"{icon} ডেলিভারি: <b>{dtype}</b>\n"
+
     if p.get("durationDays"):
         text += f"⏱ সময়কাল: {p['durationDays']} দিন\n"
     if (p.get("warranty") or {}).get("enabled"):
@@ -362,64 +540,171 @@ async def partner_product_selected(update: Update, context: ContextTypes.DEFAULT
     if p.get("description"):
         text += f"\n<i>{escape(p['description'][:200])}</i>\n"
 
-    max_qty = int(stock.get("maxQuantity") or 1)
-    text += (
-        f"\nকত পিস নিতে চান? (1–{max_qty})\n"
-        f"শুধু সংখ্যাটি পাঠান। বাতিল করতে /cancel।"
-    )
+    # ── Price history sparkline ──
+    try:
+        history = await get_price_history(slug, limit=30)
+        trend = _price_trend(history)
+        if trend:
+            text += trend
+    except Exception as e:
+        log.warning("price history failed: %s", e)
 
-    # ⚠️ ফিক্স ১: qty নেওয়ার আগে reply keyboard সরিয়ে দিচ্ছি,
-    # যাতে BACK বাটন আর না আসে।
-    await q.message.reply_text(
-        text,
-        parse_mode="HTML",
-        reply_markup=ReplyKeyboardRemove(),
-    )
+    # ── Related products ──
+    related_kb = None
+    try:
+        related_kb = await _related_products_kb(slug, provider_key, slug, limit=4)
+    except Exception as e:
+        log.warning("related products failed: %s", e)
 
+    # ── Build keyboard ──
+    rows = []
+
+    if in_stk:
+        quick = [1, 2, 3, 5, 10]
+        row = []
+        for n in quick:
+            if n > max_qty:
+                break
+            row.append(_btn(f"{n} pcs", f"pqty:{slug}:{n}", STYLE_PRIMARY))
+            if len(row) == 3:
+                rows.append(row); row = []
+        if row:
+            rows.append(row)
+        rows.append([
+            _btn("✏️ Custom", f"pcustom:{slug}", STYLE_PRIMARY),
+            _btn("🔙 Back", f"pback:{slug}", STYLE_DANGER),
+        ])
+        text += f"\n<b>পরিমাণ বেছে নিন</b> (1–{max_qty}):"
+    else:
+        already = await has_stock_alert(q.from_user.id, slug)
+        if already:
+            rows.append([_btn(
+                "🔔 Alert চালু আছে — বন্ধ করুন",
+                f"punalert:{slug}",
+                STYLE_DANGER,
+            )])
+            text += "\n🔔 স্টক এলে আপনাকে জানানো হবে।"
+        else:
+            rows.append([_btn(
+                "🔔 Stock এলে জানান",
+                f"palert:{slug}",
+                STYLE_SUCCESS,
+            )])
+            text += "\n🔔 স্টক এলে নোটিফিকেশন পেতে বাটনে ক্লিক করুন।"
+
+        rows.append([_btn("🔙 Back", f"pback:{slug}", STYLE_DANGER)])
+
+    # ── Related ──
+    if related_kb:
+        text += "\n\n🔎 <b>একই ক্যাটাগরির আরো:</b>"
+        rows.extend(related_kb.inline_keyboard)
+
+    # ── store pending ──
     context.user_data["partner_pending"] = {
         "slug": slug,
         "name": p.get("name", slug),
         "delivery_type": dtype,
         "unit_price": float(p.get("yourPrice") or 0),
         "max_qty": max_qty,
+        "provider_key": provider_key,
     }
-    return WAITING_QTY
+
+    try:
+        await q.edit_message_text(
+            text,
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(rows),
+        )
+    except Exception:
+        await q.message.reply_text(
+            text,
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(rows),
+        )
+    return WAITING_ACTION
 
 
 # ─────────────────────────────────────────────────────
-#  STATE: WAITING_QTY — order execution
+#  QUANTITY — inline buttons
 # ─────────────────────────────────────────────────────
-async def partner_qty(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def partner_quantity(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    _, slug, qty_s = q.data.split(":")
+    qty = int(qty_s)
+
+    data = context.user_data.get("partner_pending") or {}
+    if data.get("slug") != slug:
+        try:
+            p = await papi.product(slug)
+        except PartnerAPIError as e:
+            await q.message.reply_text(_friendly_error(e.code))
+            return WAITING_ACTION
+        data = {
+            "slug": slug,
+            "name": p.get("name", slug),
+            "delivery_type": p.get("deliveryType", "LINK"),
+            "unit_price": float(p.get("yourPrice") or 0),
+            "max_qty": int((p.get("stock") or {}).get("maxQuantity") or 1),
+        }
+        context.user_data["partner_pending"] = data
+
+    if qty < 1 or qty > data["max_qty"]:
+        await q.answer(f"❌ 1 থেকে {data['max_qty']} এর মধ্যে দিন", show_alert=True)
+        return WAITING_ACTION
+
+    total = qty * data["unit_price"]
+    text = (
+        f"🧾 <b>অর্ডার কনফার্ম করুন</b>\n\n"
+        f"📦 <b>{escape(data['name'])}</b>\n"
+        f"🔢 পরিমাণ: <b>{qty}</b>\n"
+        f"💵 দাম (প্রতি পিস): <b>${data['unit_price']:.2f}</b>\n"
+        f"💰 মোট চার্জ: <b>${total:.2f}</b>\n\n"
+        f"কনফার্ম করলে সাথে সাথেই ডেলিভারি পাবেন।"
+    )
+    try:
+        await q.edit_message_text(
+            text, parse_mode="HTML",
+            reply_markup=_confirm_kb(slug, qty),
+        )
+    except Exception:
+        await q.message.reply_text(
+            text, parse_mode="HTML",
+            reply_markup=_confirm_kb(slug, qty),
+        )
+    return WAITING_ACTION
+
+
+# ─────────────────────────────────────────────────────
+#  CUSTOM QUANTITY
+# ─────────────────────────────────────────────────────
+async def partner_custom_qty_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    slug = q.data.split(":", 1)[1]
+
+    data = context.user_data.get("partner_pending") or {}
+    max_qty = data.get("max_qty", 1)
+
+    await q.message.reply_text(
+        f"✏️ কত পিস চান? (1–{max_qty})\n"
+        f"শুধু সংখ্যাটি পাঠান।\n"
+        f"বাতিল করতে /cancel।",
+        parse_mode="HTML",
+        reply_markup=ReplyKeyboardRemove(),
+    )
+    return WAITING_CUSTOM_QTY
+
+
+async def partner_custom_qty_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = context.user_data.get("partner_pending")
     if not data:
         return ConversationHandler.END
 
     raw = (update.message.text or "").strip()
-
-    # ⚠️ ফিক্স ২: BACK / cancel আগে হ্যান্ডেল করি — int() করার আগেই।
     if _is_back_or_cancel(raw):
-        context.user_data.pop("partner_pending", None)
+        return await partner_show_categories(update, context)
 
-        providers = get_cache("partner:providers")
-        if not providers:
-            try:
-                providers = await papi.providers()
-                set_cache("partner:providers", providers, PARTNER_CACHE_TTL)
-            except PartnerAPIError as e:
-                log.error("Partner back-nav providers failed: %s", e.code)
-                await update.message.reply_text(
-                    "👇 Menu:", reply_markup=main_keyboard()
-                )
-                return ConversationHandler.END
-
-        await update.message.reply_text(
-            "🛍 <b>Choose a service:</b>",
-            reply_markup=_providers_kb(providers),
-            parse_mode="HTML",
-        )
-        return WAITING_ACTION
-
-    # ── সংখ্যা যাচাই ──
     try:
         qty = int(raw)
         if qty < 1 or qty > data["max_qty"]:
@@ -427,51 +712,279 @@ async def partner_qty(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception:
         await update.message.reply_text(
             f"❌ 1 থেকে {data['max_qty']} এর মধ্যে সংখ্যা পাঠান।\n"
-            f"ফিরে যেতে <b>BACK</b> লিখুন, বাতিল করতে /cancel।",
-            parse_mode="HTML",
+            f"বাতিল করতে /cancel।",
         )
-        return WAITING_QTY
+        return WAITING_CUSTOM_QTY
 
-    user_id = update.effective_user.id
+    total = qty * data["unit_price"]
+    await update.message.reply_text(
+        f"🧾 <b>অর্ডার কনফার্ম করুন</b>\n\n"
+        f"📦 <b>{escape(data['name'])}</b>\n"
+        f"🔢 পরিমাণ: <b>{qty}</b>\n"
+        f"💵 দাম (প্রতি পিস): <b>${data['unit_price']:.2f}</b>\n"
+        f"💰 মোট চার্জ: <b>${total:.2f}</b>",
+        parse_mode="HTML",
+        reply_markup=_confirm_kb(data["slug"], qty),
+    )
+    return WAITING_ACTION
 
-    # ── ডেইলি লিমিট ──
+
+async def partner_show_categories(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.pop("partner_pending", None)
+    context.user_data.pop("partner_search_results", None)
+
+    providers = get_cache("partner:providers")
+    if not providers:
+        try:
+            providers = await papi.providers()
+            set_cache("partner:providers", providers, PARTNER_CACHE_TTL)
+        except PartnerAPIError as e:
+            await _notify_admins_of_error(context, "show_categories", e)
+            await update.effective_message.reply_text(_friendly_error(e.code))
+            return ConversationHandler.END
+
+    msg = update.effective_message
+    if update.callback_query:
+        try:
+            await update.callback_query.edit_message_text(
+                "🛍 <b>Choose a service:</b>",
+                reply_markup=_providers_kb(providers),
+                parse_mode="HTML",
+            )
+            return WAITING_ACTION
+        except Exception:
+            pass
+    await msg.reply_text(
+        "🛍 <b>Choose a service:</b>",
+        reply_markup=_providers_kb(providers),
+        parse_mode="HTML",
+    )
+    return WAITING_ACTION
+
+
+# ─────────────────────────────────────────────────────
+#  BACK
+# ─────────────────────────────────────────────────────
+async def partner_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    slug = q.data.split(":", 1)[1]
+
+    providers = get_cache("partner:providers") or []
+    found_key = None
+    found_products = None
+    found_page = 1
+
+    for prov in providers:
+        key = prov["key"]
+        products = get_cache(f"partner:products:{key}")
+        if not products:
+            continue
+        for i, prod in enumerate(products):
+            if prod.get("slug") == slug:
+                found_key = key
+                found_products = products
+                found_page = (i // 8) + 1
+                break
+        if found_key:
+            break
+
+    if not found_key:
+        for prov in providers:
+            key = prov["key"]
+            try:
+                products = await papi.products(provider=key)
+                set_cache(f"partner:products:{key}", products, PARTNER_CACHE_TTL)
+                for i, prod in enumerate(products):
+                    if prod.get("slug") == slug:
+                        found_key = key
+                        found_products = products
+                        found_page = (i // 8) + 1
+                        break
+                if found_key:
+                    break
+            except PartnerAPIError:
+                continue
+
+    if not found_key or not found_products:
+        return await partner_show_categories(update, context)
+
+    try:
+        await q.edit_message_text(
+            f"🛍 <b>{found_key.title()}</b>\n"
+            f"নিচ থেকে একটি সার্ভিস বেছে নিন:",
+            parse_mode="HTML",
+            reply_markup=_products_kb(found_products, found_key, found_page),
+        )
+    except Exception:
+        pass
+    return WAITING_ACTION
+
+
+# ─────────────────────────────────────────────────────
+#  STOCK ALERT — ON / OFF / LIST
+# ─────────────────────────────────────────────────────
+async def partner_alert_on(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    slug = q.data.split(":", 1)[1]
+
+    data = context.user_data.get("partner_pending") or {}
+    name = data.get("name", slug)
+    prov = data.get("provider_key")
+
+    added = await add_stock_alert(q.from_user.id, slug, name, prov or "")
+    if added:
+        await q.answer("🔔 Stock alert চালু হয়েছে", show_alert=True)
+    else:
+        await q.answer("ℹ️ আগেই চালু আছে", show_alert=True)
+
+    return await partner_product_selected(update, context)
+
+
+async def partner_alert_off(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    slug = q.data.split(":", 1)[1]
+
+    removed = await remove_stock_alert(q.from_user.id, slug)
+    if removed:
+        await q.answer("🔕 Stock alert বন্ধ হয়েছে", show_alert=True)
+    else:
+        await q.answer("ℹ️ চালু ছিল না", show_alert=True)
+
+    return await partner_product_selected(update, context)
+
+
+async def my_stock_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    alerts = await get_user_alerts(update.effective_user.id)
+    if not alerts:
+        await update.message.reply_text("📭 আপনার কোনো Stock Alert নেই।")
+        return
+
+    lines = ["🔔 <b>আপনার Stock Alerts:</b>\n"]
+    rows = []
+    for i, a in enumerate(alerts[:15], 1):
+        status = "✅ notified" if a["notified"] else "⏳ waiting"
+        lines.append(f"{i}. {escape(a['product_name'] or a['product_slug'])} — {status}")
+        rows.append([_btn(
+            f"❌ Remove: {_trim(a['product_name'] or a['product_slug'], 22)}",
+            f"punalert:{a['product_slug']}",
+            STYLE_DANGER,
+        )])
+
+    await update.message.reply_text(
+        "\n".join(lines),
+        reply_markup=InlineKeyboardMarkup(rows),
+        parse_mode="HTML",
+    )
+
+
+# ─────────────────────────────────────────────────────
+#  STOCK CHECK JOB — scheduler-এ কল হবে
+# ─────────────────────────────────────────────────────
+async def check_stock_alerts_job(application):
+    """
+    প্রতি ৫ মিনিটে চেক — notified=0 আলার্টের প্রোডাক্ট স্টকে এলে
+    ইউজারকে মেসেজ পাঠায়।
+    """
+    pending = await get_pending_stock_alerts(limit=100)
+    if not pending:
+        return
+
+    log.info("Checking %d stock alerts...", len(pending))
+    bot = application.bot
+
+    checked: dict[str, dict] = {}
+    for a in pending:
+        slug = a["product_slug"]
+        if slug not in checked:
+            try:
+                p = await papi.product(slug)
+                checked[slug] = p
+                try:
+                    await record_price(
+                        slug,
+                        float(p.get("yourPrice") or 0),
+                        int((p.get("stock") or {}).get("count", 0)),
+                    )
+                except Exception:
+                    pass
+            except PartnerAPIError as e:
+                log.warning("alert check %s: %s", slug, e.code)
+                checked[slug] = {}
+
+        p = checked[slug]
+        stock = (p.get("stock") or {})
+        if not stock.get("inStock") or stock.get("count", 0) <= 0:
+            continue
+
+        try:
+            kb = InlineKeyboardMarkup([[
+                _btn("🛒 এখনই কিনুন", f"pprod:{slug}", STYLE_SUCCESS)
+            ]])
+            await bot.send_message(
+                a["user_id"],
+                f"🔔 <b>স্টক এসেছে!</b>\n\n"
+                f"📦 {escape(a['product_name'] or slug)}\n"
+                f"💰 দাম: <b>${p.get('yourPrice', '?')}</b>\n"
+                f"📊 স্টক: <b>{stock.get('count', 0)}</b>",
+                parse_mode="HTML",
+                reply_markup=kb,
+            )
+            await mark_alert_notified(a["id"])
+        except Exception as e:
+            log.warning("alert notify user=%s failed: %s", a["user_id"], e)
+
+
+# ─────────────────────────────────────────────────────
+#  CONFIRM + PLACE ORDER
+# ─────────────────────────────────────────────────────
+async def partner_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    _, slug, qty_s = q.data.split(":")
+    qty = int(qty_s)
+
+    data = context.user_data.get("partner_pending") or {}
+    if data.get("slug") != slug:
+        await q.answer("❌ সেশন শেষ। আবার শুরু করুন।", show_alert=True)
+        return ConversationHandler.END
+
+    user_id = q.from_user.id
+
     used = await user_partner_orders_today(user_id)
     if used >= MAX_ORDERS_PER_DAY:
-        await update.message.reply_text(
+        await q.message.reply_text(
             f"⛔ আজকের অর্ডার লিমিট শেষ ({MAX_ORDERS_PER_DAY})।",
             reply_markup=main_keyboard(),
         )
         context.user_data.pop("partner_pending", None)
         return ConversationHandler.END
 
-    # ── API ব্যালেন্স প্রি-চেক ──
     try:
         await papi.balance()
     except PartnerAPIError as e:
-        log.error("Partner balance precheck failed: code=%s req=%s msg=%s",
-                  e.code, e.request_id, e.message)
+        log.error("balance precheck: %s", e.code)
         await _notify_admins_of_error(context, "balance_precheck", e)
-        await update.message.reply_text(_friendly_error(e.code), parse_mode="HTML")
+        await q.message.reply_text(_friendly_error(e.code), parse_mode="HTML")
         context.user_data.pop("partner_pending", None)
         return ConversationHandler.END
 
-    await update.message.reply_text("⏳ অর্ডার প্রসেস হচ্ছে...")
+    await q.message.reply_text("⏳ অর্ডার প্রসেস হচ্ছে...")
 
     ext_id = f"tg-{user_id}-{uuid.uuid4().hex[:12]}"
 
     try:
         res = await papi.create_order(data["slug"], qty, ext_id)
     except PartnerAPIError as e:
-        log.error("Partner create_order failed user=%s code=%s req=%s msg=%s",
-                  user_id, e.code, e.request_id, e.message)
-        await _notify_admins_of_error(
-            context, f"create_order:{data['slug']}", e,
-        )
-        await update.message.reply_text(_friendly_error(e.code), parse_mode="HTML")
+        log.error("create_order user=%s code=%s req=%s",
+                  user_id, e.code, e.request_id)
+        await _notify_admins_of_error(context, f"create_order:{data['slug']}", e)
+        await q.message.reply_text(_friendly_error(e.code), parse_mode="HTML")
         context.user_data.pop("partner_pending", None)
         return ConversationHandler.END
 
-    # ── DB সেভ (delivery নয়, শুধু মেটাডেটা) ──
     lines_meta = json.dumps(
         [{"orderCode": ln.get("orderCode")} for ln in res.get("lines", []) or []]
     ) if res.get("lines") else None
@@ -493,21 +1006,19 @@ async def partner_qty(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cache_invalidate("partner:product:")
     cache_invalidate("partner:products:")
 
-    # ── ইউজারের কাছে সাকসেস মেসেজ ──
     head = (
         f"✅ <b>অর্ডার সম্পন্ন</b>\n"
         f"🧾 <code>{res.get('orderCode', '')}</code>\n"
         f"💵 চার্জ: <b>${res.get('totalCharged', '?')}</b>"
     )
-    await update.message.reply_text(head, parse_mode="HTML")
+    await q.message.reply_text(head, parse_mode="HTML")
 
     for chunk in _delivery_messages(res):
         try:
-            await update.message.reply_text(chunk, parse_mode="HTML")
+            await q.message.reply_text(chunk, parse_mode="HTML")
         except Exception:
-            await update.message.reply_text(chunk)
+            await q.message.reply_text(chunk)
 
-    # ── লগ বটে fire-and-forget ──
     try:
         import asyncio
         from utils.order_logger import send_partner_order_log
@@ -522,19 +1033,98 @@ async def partner_qty(update: Update, context: ContextTypes.DEFAULT_TYPE):
             status=res.get("status", "COMPLETED"),
         ))
     except Exception as e:
-        log.warning("Partner log dispatch failed: %s", e)
+        log.warning("log dispatch failed: %s", e)
 
     context.user_data.pop("partner_pending", None)
-
-    # ⚠️ ফিক্স ৩: সফল অর্ডারের শেষে মূল reply keyboard ফিরিয়ে দিচ্ছি
-    await update.message.reply_text(
-        "👇 Menu:", reply_markup=main_keyboard()
-    )
+    await q.message.reply_text("👇 Menu:", reply_markup=main_keyboard())
     return ConversationHandler.END
 
 
+# ─────────────────────────────────────────────────────
+#  SEARCH
+# ─────────────────────────────────────────────────────
+async def partner_search_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    raw = (update.message.text or "").strip()
+
+    if _is_back_or_cancel(raw):
+        return await partner_show_categories(update, context)
+
+    if len(raw) < 2:
+        await update.message.reply_text("❌ কমপক্ষে ২ অক্ষর লিখুন।")
+        return WAITING_SEARCH
+
+    needle = raw.lower()
+
+    providers = get_cache("partner:providers") or []
+    if not providers:
+        try:
+            providers = await papi.providers()
+            set_cache("partner:providers", providers, PARTNER_CACHE_TTL)
+        except PartnerAPIError as e:
+            await _notify_admins_of_error(context, "search_providers", e)
+            await update.message.reply_text(_friendly_error(e.code))
+            return WAITING_SEARCH
+
+    results = []
+    for prov in providers:
+        key = prov["key"]
+        products = get_cache(f"partner:products:{key}")
+        if not products:
+            try:
+                products = await papi.products(provider=key)
+                set_cache(f"partner:products:{key}", products, PARTNER_CACHE_TTL)
+            except PartnerAPIError:
+                continue
+        for p in products:
+            name = (p.get("name") or "").lower()
+            slug = (p.get("slug") or "").lower()
+            code = (p.get("productCode") or "").lower()
+            if needle in name or needle in slug or needle in code:
+                results.append((key, p))
+
+    if not results:
+        await update.message.reply_text(
+            f"🔍 <b>'{escape(raw)}'</b> — কোনো প্রোডাক্ট পাওয়া যায়নি।\n"
+            f"আবার চেষ্টা করুন বা /cancel দিয়ে ফিরে যান।",
+            parse_mode="HTML",
+        )
+        return WAITING_SEARCH
+
+    results = results[:20]
+    context.user_data["partner_search_results"] = [
+        {"key": k, **p} for k, p in results
+    ]
+
+    rows = []
+    for k, p in results:
+        stock  = (p.get("stock") or {}).get("count", 0)
+        in_stk = stock > 0
+        icon   = "✅" if in_stk else "❌"
+        price  = p.get("yourPrice", "?")
+        name   = p["name"]
+        if len(name) > 42:
+            name = name[:41] + "…"
+        rows.append([_btn(
+            f"{icon} {name} — ${price}",
+            f"pprod:{p['slug']}",
+            STYLE_SUCCESS if in_stk else STYLE_DANGER,
+        )])
+    rows.append([_btn("🔙 Categories", "pcat", STYLE_DANGER)])
+
+    await update.message.reply_text(
+        f"🔍 <b>'{escape(raw)}'</b> — {len(results)} রেজাল্ট:",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(rows),
+    )
+    return WAITING_ACTION
+
+
+# ─────────────────────────────────────────────────────
+#  CANCEL
+# ─────────────────────────────────────────────────────
 async def partner_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.pop("partner_pending", None)
+    context.user_data.pop("partner_search_results", None)
     await update.effective_message.reply_text(
         "❌ বাতিল করা হলো।", reply_markup=main_keyboard()
     )
@@ -542,7 +1132,7 @@ async def partner_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ─────────────────────────────────────────────────────
-#  STANDALONE — MY PARTNER ORDERS
+#  MY PARTNER ORDERS
 # ─────────────────────────────────────────────────────
 async def my_partner_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
     orders = await get_user_partner_orders(update.effective_user.id, limit=10)
@@ -654,20 +1244,31 @@ def build_partner_conversation() -> ConversationHandler:
         ],
         states={
             WAITING_ACTION: [
-                CallbackQueryHandler(
-                    partner_action,
-                    pattern=r"^(pcat$|pprov:.+|pget:.+)",
-                ),
-                CallbackQueryHandler(
-                    partner_product_selected,
-                    pattern=r"^pprod:.+",
-                ),
+                CallbackQueryHandler(partner_nav,
+                    pattern=r"^(pcat$|pprov:.+|prefresh:.+|psearch$|pget:.+)$"),
+                CallbackQueryHandler(partner_product_selected,
+                    pattern=r"^pprod:.+$"),
+                CallbackQueryHandler(partner_quantity,
+                    pattern=r"^pqty:.+$"),
+                CallbackQueryHandler(partner_custom_qty_prompt,
+                    pattern=r"^pcustom:.+$"),
+                CallbackQueryHandler(partner_back,
+                    pattern=r"^pback:.+$"),
+                CallbackQueryHandler(partner_confirm,
+                    pattern=r"^pconfirm:.+$"),
+                # NEW — stock alerts
+                CallbackQueryHandler(partner_alert_on,
+                    pattern=r"^palert:.+$"),
+                CallbackQueryHandler(partner_alert_off,
+                    pattern=r"^punalert:.+$"),
             ],
-            WAITING_QTY: [
-                MessageHandler(
-                    filters.TEXT & ~filters.COMMAND,
-                    partner_qty,
-                ),
+            WAITING_CUSTOM_QTY: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND,
+                    partner_custom_qty_input),
+            ],
+            WAITING_SEARCH: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND,
+                    partner_search_input),
             ],
         },
         fallbacks=[
@@ -676,5 +1277,5 @@ def build_partner_conversation() -> ConversationHandler:
         ],
         allow_reentry=True,
         per_message=False,
-        conversation_timeout=300,
+        conversation_timeout=600,
     )
