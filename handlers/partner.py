@@ -13,6 +13,7 @@ Features:
    ✔ Related Products (same category)
    ✔ Smart stock label (✅ 48 | ✅ 1.2k | 🟡 5 left | ⚠️ মাত্র 3 | ❌ শেষ)
    ✔ Brand emoji mapping (auto-detect from product name/key)
+   ✔ Colored buttons — 🟢 success (in stock) | 🔴 danger (out of stock)
 
 ⚠️ Security:
    - delivery.link / code / content কখনো log/DB-তে যায় না
@@ -57,6 +58,14 @@ log = logging.getLogger(__name__)
 WAITING_ACTION      = 1
 WAITING_CUSTOM_QTY  = 2
 WAITING_SEARCH      = 3
+
+
+# ─────────────────────────────────────────────────────
+#  STYLE CONSTANTS  (Bot API 9.4)
+# ─────────────────────────────────────────────────────
+STYLE_PRIMARY = "primary"
+STYLE_SUCCESS = "success"
+STYLE_DANGER  = "danger"
 
 
 # ─────────────────────────────────────────────────────
@@ -115,10 +124,8 @@ async def _notify_admins_of_error(context, where: str, e: PartnerAPIError):
 # ─────────────────────────────────────────────────────
 #  PROVIDER EMOJI MAP
 # ─────────────────────────────────────────────────────
-# Provider key/name → emoji (Unicode, সব ডিভাইসে কাজ করে)
-# নামের মধ্যে keyword থাকলেই ম্যাচ হবে (case-insensitive)
 _PROVIDER_EMOJI = [
-    # ── Custom overrides (সবার আগে ম্যাচ হবে) ──
+    # ── Custom overrides ──
     ("gemini",       "✦"),
     ("google ai",    "✦"),
     ("official",     "֎"),
@@ -246,24 +253,15 @@ _PROVIDER_EMOJI = [
 
 
 def _provider_emoji(key: str, name: str, api_emoji: str | None) -> str:
-    """
-    প্রোডাক্ট/প্রোভাইডারের ব্র্যান্ড এমোজি।
-
-    ১. API থেকে যদি সত্যিকারের এমোজি আসে (বক্স নয়) → সেটাই
-    ২. কীওয়ার্ড ম্যাচ → সঠিক ব্র্যান্ড এমোজি
-    ৩. fallback → 🛍
-    """
-    # ১. API emoji — শুধু যদি default box না হয়
+    """প্রোডাক্ট/প্রোভাইডারের ব্র্যান্ড এমোজি।"""
     if api_emoji and api_emoji not in ("📦", "❓", "?", "", None):
         return api_emoji
 
-    # ২. keyword matching
     hay = f"{key or ''} {name or ''}".lower()
     for kw, emoji in _PROVIDER_EMOJI:
         if kw in hay:
             return emoji
 
-    # ৩. fallback
     return "🛍"
 
 
@@ -306,12 +304,12 @@ def _stock_label(stock: int) -> tuple[str, str]:
 
 
 def _stock_style(stock: int) -> str:
-    """স্টকের উপর ভিত্তি করে বাটনের রঙ।"""
-    if stock <= 0 or stock <= 4:
-        return STYLE_DANGER
-    if stock <= 9:
-        return STYLE_PRIMARY
-    return STYLE_SUCCESS
+    """
+    স্টক থাকলে সবুজ (success), না থাকলে লাল (danger)।
+    """
+    if stock <= 0:
+        return STYLE_DANGER      # 🔴 লাল — স্টক শেষ
+    return STYLE_SUCCESS         # 🟢 সবুজ — স্টক আছে
 
 
 # ─────────────────────────────────────────────────────
@@ -399,12 +397,8 @@ async def _related_products_kb(slug: str, provider_key: str | None,
 # ─────────────────────────────────────────────────────
 #  KEYBOARD BUILDERS
 # ─────────────────────────────────────────────────────
-STYLE_PRIMARY = "primary"
-STYLE_SUCCESS = "success"
-STYLE_DANGER  = "danger"
-
-
 def _btn(text: str, callback_data: str, style: str | None = None):
+    """PTB-র ওপর নির্ভর করে style সাপোর্ট। পুরোনো হলে চুপচাপ বাদ।"""
     try:
         return InlineKeyboardButton(
             text=text, callback_data=callback_data, style=style
@@ -419,7 +413,7 @@ def _trim(text: str, limit: int = 16) -> str:
 
 
 def _providers_kb(providers: list[dict]) -> InlineKeyboardMarkup:
-    """ক্যাটাগরি — ২ কলাম, ব্র্যান্ড এমোজি সহ।"""
+    """ক্যাটাগরি — ২ কলাম, সব সবুজ (success)।"""
     rows, row = [], []
     for p in providers:
         api_emoji = (p.get("emoji") or {}).get("normal")
@@ -428,7 +422,7 @@ def _providers_kb(providers: list[dict]) -> InlineKeyboardMarkup:
         row.append(_btn(
             f"{emoji} {_trim(p['name'], 14)}",
             f"pprov:{p['key']}:1",
-            STYLE_SUCCESS,
+            STYLE_SUCCESS,          # 🟢 সব ক্যাটাগরি সবুজ
         ))
         if len(row) == 2:
             rows.append(row)
@@ -437,8 +431,8 @@ def _providers_kb(providers: list[dict]) -> InlineKeyboardMarkup:
         rows.append(row)
 
     rows.append([
-        _btn("🔍 Search", "psearch", STYLE_PRIMARY),
-        _btn("🔄 Refresh", "prefresh:_all:1", STYLE_PRIMARY),
+        _btn("🔍 Search",  "psearch",           STYLE_PRIMARY),
+        _btn("🔄 Refresh", "prefresh:_all:1",   STYLE_PRIMARY),
     ])
     return InlineKeyboardMarkup(rows)
 
@@ -446,10 +440,9 @@ def _providers_kb(providers: list[dict]) -> InlineKeyboardMarkup:
 def _products_kb(products, provider_key, page, per_page=8) -> InlineKeyboardMarkup:
     """
     প্রোডাক্ট — ১ কলাম, পুরো চওড়া।
-    স্মার্ট স্টক + ব্র্যান্ড এমোজি:
-       ⚡ ChatGPT Plus — $12.50 | 48
-       🧠 Claude Pro — $20.00 | 15
-       ❌ ChatGPT Pro — $25.00 | শেষ
+
+    🟢 সবুজ = স্টক আছে
+    🔴 লাল  = স্টক শেষ
     """
     start = (page - 1) * per_page
     chunk = products[start:start + per_page]
@@ -466,7 +459,7 @@ def _products_kb(products, provider_key, page, per_page=8) -> InlineKeyboardMark
         p_emoji = _provider_emoji(p.get("slug", ""), name, api_emoji)
 
         _s_icon, stock_str = _stock_label(stock)
-        style = _stock_style(stock)
+        style = _stock_style(stock)             # 🟢 বা 🔴
 
         label = f"{p_emoji} {name} — ${price} | {stock_str}"
 
@@ -481,17 +474,17 @@ def _products_kb(products, provider_key, page, per_page=8) -> InlineKeyboardMark
         rows.append(nav)
 
     rows.append([
-        _btn("🔄 Refresh", f"prefresh:{provider_key}:{page}", STYLE_PRIMARY),
-        _btn("🔙 Categories", "pcat", STYLE_DANGER),
+        _btn("🔄 Refresh",     f"prefresh:{provider_key}:{page}", STYLE_PRIMARY),
+        _btn("🔙 Categories",  "pcat",                            STYLE_DANGER),
     ])
     return InlineKeyboardMarkup(rows)
 
 
 def _confirm_kb(slug: str, qty: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [_btn("✅ Confirm", f"pconfirm:{slug}:{qty}", STYLE_SUCCESS)],
-        [_btn("✏️ Change qty", f"pcustom:{slug}", STYLE_PRIMARY)],
-        [_btn("❌ Cancel", f"pback:{slug}", STYLE_DANGER)],
+        [_btn("✅ Confirm",     f"pconfirm:{slug}:{qty}", STYLE_SUCCESS)],
+        [_btn("✏️ Change qty",  f"pcustom:{slug}",         STYLE_PRIMARY)],
+        [_btn("❌ Cancel",      f"pback:{slug}",           STYLE_DANGER)],
     ])
 
 
@@ -693,7 +686,7 @@ async def partner_nav(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ─────────────────────────────────────────────────────
-#  PRODUCT DETAIL — qty buttons + price history + related + alert
+#  PRODUCT DETAIL
 # ─────────────────────────────────────────────────────
 async def partner_product_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
@@ -785,7 +778,7 @@ async def partner_product_selected(update: Update, context: ContextTypes.DEFAULT
             rows.append(row)
         rows.append([
             _btn("✏️ Custom", f"pcustom:{slug}", STYLE_PRIMARY),
-            _btn("🔙 Back", f"pback:{slug}", STYLE_DANGER),
+            _btn("🔙 Back",   f"pback:{slug}",   STYLE_DANGER),
         ])
         text += f"\n<b>পরিমাণ বেছে নিন</b> (1–{max_qty}):"
     else:
