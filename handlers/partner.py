@@ -14,6 +14,7 @@ Features:
    ✔ Smart stock label (✅ 48 | ✅ 1.2k | 🟡 5 left | ⚠️ মাত্র 3 | ❌ শেষ)
    ✔ Brand emoji mapping (auto-detect from product name/key)
    ✔ Colored buttons — 🟢 success (in stock) | 🔴 danger (out of stock)
+   ✔ API HTML cleaner (<tg-emoji> → unicode, <blockquote> preserved)
 
 ⚠️ Security:
    - delivery.link / code / content কখনো log/DB-তে যায় না
@@ -23,6 +24,7 @@ Features:
 import uuid
 import json
 import logging
+import re
 from html import escape
 from typing import Optional
 
@@ -71,29 +73,46 @@ STYLE_DANGER  = "danger"
 
 
 # ─────────────────────────────────────────────────────
-#  STYLED BUTTON
+#  STYLED BUTTON  (custom emoji + style support)
 # ─────────────────────────────────────────────────────
-# NOTE: move to keyboards/style.py and import everywhere.
-
 class StyledButton(InlineKeyboardButton):
-    """InlineKeyboardButton with an optional `style` field."""
+    """InlineKeyboardButton with optional `style` and `icon_custom_emoji_id`."""
 
-    __slots__ = ("_style",)
+    __slots__ = ("_style", "_icon_custom_emoji_id")
 
-    def __init__(self, text: str, style: Optional[str] = None, **kwargs):
+    def __init__(
+        self,
+        text: str,
+        style: Optional[str] = None,
+        icon_custom_emoji_id: Optional[str] = None,
+        **kwargs,
+    ):
         super().__init__(text=text, **kwargs)
         object.__setattr__(self, "_style", style)
+        object.__setattr__(self, "_icon_custom_emoji_id", icon_custom_emoji_id)
 
     def to_dict(self, recursive: bool = True) -> JSONDict:
         data = super().to_dict(recursive=recursive)
         if self._style:
             data["style"] = self._style
+        if self._icon_custom_emoji_id:
+            data["icon_custom_emoji_id"] = self._icon_custom_emoji_id
         return data
 
 
-def _btn(text: str, callback_data: str, style: str | None = None) -> StyledButton:
+def _btn(
+    text: str,
+    callback_data: str,
+    style: str | None = None,
+    icon_custom_emoji_id: str | None = None,
+) -> StyledButton:
     """Styled inline button helper."""
-    return StyledButton(text=text, callback_data=callback_data, style=style)
+    return StyledButton(
+        text=text,
+        callback_data=callback_data,
+        style=style,
+        icon_custom_emoji_id=icon_custom_emoji_id,
+    )
 
 
 # ─────────────────────────────────────────────────────
@@ -147,6 +166,35 @@ async def _notify_admins_of_error(context, where: str, e: PartnerAPIError):
             )
         except Exception:
             pass
+
+
+# ─────────────────────────────────────────────────────
+#  API HTML CLEANER
+# ─────────────────────────────────────────────────────
+_TG_EMOJI_RE = re.compile(
+    r'<tg-emoji[^>]*>(.*?)</tg-emoji>',
+    re.DOTALL | re.IGNORECASE,
+)
+_MULTI_NL_RE = re.compile(r'\n{3,}')
+
+
+def _clean_api_html(raw: str) -> str:
+    """
+    Partner API-র description/instructions পরিষ্কার করে।
+
+    - <tg-emoji emoji-id="...">📱</tg-emoji>  →  📱
+      (ভেতরের ইউনিকোড এমোজি রাখা হয়, ট্যাগ বাদ)
+
+    - <blockquote>, <b>, <i>, <u>, <s>, <code>, <a>  →  অক্ষত থাকে
+      (Telegram নিজেই বেগুনি বক্স, bold, italic রেন্ডার করবে)
+
+    - ৩+ blank line → ২ (পরিষ্কার দেখতে)
+    """
+    if not raw:
+        return ""
+    cleaned = _TG_EMOJI_RE.sub(r'\1', raw)
+    cleaned = _MULTI_NL_RE.sub('\n\n', cleaned)
+    return cleaned.strip()
 
 
 # ─────────────────────────────────────────────────────
@@ -525,7 +573,7 @@ def _delivery_messages(res: dict) -> list[str]:
         elif ln.get("link"):
             out.append(f"🔗 {ln['link']}")
     if d.get("instructions"):
-        out.append(f"ℹ️ {d['instructions']}")
+        out.append(f"ℹ️ {_clean_api_html(d['instructions'])}")
     return out
 
 
@@ -750,23 +798,42 @@ async def partner_product_selected(update: Update, context: ContextTypes.DEFAULT
 
     s_icon, s_str = _stock_label(stock_count)
 
+    # ── GGSoma-style header ──
     text = (
         f"{brand_emoji} <b>{p.get('name', slug)}</b>\n\n"
-        f"💰 মূল্য: <b>${p.get('yourPrice', '?')}</b>\n"
+        f"💵 <b>{p.get('yourPrice', '?')}</b> USD\n"
     )
+    if p.get("durationDays"):
+        text += f"⏱ Duration: <b>{p['durationDays']} days</b>\n"
+
     if in_stk:
         text += f"📦 স্টক: <b>{s_icon} {s_str}</b>\n"
     else:
         text += "📦 স্টক: <b>❌ শেষ</b>\n"
+
     text += f"{icon} ডেলিভারি: <b>{dtype}</b>\n"
 
-    if p.get("durationDays"):
-        text += f"⏱ সময়কাল: {p['durationDays']} দিন\n"
     if (p.get("warranty") or {}).get("enabled"):
         text += f"🛡 ওয়ারেন্টি: {p['warranty']['days']} দিন\n"
-    if p.get("description"):
-        text += f"\n<i>{escape(p['description'][:200])}</i>\n"
 
+    # ── Description (HTML — blockquote, bold, italic অক্ষত) ──
+    if p.get("description"):
+        desc = _clean_api_html(p["description"])
+        if desc:
+            # Telegram এক মেসেজে 4096 char limit — নিরাপদ সীমা
+            if len(desc) > 2000:
+                desc = desc[:1997] + "…"
+            text += f"\n{desc}\n"
+
+    # ── Instructions ──
+    if p.get("instructions"):
+        ins = _clean_api_html(p["instructions"])
+        if ins:
+            if len(ins) > 400:
+                ins = ins[:397] + "…"
+            text += f"\nℹ️ {ins}\n"
+
+    # ── Price history ──
     try:
         history = await get_price_history(slug, limit=30)
         trend = _price_trend(history)
@@ -775,12 +842,14 @@ async def partner_product_selected(update: Update, context: ContextTypes.DEFAULT
     except Exception as e:
         log.warning("price history failed: %s", e)
 
+    # ── Related products ──
     related_kb = None
     try:
         related_kb = await _related_products_kb(slug, provider_key, slug, limit=4)
     except Exception as e:
         log.warning("related products failed: %s", e)
 
+    # ── Keyboard ──
     rows = []
 
     if in_stk:
@@ -838,11 +907,18 @@ async def partner_product_selected(update: Update, context: ContextTypes.DEFAULT
             reply_markup=InlineKeyboardMarkup(rows),
         )
     except Exception:
-        await q.message.reply_text(
-            text,
-            parse_mode="HTML",
-            reply_markup=InlineKeyboardMarkup(rows),
-        )
+        # Telegram 4096-char limit হলে কেটে পাঠান
+        try:
+            await q.message.reply_text(
+                text[:4000],
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup(rows),
+            )
+        except Exception:
+            await q.message.reply_text(
+                text[:4000],
+                reply_markup=InlineKeyboardMarkup(rows),
+            )
     return WAITING_ACTION
 
 
