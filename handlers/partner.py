@@ -12,6 +12,7 @@ Features:
    ✔ Price History (sparkline trend)
    ✔ Related Products (same category)
    ✔ Smart stock label (✅ 48 | ✅ 1.2k | 🟡 5 left | ⚠️ মাত্র 3 | ❌ শেষ)
+   ✔ Brand emoji mapping (auto-detect from product name/key)
 
 ⚠️ Security:
    - delivery.link / code / content কখনো log/DB-তে যায় না
@@ -112,6 +113,161 @@ async def _notify_admins_of_error(context, where: str, e: PartnerAPIError):
 
 
 # ─────────────────────────────────────────────────────
+#  PROVIDER EMOJI MAP
+# ─────────────────────────────────────────────────────
+# Provider key/name → emoji (Unicode, সব ডিভাইসে কাজ করে)
+# নামের মধ্যে keyword থাকলেই ম্যাচ হবে (case-insensitive)
+_PROVIDER_EMOJI = [
+    # ── Custom overrides (সবার আগে ম্যাচ হবে) ──
+    ("gemini",       "✦"),
+    ("google ai",    "✦"),
+    ("official",     "֎"),
+    ("portal",       "֎"),
+
+    # ── AI ──
+    ("chatgpt",      "⚡"),
+    ("openai",       "⚡"),
+    ("gpt",          "⚡"),
+    ("claude",       "🧠"),
+    ("anthropic",    "🧠"),
+    ("grok",         "🤖"),
+    ("copilot",      "🧩"),
+    ("perplexity",   "🔎"),
+    ("mistral",      "🌪"),
+    ("llama",        "🦙"),
+    ("cursor",       "🖱"),
+    ("manus",        "🤖"),
+    ("wiktor",       "🤖"),
+    ("leonardo",     "🎨"),
+    ("midjourney",   "🎨"),
+    ("dalle",        "🎨"),
+    ("dall-e",       "🎨"),
+    ("stable diffusion", "🎨"),
+    ("elevenlabs",   "🎙"),
+    ("eleven labs",  "🎙"),
+    ("whisper",      "🎙"),
+    ("wisper",       "🎙"),
+    ("heygen",       "🎬"),
+    ("sora",         "🎬"),
+
+    # ── Streaming ──
+    ("netflix",      "🎬"),
+    ("prime video",  "🎬"),
+    ("primevideo",   "🎬"),
+    ("disney",       "🏰"),
+    ("hulu",         "📺"),
+    ("hbo",          "🐉"),
+    ("crunchyroll",  "🍿"),
+    ("youtube",      "▶️"),
+    ("spotify",      "🎵"),
+    ("apple music",  "🎵"),
+    ("deezer",       "🎵"),
+    ("soundcloud",   "🎵"),
+
+    # ── Social ──
+    ("telegram",     "✈️"),
+    ("instagram",    "📸"),
+    ("tiktok",       "🎵"),
+    ("facebook",     "📘"),
+    ("twitter",      "🐦"),
+    ("linkedin",     "💼"),
+    ("reddit",       "👽"),
+    ("discord",      "🎮"),
+    ("snapchat",     "👻"),
+    ("pinterest",    "📌"),
+
+    # ── Design / Creative ──
+    ("canva",        "🎨"),
+    ("figma",        "🎨"),
+    ("adobe",        "🅰"),
+    ("photoshop",    "🖼"),
+    ("illustrator",  "🖌"),
+    ("premiere",     "🎬"),
+    ("after effects","🎞"),
+    ("capcut",       "✂️"),
+    ("filmora",      "🎞"),
+    ("davinci",      "🎞"),
+    ("sketch",       "✏️"),
+
+    # ── Productivity ──
+    ("notion",       "📝"),
+    ("evernote",     "📓"),
+    ("obsidian",     "🗒"),
+    ("microsoft",    "🪟"),
+    ("office",       "📊"),
+    ("word",         "📄"),
+    ("excel",        "📊"),
+    ("powerpoint",   "📽"),
+    ("google",       "🔍"),
+    ("dropbox",      "📦"),
+    ("drive",        "☁️"),
+    ("slack",        "💬"),
+    ("zoom",         "📹"),
+    ("trello",       "📋"),
+    ("asana",        "✅"),
+    ("clickup",      "🖱"),
+
+    # ── Education ──
+    ("duolingo",     "🦉"),
+    ("coursera",     "🎓"),
+    ("udemy",        "🎓"),
+    ("udacity",      "🎓"),
+    ("edx",          "🎓"),
+    ("skillshare",   "🎓"),
+    ("khan",         "🎓"),
+
+    # ── Tools / Utility ──
+    ("vpn",          "🔒"),
+    ("nordvpn",      "🛡"),
+    ("expressvpn",   "🛡"),
+    ("surfshark",    "🦈"),
+    ("ilovepdf",     "📄"),
+    ("smallpdf",     "📄"),
+    ("pdf",          "📄"),
+    ("grammarly",    "✏️"),
+    ("quillbot",     "✍️"),
+    ("notion ai",    "✨"),
+    ("mails",        "📧"),
+    ("gmail",        "📧"),
+    ("outlook",      "📧"),
+    ("bolt",         "⚡"),
+    ("hosting",      "🌐"),
+    ("website",      "🌐"),
+    ("domain",       "🌐"),
+    ("seo",          "📈"),
+    ("semrush",      "📈"),
+    ("ahrefs",       "📈"),
+
+    # ── Subscription bundles ──
+    ("subscription", "⭐"),
+    ("premium",      "💎"),
+    ("bundle",       "🎁"),
+]
+
+
+def _provider_emoji(key: str, name: str, api_emoji: str | None) -> str:
+    """
+    প্রোডাক্ট/প্রোভাইডারের ব্র্যান্ড এমোজি।
+
+    ১. API থেকে যদি সত্যিকারের এমোজি আসে (বক্স নয়) → সেটাই
+    ২. কীওয়ার্ড ম্যাচ → সঠিক ব্র্যান্ড এমোজি
+    ৩. fallback → 🛍
+    """
+    # ১. API emoji — শুধু যদি default box না হয়
+    if api_emoji and api_emoji not in ("📦", "❓", "?", "", None):
+        return api_emoji
+
+    # ২. keyword matching
+    hay = f"{key or ''} {name or ''}".lower()
+    for kw, emoji in _PROVIDER_EMOJI:
+        if kw in hay:
+            return emoji
+
+    # ৩. fallback
+    return "🛍"
+
+
+# ─────────────────────────────────────────────────────
 #  SMART STOCK FORMATTER
 # ─────────────────────────────────────────────────────
 def _stock_label(stock: int) -> tuple[str, str]:
@@ -140,7 +296,6 @@ def _stock_label(stock: int) -> tuple[str, str]:
     if s < 1000:
         return ("✅", str(s))
     if s < 10000:
-        # 1.2k style
         val = s / 1000
         if val == int(val):
             return ("✅", f"{int(val)}k")
@@ -222,14 +377,17 @@ async def _related_products_kb(slug: str, provider_key: str | None,
         stock  = (p.get("stock") or {}).get("count", 0)
         price  = p.get("yourPrice", "?")
         name   = p["name"]
-        if len(name) > 30:
-            name = name[:29] + "…"
+        if len(name) > 28:
+            name = name[:27] + "…"
 
-        icon, stock_str = _stock_label(stock)
+        api_emoji = (p.get("emoji") or {}).get("normal")
+        p_emoji = _provider_emoji(p.get("slug", ""), name, api_emoji)
+
+        _s_icon, stock_str = _stock_label(stock)
         style = _stock_style(stock)
 
         rows.append([_btn(
-            f"{icon} {name} — ${price} | {stock_str}",
+            f"{p_emoji} {name} — ${price} | {stock_str}",
             f"pprod:{p['slug']}",
             style,
         )])
@@ -261,10 +419,12 @@ def _trim(text: str, limit: int = 16) -> str:
 
 
 def _providers_kb(providers: list[dict]) -> InlineKeyboardMarkup:
-    """ক্যাটাগরি — ২ কলাম, সব সবুজ।"""
+    """ক্যাটাগরি — ২ কলাম, ব্র্যান্ড এমোজি সহ।"""
     rows, row = [], []
     for p in providers:
-        emoji = (p.get("emoji") or {}).get("normal") or "📦"
+        api_emoji = (p.get("emoji") or {}).get("normal")
+        emoji = _provider_emoji(p.get("key", ""), p.get("name", ""), api_emoji)
+
         row.append(_btn(
             f"{emoji} {_trim(p['name'], 14)}",
             f"pprov:{p['key']}:1",
@@ -286,8 +446,10 @@ def _providers_kb(providers: list[dict]) -> InlineKeyboardMarkup:
 def _products_kb(products, provider_key, page, per_page=8) -> InlineKeyboardMarkup:
     """
     প্রোডাক্ট — ১ কলাম, পুরো চওড়া।
-    স্মার্ট স্টক ফরম্যাট:
-       ✅ 48 | ✅ 1.2k | 🟡 5 left | ⚠️ মাত্র 3 | ❌ শেষ
+    স্মার্ট স্টক + ব্র্যান্ড এমোজি:
+       ⚡ ChatGPT Plus — $12.50 | 48
+       🧠 Claude Pro — $20.00 | 15
+       ❌ ChatGPT Pro — $25.00 | শেষ
     """
     start = (page - 1) * per_page
     chunk = products[start:start + per_page]
@@ -297,13 +459,16 @@ def _products_kb(products, provider_key, page, per_page=8) -> InlineKeyboardMark
         stock = (p.get("stock") or {}).get("count", 0)
         price = p.get("yourPrice", "?")
         name  = p["name"]
-        if len(name) > 40:
-            name = name[:39] + "…"
+        if len(name) > 38:
+            name = name[:37] + "…"
 
-        icon, stock_str = _stock_label(stock)
+        api_emoji = (p.get("emoji") or {}).get("normal")
+        p_emoji = _provider_emoji(p.get("slug", ""), name, api_emoji)
+
+        _s_icon, stock_str = _stock_label(stock)
         style = _stock_style(stock)
 
-        label = f"{icon} {name} — ${price} | {stock_str}"
+        label = f"{p_emoji} {name} — ${price} | {stock_str}"
 
         rows.append([_btn(label, f"pprod:{p['slug']}", style)])
 
@@ -569,11 +734,13 @@ async def partner_product_selected(update: Update, context: ContextTypes.DEFAULT
     dtype = p.get("deliveryType", "LINK")
     icon  = PARTNER_DELIVERY_ICONS.get(dtype, "📦")
 
-    # স্মার্ট স্টক label এখানেও
+    api_emoji = (p.get("emoji") or {}).get("normal")
+    brand_emoji = _provider_emoji(slug, p.get("name", ""), api_emoji)
+
     s_icon, s_str = _stock_label(stock_count)
 
     text = (
-        f"<b>{p.get('name', slug)}</b>\n\n"
+        f"{brand_emoji} <b>{p.get('name', slug)}</b>\n\n"
         f"💰 মূল্য: <b>${p.get('yourPrice', '?')}</b>\n"
     )
     if in_stk:
@@ -1140,13 +1307,16 @@ async def partner_search_input(update: Update, context: ContextTypes.DEFAULT_TYP
         stock = (p.get("stock") or {}).get("count", 0)
         price = p.get("yourPrice", "?")
         name  = p["name"]
-        if len(name) > 40:
-            name = name[:39] + "…"
+        if len(name) > 38:
+            name = name[:37] + "…"
 
-        icon, stock_str = _stock_label(stock)
+        api_emoji = (p.get("emoji") or {}).get("normal")
+        p_emoji = _provider_emoji(p.get("slug", ""), name, api_emoji)
+
+        _s_icon, stock_str = _stock_label(stock)
         style = _stock_style(stock)
 
-        label = f"{icon} {name} — ${price} | {stock_str}"
+        label = f"{p_emoji} {name} — ${price} | {stock_str}"
         rows.append([_btn(label, f"pprod:{p['slug']}", style)])
 
     rows.append([_btn("🔙 Categories", "pcat", STYLE_DANGER)])
@@ -1226,7 +1396,7 @@ async def partner_stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"মোট অর্ডার: <b>{stats['total_orders']}</b>\n"
         f"মোট খরচ: <b>${stats['total_spend']}</b>\n"
         f"আজ অর্ডার: <b>{stats['today_orders']}</b>\n"
-        f"আজ খরচ: <b>${stats['today_spend']}</b>"
+        f"আজ খরচ: <b>{stats['today_spend']}</b>"
         f"{api_info}",
         parse_mode="HTML",
     )
