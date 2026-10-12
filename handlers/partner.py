@@ -11,7 +11,7 @@ Features:
    ✔ Stock Alert (subscribe + auto notify)
    ✔ Price History (sparkline trend)
    ✔ Related Products (same category)
-   ✔ Stock count on product buttons
+   ✔ Smart stock label (✅ 48 | ✅ 1.2k | 🟡 5 left | ⚠️ মাত্র 3 | ❌ শেষ)
 
 ⚠️ Security:
    - delivery.link / code / content কখনো log/DB-তে যায় না
@@ -112,6 +112,54 @@ async def _notify_admins_of_error(context, where: str, e: PartnerAPIError):
 
 
 # ─────────────────────────────────────────────────────
+#  SMART STOCK FORMATTER
+# ─────────────────────────────────────────────────────
+def _stock_label(stock: int) -> tuple[str, str]:
+    """
+    স্টকের পরিমাণ অনুযায়ী (icon, label) ফেরত দেয়।
+
+    Return:
+      0          → ("❌", "শেষ")
+      1-4        → ("⚠️", "মাত্র 3")
+      5-9        → ("🟡", "5 left")
+      10-999     → ("✅", "48")
+      1000-9999  → ("✅", "1.2k")
+      10000+     → ("✅", "12k")
+    """
+    try:
+        s = int(stock)
+    except Exception:
+        s = 0
+
+    if s <= 0:
+        return ("❌", "শেষ")
+    if s <= 4:
+        return ("⚠️", f"মাত্র {s}")
+    if s <= 9:
+        return ("🟡", f"{s} left")
+    if s < 1000:
+        return ("✅", str(s))
+    if s < 10000:
+        # 1.2k style
+        val = s / 1000
+        if val == int(val):
+            return ("✅", f"{int(val)}k")
+        return ("✅", f"{val:.1f}k")
+    if s < 100000:
+        return ("✅", f"{s // 1000}k")
+    return ("✅", "999k+")
+
+
+def _stock_style(stock: int) -> str:
+    """স্টকের উপর ভিত্তি করে বাটনের রঙ।"""
+    if stock <= 0 or stock <= 4:
+        return STYLE_DANGER
+    if stock <= 9:
+        return STYLE_PRIMARY
+    return STYLE_SUCCESS
+
+
+# ─────────────────────────────────────────────────────
 #  SPARKLINE + TREND HELPERS
 # ─────────────────────────────────────────────────────
 def _sparkline(values: list[float]) -> str:
@@ -172,16 +220,18 @@ async def _related_products_kb(slug: str, provider_key: str | None,
         if p.get("slug") == current_slug:
             continue
         stock  = (p.get("stock") or {}).get("count", 0)
-        in_stk = stock > 0
-        icon   = "✅" if in_stk else "❌"
         price  = p.get("yourPrice", "?")
         name   = p["name"]
-        if len(name) > 32:
-            name = name[:31] + "…"
+        if len(name) > 30:
+            name = name[:29] + "…"
+
+        icon, stock_str = _stock_label(stock)
+        style = _stock_style(stock)
+
         rows.append([_btn(
-            f"{icon} {name} — ${price}",
+            f"{icon} {name} — ${price} | {stock_str}",
             f"pprod:{p['slug']}",
-            STYLE_SUCCESS if in_stk else STYLE_DANGER,
+            style,
         )])
         if len(rows) >= limit:
             break
@@ -236,32 +286,26 @@ def _providers_kb(providers: list[dict]) -> InlineKeyboardMarkup:
 def _products_kb(products, provider_key, page, per_page=8) -> InlineKeyboardMarkup:
     """
     প্রোডাক্ট — ১ কলাম, পুরো চওড়া।
-    ✅ স্টকে থাকলে সবুজ + স্টক count  |  ❌ স্টক আউট হলে লাল
+    স্মার্ট স্টক ফরম্যাট:
+       ✅ 48 | ✅ 1.2k | 🟡 5 left | ⚠️ মাত্র 3 | ❌ শেষ
     """
     start = (page - 1) * per_page
     chunk = products[start:start + per_page]
     rows = []
 
     for p in chunk:
-        stock   = (p.get("stock") or {}).get("count", 0)
-        in_stk  = stock > 0
-        icon    = "✅" if in_stk else "❌"
-        price   = p.get("yourPrice", "?")
-        name    = p["name"]
-        if len(name) > 32:
-            name = name[:31] + "…"
+        stock = (p.get("stock") or {}).get("count", 0)
+        price = p.get("yourPrice", "?")
+        name  = p["name"]
+        if len(name) > 40:
+            name = name[:39] + "…"
 
-        # ✅ বাটনে স্টক count
-        if in_stk:
-            label = f"{icon} {name}\n💵 ${price}  •  📦 {stock}"
-        else:
-            label = f"{icon} {name}\n💵 ${price}  •  📦 শেষ"
+        icon, stock_str = _stock_label(stock)
+        style = _stock_style(stock)
 
-        rows.append([_btn(
-            label,
-            f"pprod:{p['slug']}",
-            STYLE_SUCCESS if in_stk else STYLE_DANGER,
-        )])
+        label = f"{icon} {name} — ${price} | {stock_str}"
+
+        rows.append([_btn(label, f"pprod:{p['slug']}", style)])
 
     nav = []
     if page > 1:
@@ -525,12 +569,15 @@ async def partner_product_selected(update: Update, context: ContextTypes.DEFAULT
     dtype = p.get("deliveryType", "LINK")
     icon  = PARTNER_DELIVERY_ICONS.get(dtype, "📦")
 
+    # স্মার্ট স্টক label এখানেও
+    s_icon, s_str = _stock_label(stock_count)
+
     text = (
         f"<b>{p.get('name', slug)}</b>\n\n"
         f"💰 মূল্য: <b>${p.get('yourPrice', '?')}</b>\n"
     )
     if in_stk:
-        text += f"📦 স্টক: <b>{stock_count}</b>\n"
+        text += f"📦 স্টক: <b>{s_icon} {s_str}</b>\n"
     else:
         text += "📦 স্টক: <b>❌ শেষ</b>\n"
     text += f"{icon} ডেলিভারি: <b>{dtype}</b>\n"
@@ -1090,24 +1137,18 @@ async def partner_search_input(update: Update, context: ContextTypes.DEFAULT_TYP
 
     rows = []
     for k, p in results:
-        stock  = (p.get("stock") or {}).get("count", 0)
-        in_stk = stock > 0
-        icon   = "✅" if in_stk else "❌"
-        price  = p.get("yourPrice", "?")
-        name   = p["name"]
-        if len(name) > 32:
-            name = name[:31] + "…"
+        stock = (p.get("stock") or {}).get("count", 0)
+        price = p.get("yourPrice", "?")
+        name  = p["name"]
+        if len(name) > 40:
+            name = name[:39] + "…"
 
-        if in_stk:
-            label = f"{icon} {name}\n💵 ${price}  •  📦 {stock}"
-        else:
-            label = f"{icon} {name}\n💵 ${price}  •  📦 শেষ"
+        icon, stock_str = _stock_label(stock)
+        style = _stock_style(stock)
 
-        rows.append([_btn(
-            label,
-            f"pprod:{p['slug']}",
-            STYLE_SUCCESS if in_stk else STYLE_DANGER,
-        )])
+        label = f"{icon} {name} — ${price} | {stock_str}"
+        rows.append([_btn(label, f"pprod:{p['slug']}", style)])
+
     rows.append([_btn("🔙 Categories", "pcat", STYLE_DANGER)])
 
     await update.message.reply_text(
@@ -1185,7 +1226,7 @@ async def partner_stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"মোট অর্ডার: <b>{stats['total_orders']}</b>\n"
         f"মোট খরচ: <b>${stats['total_spend']}</b>\n"
         f"আজ অর্ডার: <b>{stats['today_orders']}</b>\n"
-        f"আজ খরচ: <b>{stats['today_spend']}</b>"
+        f"আজ খরচ: <b>${stats['today_spend']}</b>"
         f"{api_info}",
         parse_mode="HTML",
     )
