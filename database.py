@@ -186,6 +186,28 @@ async def init_db():
             FOREIGN KEY (user_id) REFERENCES users(user_id)
         );
 
+        -- ── Partner — Stock Alerts (স্টক শেষ হলে নোটিফাই) ──
+        CREATE TABLE IF NOT EXISTS partner_stock_alerts (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id         INTEGER NOT NULL,
+            product_slug    TEXT    NOT NULL,
+            product_name    TEXT,
+            provider_key    TEXT,
+            notified        INTEGER DEFAULT 0,
+            created_at      TEXT    DEFAULT (datetime('now')),
+            UNIQUE(user_id, product_slug),
+            FOREIGN KEY (user_id) REFERENCES users(user_id)
+        );
+
+        -- ── Partner — Price History (দামের ট্রেন্ড) ──
+        CREATE TABLE IF NOT EXISTS partner_price_history (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            product_slug    TEXT    NOT NULL,
+            price           REAL    NOT NULL,
+            stock           INTEGER,
+            recorded_at     TEXT    DEFAULT (datetime('now'))
+        );
+
         CREATE INDEX IF NOT EXISTS idx_orders_user   ON orders(user_id);
         CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
         CREATE INDEX IF NOT EXISTS idx_txn_user      ON transactions(user_id);
@@ -194,6 +216,9 @@ async def init_db():
         CREATE INDEX IF NOT EXISTS idx_partner_external ON partner_orders(external_id);
         CREATE INDEX IF NOT EXISTS idx_partner_code     ON partner_orders(order_code);
         CREATE INDEX IF NOT EXISTS idx_partner_status   ON partner_orders(status);
+        CREATE INDEX IF NOT EXISTS idx_alert_slug       ON partner_stock_alerts(product_slug);
+        CREATE INDEX IF NOT EXISTS idx_alert_user       ON partner_stock_alerts(user_id);
+        CREATE INDEX IF NOT EXISTS idx_price_slug       ON partner_price_history(product_slug);
         """)
         await db.commit()
 
@@ -277,12 +302,6 @@ async def deduct_balance(user_id: int, amount: float, description: str = "Order"
 #  SHUVOPAY AUTO-VERIFIED DEPOSITS
 # ─────────────────────────────────────────────────────────────────
 async def add_coins(user_id: int, amount: float, method: str = "ShuvoPay", txn_id: str = None) -> None:
-    """
-    ShuvoPay গেটওয়ে থেকে অটোমেটিক ভেরিফাই হওয়া পেমেন্টের জন্য।
-    balance ও total_deposited দুটোই আপডেট করে, transaction log রাখে,
-    এবং deposits টেবিলে 'Approved' স্ট্যাটাসে একটা রেকর্ড যোগ করে
-    যাতে ইউজারের Deposit History-তেও এটা দেখা যায়।
-    """
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             "UPDATE users SET balance = balance + ?, total_deposited = total_deposited + ? WHERE user_id=?",
@@ -840,7 +859,7 @@ async def get_topup_orders(user_id: int, limit: int = 10) -> list[dict]:
             return [dict(r) for r in rows]
 
 # ─────────────────────────────────────────────────────────────────
-#  PARTNER API ORDERS  (Instant Delivery — LINK / COUPON / READY_ACCOUNT)
+#  PARTNER API ORDERS
 # ─────────────────────────────────────────────────────────────────
 async def create_partner_order(
     user_id: int,
@@ -858,7 +877,6 @@ async def create_partner_order(
     """
     Partner API অর্ডার সফল হলে সেভ করার জন্য।
     ⚠️ delivery.link / delivery.code / delivery.content কখনো এখানে পাঠাবেন না।
-       সেগুলো sensitive — শুধু GET /orders/:orderCode দিয়ে live আনবেন।
     """
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute(
@@ -958,7 +976,6 @@ async def get_partner_orders_today() -> int:
 
 
 async def user_partner_orders_today(user_id: int) -> int:
-    """আপনার MAX_ORDERS_PER_DAY চেকের সাথে মিলিয়ে ব্যবহার করবেন।"""
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
             "SELECT COUNT(*) FROM partner_orders "
@@ -970,7 +987,6 @@ async def user_partner_orders_today(user_id: int) -> int:
 
 
 async def get_partner_stats() -> dict:
-    """অ্যাডমিন /partnerstats কমান্ডের জন্য সংক্ষিপ্ত পরিসংখ্যান।"""
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
             "SELECT COUNT(*), COALESCE(SUM(total_charged),0) FROM partner_orders"
@@ -990,10 +1006,6 @@ async def get_partner_stats() -> dict:
 
 
 async def get_unrecovered_partner_orders(limit: int = 50) -> list[dict]:
-    """
-    startup reconcile-এর জন্য। যেসব অর্ডার COMPLETED নয় বা recovered=0,
-    সেগুলো GET /orders/:orderCode দিয়ে আবার যাচাই করে ডেলিভারি পাঠানো হবে।
-    """
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
@@ -1006,7 +1018,6 @@ async def get_unrecovered_partner_orders(limit: int = 50) -> list[dict]:
 
 
 async def get_all_partner_orders(limit: int = 50) -> list[dict]:
-    """অ্যাডমিন প্যানেলের জন্য — user info সহ।"""
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
@@ -1016,6 +1027,119 @@ async def get_all_partner_orders(limit: int = 50) -> list[dict]:
         ) as cur:
             rows = await cur.fetchall()
             return [dict(r) for r in rows]
+
+
+# ─────────────────────────────────────────────────────────────────
+#  PARTNER — STOCK ALERTS
+# ─────────────────────────────────────────────────────────────────
+async def add_stock_alert(user_id: int, slug: str, name: str, provider_key: str) -> bool:
+    """রিটার্ন True = নতুন যোগ, False = আগেই ছিল।"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        try:
+            await db.execute(
+                "INSERT INTO partner_stock_alerts "
+                "(user_id, product_slug, product_name, provider_key) VALUES (?,?,?,?)",
+                (user_id, slug, name, provider_key or ""),
+            )
+            await db.commit()
+            return True
+        except aiosqlite.IntegrityError:
+            return False
+
+
+async def remove_stock_alert(user_id: int, slug: str) -> bool:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            "DELETE FROM partner_stock_alerts WHERE user_id=? AND product_slug=?",
+            (user_id, slug),
+        )
+        await db.commit()
+        return cur.rowcount > 0
+
+
+async def has_stock_alert(user_id: int, slug: str) -> bool:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT 1 FROM partner_stock_alerts WHERE user_id=? AND product_slug=?",
+            (user_id, slug),
+        ) as cur:
+            return (await cur.fetchone()) is not None
+
+
+async def get_pending_stock_alerts(limit: int = 200) -> list[dict]:
+    """notified=0 — এখনো নোটিফাই হয়নি এমন আলার্ট।"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM partner_stock_alerts WHERE notified=0 LIMIT ?",
+            (limit,),
+        ) as cur:
+            return [dict(r) for r in await cur.fetchall()]
+
+
+async def mark_alert_notified(alert_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE partner_stock_alerts SET notified=1 WHERE id=?", (alert_id,)
+        )
+        await db.commit()
+
+
+async def get_user_alerts(user_id: int) -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM partner_stock_alerts WHERE user_id=? "
+            "ORDER BY created_at DESC", (user_id,)
+        ) as cur:
+            return [dict(r) for r in await cur.fetchall()]
+
+
+# ─────────────────────────────────────────────────────────────────
+#  PARTNER — PRICE HISTORY
+# ─────────────────────────────────────────────────────────────────
+async def record_price(slug: str, price: float, stock: int):
+    """দাম পরিবর্তন হলে নতুন entry, নাহলে আগেরটা update।"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT id, price, stock FROM partner_price_history "
+            "WHERE product_slug=? ORDER BY recorded_at DESC LIMIT 1",
+            (slug,),
+        ) as cur:
+            last = await cur.fetchone()
+
+        if last:
+            same_price = abs((last["price"] or 0) - price) < 0.001
+            if same_price:
+                # শুধু স্টক আপডেট
+                if (last["stock"] or -1) != stock:
+                    await db.execute(
+                        "UPDATE partner_price_history SET stock=? WHERE id=?",
+                        (stock, last["id"]),
+                    )
+                    await db.commit()
+                return
+
+        await db.execute(
+            "INSERT INTO partner_price_history (product_slug, price, stock) "
+            "VALUES (?,?,?)",
+            (slug, price, stock),
+        )
+        await db.commit()
+
+
+async def get_price_history(slug: str, limit: int = 30) -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT price, stock, recorded_at FROM partner_price_history "
+            "WHERE product_slug=? ORDER BY recorded_at DESC LIMIT ?",
+            (slug, limit),
+        ) as cur:
+            rows = [dict(r) for r in await cur.fetchall()]
+    return list(reversed(rows))  # পুরোনো → নতুন
+
 
 # ─────────────────────────────────────────────────────────────────
 #  EXPORT
