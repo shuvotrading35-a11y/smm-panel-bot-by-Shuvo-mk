@@ -28,37 +28,58 @@ def order_menu_keyboard() -> ReplyKeyboardMarkup:
 
 
 # ─────────────────────────────────────────────────────
-#  MAIN MENU
+#  MAIN MENU  (Clean — 8 buttons)
 # ─────────────────────────────────────────────────────
 def main_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup([
+        # Row 1
         [{"text": "📊 ꜱᴇʀᴠɪᴄᴇꜱ ʟɪꜱᴛ", "style": "success"}],
-        [{"text": "👤 ᴍʏ ᴀᴄᴄᴏᴜɴᴛ", "style": "danger"}, {"text": "💳 ʙᴜʏ ᴄᴏɪɴꜱ", "style": "primary"}],
-        [{"text": "🛒 ɴᴇᴡ ᴏʀᴅᴇʀ", "style": "success"}, {"text": "📦 ᴍʏ ᴏʀᴅᴇʀꜱ", "style": "danger"}],
-        [{"text": "🔎 ᴏʀᴅᴇʀ ᴛʀᴀᴄᴋᴇʀ", "style": "primary"}, {"text": "💰 ᴡᴀʟʟᴇᴛ", "style": "success"}],
-        [{"text": "🎁 ʀᴇᴅᴇᴇᴍ ᴄᴏᴅᴇ", "style": "danger"}, {"text": "🎯 ᴅᴀɪʟʏ ʙᴏɴᴜꜱ", "style": "primary"}],
-        [{"text": "👥 ʀᴇꜰᴇʀʀᴀʟ", "style": "success"}, {"text": "🏆 ʟᴇᴀᴅᴇʀʙᴏᴀʀᴅ", "style": "danger"}],
-        [{"text": "📈 ᴍʏ ꜱᴛᴀᴛɪꜱᴛɪᴄꜱ", "style": "primary"}, {"text": "🔍 ꜱᴇᴀʀᴄʜ ꜱᴇʀᴠɪᴄᴇ", "style": "success"}],
-        [{"text": "🎮 ɢᴀᴍᴇ ᴛᴏᴘᴜᴘ", "style": "danger"}, {"text": "📢 ᴜᴘᴅᴀᴛᴇꜱ", "style": "primary"}],
+        # Row 2
+        [{"text": "🛒 ɴᴇᴡ ᴏʀᴅᴇʀ", "style": "success"},
+         {"text": "📦 ᴍʏ ᴏʀᴅᴇʀꜱ", "style": "danger"}],
+        # Row 3
+        [{"text": "👤 ᴍʏ ᴀᴄᴄᴏᴜɴᴛ", "style": "danger"},
+         {"text": "💳 ʙᴜʏ ᴄᴏɪɴꜱ", "style": "primary"}],
+        # Row 4
+        [{"text": "👥 ʀᴇꜰᴇʀʀᴀʟ", "style": "success"},
+         {"text": "🏆 ʟᴇᴀᴅᴇʀʙᴏᴀʀᴅ", "style": "danger"}],
+        # Row 5
         [{"text": "☎️ ꜱᴜᴘᴘᴏʀᴛ", "style": "success"}],
     ], resize_keyboard=True, input_field_placeholder="⚡ BY SHUVO......")
 
 
 # ─────────────────────────────────────────────────────
-#  ADMIN
+#  ADMIN  (Clean — essential only)
 # ─────────────────────────────────────────────────────
 def admin_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup([
+        # Row 1 — Users
         [{"text": "👥 ᴜꜱᴇʀ ᴍᴀɴᴀɢᴇᴍᴇɴᴛ", "style": "success"}],
-        [{"text": "📢 ʙʀᴏᴀᴅᴄᴀꜱᴛ", "style": "danger"}, {"text": "🔔 ɴᴏᴛɪꜰɪᴄᴀᴛɪᴏɴ", "style": "primary"}],
-        [{"text": "💰 ʙᴀʟᴀɴᴄᴇ ᴍᴀɴᴀɢᴇʀ", "style": "success"}, {"text": "🎁 ᴄᴏᴅᴇ ᴍᴀɴᴀɢᴇʀ", "style": "danger"}],
-        [{"text": "📦 ᴏʀᴅᴇʀ ᴍᴀɴᴀɢᴇʀ", "style": "primary"}, {"text": "📊 ʙᴏᴛ ꜱᴛᴀᴛɪꜱᴛɪᴄꜱ", "style": "success"}],
-        [{"text": "📊 ᴘᴀʀᴛɴᴇʀ ꜱᴛᴀᴛꜱ", "style": "primary"}, {"text": "⚙️ ᴀᴘɪ ᴍᴀɴᴀɢᴇʀ", "style": "danger"}],  # ← NEW row
-        [{"text": "📣 ꜰᴏʀᴄᴇ ᴊᴏɪɴ", "style": "danger"}, {"text": "🚫 ʙᴀɴ ꜱʏꜱᴛᴇᴍ", "style": "primary"}],
-        [{"text": "☎️ ꜱᴜᴘᴘᴏʀᴛ ᴍᴀɴᴀɢᴇʀ", "style": "success"}, {"text": "🛒 ꜱᴇʀᴠɪᴄᴇ ᴍᴀɴᴀɢᴇʀ", "style": "primary"}],
-        [{"text": "🏆 ʟᴇᴀᴅᴇʀʙᴏᴀʀᴅ", "style": "success"}, {"text": "📤 ᴇxᴘᴏʀᴛ ᴅᴀᴛᴀ", "style": "danger"}],
-        [{"text": "🗄 ᴅᴀᴛᴀʙᴀꜱᴇ ᴍᴀɴᴀɢᴇʀ", "style": "primary"}],
-        [{"text": "🧹 ᴄʟᴇᴀɴ ᴜᴘ", "style": "success"}, {"text": "🔄 ʀᴇꜱᴛᴀʀᴛ ʙᴏᴛ", "style": "danger"}],
+        # Row 2 — Balance + Codes
+        [{"text": "💰 ʙᴀʟᴀɴᴄᴇ ᴍᴀɴᴀɢᴇʀ", "style": "success"},
+         {"text": "🎁 ᴄᴏᴅᴇ ᴍᴀɴᴀɢᴇʀ", "style": "danger"}],
+        # Row 3 — Orders + Stats
+        [{"text": "📦 ᴏʀᴅᴇʀ ᴍᴀɴᴀɢᴇʀ", "style": "primary"},
+         {"text": "📊 ʙᴏᴛ ꜱᴛᴀᴛɪꜱᴛɪᴄꜱ", "style": "success"}],
+        # Row 4 — Partner + Services
+        [{"text": "📊 ᴘᴀʀᴛɴᴇʀ ꜱᴛᴀᴛꜱ", "style": "primary"},
+         {"text": "🛒 ꜱᴇʀᴠɪᴄᴇ ᴍᴀɴᴀɢᴇʀ", "style": "primary"}],
+        # Row 5 — Broadcast + Notification
+        [{"text": "📢 ʙʀᴏᴀᴅᴄᴀꜱᴛ", "style": "danger"},
+         {"text": "🔔 ɴᴏᴛɪꜰɪᴄᴀᴛɪᴏɴ", "style": "primary"}],
+        # Row 6 — Force Join + Ban
+        [{"text": "📣 ꜰᴏʀᴄᴇ ᴊᴏɪɴ", "style": "danger"},
+         {"text": "🚫 ʙᴀɴ ꜱʏꜱᴛᴇᴍ", "style": "primary"}],
+        # Row 7 — Support + API
+        [{"text": "☎️ ꜱᴜᴘᴘᴏʀᴛ ᴍᴀɴᴀɢᴇʀ", "style": "success"},
+         {"text": "⚙️ ᴀᴘɪ ᴍᴀɴᴀɢᴇʀ", "style": "danger"}],
+        # Row 8 — Export + DB
+        [{"text": "📤 ᴇxᴘᴏʀᴛ ᴅᴀᴛᴀ", "style": "danger"},
+         {"text": "🗄 ᴅᴀᴛᴀʙᴀꜱᴇ ᴍᴀɴᴀɢᴇʀ", "style": "primary"}],
+        # Row 9 — Maintenance
+        [{"text": "🧹 ᴄʟᴇᴀɴ ᴜᴘ", "style": "success"},
+         {"text": "🔄 ʀᴇꜱᴛᴀʀᴛ ʙᴏᴛ", "style": "danger"}],
+        # Row 10 — Main menu
         [{"text": "🏠 ᴍᴀɪɴ ᴍᴇɴᴜ", "style": "primary"}],
     ], resize_keyboard=True, input_field_placeholder="🔥 BY SHUVO......")
 
@@ -78,15 +99,3 @@ def back_keyboard() -> ReplyKeyboardMarkup:
         [[{"text": "🔙 ʙᴀᴄᴋ", "style": "success"}]],
         resize_keyboard=True, input_field_placeholder="⭐ BY SHUVO......"
     )
-
-
-# ─────────────────────────────────────────────────────
-#  🛍 PARTNER SHOP SUB-MENU  (optional — future use)
-# ─────────────────────────────────────────────────────
-def partner_menu_keyboard() -> ReplyKeyboardMarkup:
-    """🛍 ᴘᴀʀᴛɴᴇʀ ꜱʜᴏᴘ-এ ক্লিক করলে এই সাব-মেনু আসবে (এখনো ব্যবহৃত নয়)।"""
-    return ReplyKeyboardMarkup([
-        [{"text": "📦 ʙʀᴏᴡꜱᴇ ꜱʜᴏᴘ", "style": "success"}],
-        [{"text": "🧾 ᴍʏ ᴘᴀʀᴛɴᴇʀ ᴏʀᴅᴇʀꜱ", "style": "primary"}],
-        [{"text": "🔙 ʙᴀᴄᴋ", "style": "danger"}],
-    ], resize_keyboard=True, input_field_placeholder="🛍 BY SHUVO......")
