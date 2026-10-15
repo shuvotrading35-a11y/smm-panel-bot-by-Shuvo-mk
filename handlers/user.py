@@ -63,6 +63,18 @@ async def _send_replacing(update, ctx, key: str, text: str, **kwargs):
     return sent
 
 
+async def _delete_menu_msg(update, ctx, key: str):
+    """নির্দিষ্ট menu মেসেজ (chat_data-তে সেভ করা) ডিলিট করে।"""
+    prev = ctx.chat_data.get(key)
+    if prev:
+        try:
+            await ctx.bot.delete_message(update.effective_chat.id, prev)
+            logger.info("🔄 Deleted %s msg %s", key, prev)
+        except Exception as e:
+            logger.info("🔄 Delete %s failed: %s", key, e)
+        ctx.chat_data.pop(key, None)
+
+
 async def _schedule_delete(bot, chat_id: int, message_id: int, delay: int):
     """নির্দিষ্ট সময় পরে মেসেজ ডিলিট করে।"""
     await asyncio.sleep(delay)
@@ -822,7 +834,7 @@ async def deposit_txn_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  SERVICES LIST  (auto-delete)
+#  SERVICES LIST  (auto-delete with chat_data)
 # ═══════════════════════════════════════════════════════════════════
 async def search_service_prompt(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -837,17 +849,10 @@ async def search_service_prompt(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def services_list(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     logger.info("🔄 services_list called")
 
-    # ── New Order মেসেজ থাকলে ডিলিট ──
-    prev = ctx.chat_data.get("new_order_msg_id")
-    if prev:
-        try:
-            await ctx.bot.delete_message(update.effective_chat.id, prev)
-            logger.info("🔄 Deleted new_order msg %s", prev)
-        except Exception as e:
-            logger.info("🔄 Delete new_order msg failed: %s", e)
-        ctx.chat_data.pop("new_order_msg_id", None)
+    # New Order মেসেজ থাকলে ডিলিট
+    await _delete_menu_msg(update, ctx, "new_order_msg_id")
 
-    # ── আগের Services List থাকলে ডিলিট করে নতুন পাঠাও ──
+    # আগের Services List ডিলিট করে নতুন পাঠাও
     await _send_replacing(
         update, ctx, "services_list_msg_id",
         "📊 <b>Services List</b>\n\nকোন সার্ভিস দেখতে চাও?",
@@ -857,6 +862,11 @@ async def services_list(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def services_list_smm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    logger.info("🔄 services_list_smm called")
+
+    # Services List menu মেসেজ ডিলিট
+    await _delete_menu_msg(update, ctx, "services_list_msg_id")
+
     cats = await db.get_categories()
     if not cats:
         await update.message.reply_text(
@@ -873,6 +883,11 @@ async def services_list_smm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def services_list_telegram(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    logger.info("🔄 services_list_telegram called")
+
+    # Services List menu মেসেজ ডিলিট
+    await _delete_menu_msg(update, ctx, "services_list_msg_id")
+
     from handlers.topup import topup_start_telegram
     await topup_start_telegram(update, ctx)
 
@@ -1150,22 +1165,15 @@ async def service_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  NEW ORDER FLOW  (auto-delete)
+#  NEW ORDER FLOW
 # ═══════════════════════════════════════════════════════════════════
 async def new_order(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     logger.info("🔄 new_order called")
 
-    # ── Services List মেসেজ থাকলে ডিলিট ──
-    prev = ctx.chat_data.get("services_list_msg_id")
-    if prev:
-        try:
-            await ctx.bot.delete_message(update.effective_chat.id, prev)
-            logger.info("🔄 Deleted services_list msg %s", prev)
-        except Exception as e:
-            logger.info("🔄 Delete services msg failed: %s", e)
-        ctx.chat_data.pop("services_list_msg_id", None)
+    # Services List ডিলিট
+    await _delete_menu_msg(update, ctx, "services_list_msg_id")
 
-    # ── আগের New Order থাকলে ডিলিট করে নতুন পাঠাও ──
+    # আগের New Order ডিলিট করে নতুন পাঠাও
     await _send_replacing(
         update, ctx, "new_order_msg_id",
         "🛒 <b>New Order</b>\n\nকোন ধরনের অর্ডার দিতে চাও?",
