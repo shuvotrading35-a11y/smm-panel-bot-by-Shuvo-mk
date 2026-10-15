@@ -180,14 +180,12 @@ async def force_join_leave_handler(
             InlineKeyboardButton(
                 "📢 Re-join Channel",
                 url=invite_url,
-                style="success",
             )
         ])
     rows.append([
         InlineKeyboardButton(
             "✅ I've Joined — Check Again",
             callback_data="fj_check",
-            style="primary",
         )
     ])
     kb = InlineKeyboardMarkup(rows)
