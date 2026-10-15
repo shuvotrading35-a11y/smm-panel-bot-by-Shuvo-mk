@@ -16,7 +16,7 @@ import database as db
 from api.flashtopup_api import (
     get_services, get_products, check_player_id, place_order,
 )
-from keyboards.reply import main_keyboard
+from keyboards.reply import main_keyboard, service_menu_keyboard
 from config import ADMIN_IDS, TOPUP_MARKUP_PCT
 from utils.order_logger import send_order_log
 
@@ -142,28 +142,58 @@ async def _delete_services_list_msg(update, ctx):
         ctx.chat_data.pop("services_list_msg_id", None)
 
 
+async def _delete_partner_entry_msg(update, ctx):
+    """Partner Shop menu মেসেজ ডিলিট করে (chat_data থেকে)।"""
+    prev = ctx.chat_data.get("partner_entry_msg_id")
+    if prev:
+        try:
+            await ctx.bot.delete_message(update.effective_chat.id, prev)
+            logger.info("🔄 Deleted partner_entry msg %s (topup)", prev)
+        except Exception as e:
+            logger.info("🔄 Delete partner_entry failed: %s", e)
+        ctx.chat_data.pop("partner_entry_msg_id", None)
+
+
+async def _restore_service_menu(update, ctx):
+    """Service menu reply keyboard ফিরিয়ে আনে।"""
+    try:
+        await update.effective_message.reply_text(
+            "👇 Services Menu:",
+            reply_markup=service_menu_keyboard(),
+        )
+        logger.info("🔄 Restored service menu keyboard (topup)")
+    except Exception as e:
+        logger.warning("🔄 Failed to restore service menu keyboard: %s", e)
+
+
 # ══════════════════════════════════════════════════════════════════
 #  ENTRY POINTS
 # ══════════════════════════════════════════════════════════════════
 async def topup_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     logger.info("🔄 topup_start called")
 
-    # ── Services List menu মেসেজ ডিলিট ──
+    # ── Services List + Partner Shop মেসেজ ডিলিট ──
     await _delete_services_list_msg(update, ctx)
+    await _delete_partner_entry_msg(update, ctx)
 
     await update.message.reply_text(
         "🎮 <b>Game Topup</b>\n\nকোন game-এর জন্য topup করতে চাও?",
         reply_markup=_games_kb(),
         parse_mode=ParseMode.HTML,
     )
+
+    # ── Service menu reply keyboard ফিরিয়ে আনো ──
+    await _restore_service_menu(update, ctx)
+
     return TOPUP_GAME_SELECT
 
 
 async def topup_start_telegram(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     logger.info("🔄 topup_start_telegram called")
 
-    # ── Services List menu মেসেজ ডিলিট ──
+    # ── Services List + Partner Shop মেসেজ ডিলিট ──
     await _delete_services_list_msg(update, ctx)
+    await _delete_partner_entry_msg(update, ctx)
 
     tg_cfg = TELEGRAM_CONFIG
     ctx.user_data.clear()
@@ -190,6 +220,7 @@ async def topup_start_telegram(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 f"<code>{json.dumps(result, ensure_ascii=False)[:500]}</code>",
             )
             await msg.edit_text("⚠️ কোনো Telegram package পাওয়া যায়নি। পরে চেষ্টা করো।")
+            await _restore_service_menu(update, ctx)
             return ConversationHandler.END
 
         ctx.user_data["topup_packages"] = packages
@@ -212,12 +243,17 @@ async def topup_start_telegram(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup(rows),
             parse_mode=ParseMode.HTML,
         )
+
+        # ── Service menu reply keyboard ফিরিয়ে আনো ──
+        await _restore_service_menu(update, ctx)
+
         return TOPUP_PACKAGE_SELECT
 
     except Exception as e:
         logger.exception("topup_start_telegram error")
         await _admin_alert(ctx, f"⚠️ topup_start_telegram exception\n<code>{e}</code>")
         await msg.edit_text("❌ Error loading packages. Try again later.")
+        await _restore_service_menu(update, ctx)
         return ConversationHandler.END
 
 
