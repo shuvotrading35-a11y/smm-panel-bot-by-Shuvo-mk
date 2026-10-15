@@ -35,26 +35,31 @@ logger = logging.getLogger(__name__)
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  AUTO-DELETE HELPERS
+#  AUTO-DELETE HELPERS  (chat_data ব্যবহার — user_data নয়)
 # ═══════════════════════════════════════════════════════════════════
 async def _send_replacing(update, ctx, key: str, text: str, **kwargs):
     """
-    আগের মেসেজ (একই key দিয়ে সেভ করা) ডিলিট করে নতুন পাঠায়।
-    ফলে চ্যাটে সবসময় একটাই মেসেজ থাকে।
+    আগের মেসেজ (একই key) ডিলিট করে নতুন পাঠায়।
+    chat_data ব্যবহার করা হচ্ছে — কারণ user_data cancel/back-এ clear হয়।
     """
-    prev = ctx.user_data.get(key)
+    prev = ctx.chat_data.get(key)
+    logger.info("🔄 _send_replacing key=%s prev=%s chat=%s",
+                key, prev, update.effective_chat.id)
+
     if prev:
         try:
             await ctx.bot.delete_message(
                 chat_id=update.effective_chat.id,
                 message_id=prev,
             )
-        except Exception:
-            pass
-        ctx.user_data.pop(key, None)
+            logger.info("🔄 Deleted old msg %s", prev)
+        except Exception as e:
+            logger.info("🔄 Delete failed for msg %s: %s", prev, e)
+        ctx.chat_data.pop(key, None)
 
     sent = await update.effective_message.reply_text(text, **kwargs)
-    ctx.user_data[key] = sent.message_id
+    ctx.chat_data[key] = sent.message_id
+    logger.info("🔄 Sent new msg %s", sent.message_id)
     return sent
 
 
@@ -132,7 +137,6 @@ _SUBCAT_RULES = {
 
 
 def _detect_platform(services: list[dict]) -> str | None:
-    """সার্ভিস নামের প্রিফিক্স দেখে প্ল্যাটফর্ম ডিটেক্ট করে।"""
     if not services:
         return None
     for s in services[:5]:
@@ -144,7 +148,6 @@ def _detect_platform(services: list[dict]) -> str | None:
 
 
 def _get_subcat(platform: str, service_name: str) -> str:
-    """সার্ভিসের নাম থেকে সাব-ক্যাটাগরি লেবেল ফেরত দেয়।"""
     rules = _SUBCAT_RULES.get(platform)
     if not rules:
         return "📦 Others"
@@ -156,7 +159,6 @@ def _get_subcat(platform: str, service_name: str) -> str:
 
 
 def _group_services(services: list[dict], platform: str) -> dict[str, list[dict]]:
-    """সার্ভিস লিস্ট → {সাব-ক্যাটাগরি: [services]}"""
     grouped: dict[str, list] = {}
     for s in services:
         label = _get_subcat(platform, s.get("name", ""))
@@ -165,7 +167,6 @@ def _group_services(services: list[dict], platform: str) -> dict[str, list[dict]
 
 
 def _should_show_subcat(services: list[dict], grouped: dict[str, list]) -> bool:
-    """সাব-ক্যাটাগরি মেনু দেখাব কি না?"""
     return len(services) >= 8 and len(grouped) >= 2
 
 
@@ -282,7 +283,6 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 parse_mode=ParseMode.HTML
             )
             ctx.user_data["force_join_msg_id"] = sent.message_id
-            # ৫ মিনিট পরে auto-delete
             asyncio.create_task(_schedule_delete(
                 ctx.bot, user.id, sent.message_id, 300
             ))
@@ -835,14 +835,17 @@ async def search_service_prompt(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def services_list(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    logger.info("🔄 services_list called")
+
     # ── New Order মেসেজ থাকলে ডিলিট ──
-    prev = ctx.user_data.get("new_order_msg_id")
+    prev = ctx.chat_data.get("new_order_msg_id")
     if prev:
         try:
             await ctx.bot.delete_message(update.effective_chat.id, prev)
-        except Exception:
-            pass
-        ctx.user_data.pop("new_order_msg_id", None)
+            logger.info("🔄 Deleted new_order msg %s", prev)
+        except Exception as e:
+            logger.info("🔄 Delete new_order msg failed: %s", e)
+        ctx.chat_data.pop("new_order_msg_id", None)
 
     # ── আগের Services List থাকলে ডিলিট করে নতুন পাঠাও ──
     await _send_replacing(
@@ -875,7 +878,7 @@ async def services_list_telegram(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  CATEGORY CALLBACK  (with sub-category support)
+#  CATEGORY CALLBACK
 # ═══════════════════════════════════════════════════════════════════
 PLATFORM_LABELS = {
     "facebook":  "📘 Facebook",
@@ -1012,7 +1015,6 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def _show_category_services(query, ctx, category: str):
-    """ক্যাটাগরি ক্লিকের কেন্দ্রীয় হ্যান্ডলার।"""
     services = await db.get_services_by_category(category)
     if not services:
         await query.answer("No services in this category.", show_alert=True)
@@ -1151,14 +1153,17 @@ async def service_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 #  NEW ORDER FLOW  (auto-delete)
 # ═══════════════════════════════════════════════════════════════════
 async def new_order(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    logger.info("🔄 new_order called")
+
     # ── Services List মেসেজ থাকলে ডিলিট ──
-    prev = ctx.user_data.get("services_list_msg_id")
+    prev = ctx.chat_data.get("services_list_msg_id")
     if prev:
         try:
             await ctx.bot.delete_message(update.effective_chat.id, prev)
-        except Exception:
-            pass
-        ctx.user_data.pop("services_list_msg_id", None)
+            logger.info("🔄 Deleted services_list msg %s", prev)
+        except Exception as e:
+            logger.info("🔄 Delete services msg failed: %s", e)
+        ctx.chat_data.pop("services_list_msg_id", None)
 
     # ── আগের New Order থাকলে ডিলিট করে নতুন পাঠাও ──
     await _send_replacing(
