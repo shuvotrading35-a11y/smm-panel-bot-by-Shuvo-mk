@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import os
-from telegram import Update, ChatMember
+from telegram import Update, ChatMember, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, CallbackQueryHandler,
     ConversationHandler, filters, ApplicationHandlerStop, ChatMemberHandler
@@ -94,76 +94,134 @@ ADMIN_FILTER  = filters.User(user_id=ADMIN_IDS)
 # ─────────────────────────────────────────────────────────────────
 #  FORCE-JOIN LEAVE NOTIFICATION
 # ─────────────────────────────────────────────────────────────────
+def _was_member(status) -> bool:
+    return status in (
+        ChatMember.MEMBER, ChatMember.ADMINISTRATOR,
+        ChatMember.OWNER, ChatMember.RESTRICTED,
+    )
+
+
+def _is_member(status) -> bool:
+    return status in (
+        ChatMember.MEMBER, ChatMember.ADMINISTRATOR, ChatMember.OWNER,
+    )
+
+
 async def force_join_leave_handler(
     update: Update, context
 ) -> None:
     """
     Force-join channel থেকে কেউ Leave নিলে —
-    সাথে সাথে ইউজারকে নোটিফাই + rejoin বাটন।
-    কোনো delay বা auto-delete নেই।
+    সাথে সাথে ইউজারকে rejoin বাটন সহ PM পাঠায়।
     """
     cmu = update.chat_member
     if not cmu:
+        logger.info("🔔 no chat_member in update")
         return
 
-    old = cmu.old_chat_member
-    new = cmu.new_chat_member
+    chat        = cmu.chat
+    user        = cmu.new_chat_member.user
+    old_status  = cmu.old_chat_member.status
+    new_status  = cmu.new_chat_member.status
 
-    was_in = old.status in (
-        ChatMember.MEMBER, ChatMember.ADMINISTRATOR,
-        ChatMember.OWNER, ChatMember.RESTRICTED,
+    logger.info(
+        "🔔 chat_member | user=%s chat_id=%s chat_un=%s old=%s new=%s",
+        user.id, chat.id, chat.username, old_status, new_status
     )
-    now_out = new.status in (ChatMember.LEFT, ChatMember.BANNED)
-    if not (was_in and now_out):
+
+    # শুধু departures
+    if not (_was_member(old_status) and not _is_member(new_status)):
+        logger.info("🔔 Not a leave event — ignore")
         return
 
-    user = new.user
-    if not user or user.is_bot:
+    if user.is_bot:
         return
 
-    # শুধু আমাদের force-join চ্যানেল কি না?
+    # ── DB-তে চ্যানেল আছে কি? ──
     channels = await db.get_force_channels()
+    logger.info("🔔 DB channels: %s",
+                [c.get("channel_id") for c in channels])
+
     if not channels:
+        logger.info("🔔 No force channels in DB")
         return
 
-    this_id = str(cmu.chat.id)
-    this_un = (cmu.chat.username or "").lstrip("@")
-    matched = any(
-        str(ch.get("channel_id", "")) == this_id
-        or str(ch.get("channel_id", "")).lstrip("@") == this_un
-        for ch in channels
+    this_id = str(chat.id)                       # -1001234567890
+    this_un = (chat.username or "").lstrip("@")  # mychannel
+
+    matched_ch = None
+    for ch in channels:
+        cid = str(ch.get("channel_id", "")).strip()
+        cid_clean = cid.lstrip("@")
+
+        if cid == this_id:
+            matched_ch = ch
+            break
+        if cid_clean and this_un and cid_clean.lower() == this_un.lower():
+            matched_ch = ch
+            break
+        if cid_clean and this_id.endswith(cid_clean):
+            matched_ch = ch
+            break
+
+    logger.info("🔔 Matched channel: %s", bool(matched_ch))
+    if not matched_ch:
+        return
+
+    # ── Rejoin keyboard ──
+    invite_url = (
+        matched_ch.get("invite_link")
+        or (f"https://t.me/{this_un}" if this_un else None)
     )
-    if not matched:
-        return
 
-    # ── PM নোটিফিকেশন — সাথে সাথে ──
-    try:
-        not_joined = await check_force_join(context.bot, user.id, channels)
-        kb = force_join_kb(not_joined) if not_joined else None
-
-        text = (
-            "⚠️ <b>আপনি চ্যানেল থেকে লিভ নিয়েছেন!</b>\n\n"
-            "🔒 বট ব্যবহার করতে হলে আবার চ্যানেলে জয়েন করুন।\n"
-            "নিচের বাটনে ক্লিক করে join করুন 👇"
+    rows = []
+    if invite_url:
+        rows.append([
+            InlineKeyboardButton(
+                "📢 Re-join Channel",
+                url=invite_url,
+                style="success",
+            )
+        ])
+    rows.append([
+        InlineKeyboardButton(
+            "✅ I've Joined — Check Again",
+            callback_data="fj_check",
+            style="primary",
         )
+    ])
+    kb = InlineKeyboardMarkup(rows)
 
+    channel_label = (
+        matched_ch.get("channel_name")
+        or (f"@{this_un}" if this_un else chat.title)
+        or "our channel"
+    )
+
+    # ── PM নোটিফিকেশন ──
+    try:
         await context.bot.send_message(
-            user.id,
-            text,
-            reply_markup=kb,
+            chat_id=user.id,
+            text=(
+                f"❌ <b>Channel Left Detected</b>\n\n"
+                f"You have left <b>{channel_label}</b>.\n\n"
+                f"To keep using this bot, please re-join the channel:\n"
+                f"After joining, tap the button below to continue."
+            ),
             parse_mode="HTML",
+            reply_markup=kb,
             disable_web_page_preview=True,
         )
+        logger.info("🔔 ✅ Notification sent to user %s", user.id)
 
     except Exception as e:
-        logger.debug("Leave notification failed for %s: %s", user.id, e)
+        logger.warning("🔔 ❌ Could not notify user %s: %s", user.id, e)
 
 
 # ─────────────────────────────────────────────────────────────────
 #  MAINTENANCE MODE
 # ─────────────────────────────────────────────────────────────────
 async def maintenance_check(update: Update, context) -> None:
-    """Block normal users while maintenance mode is enabled. Admins bypass it."""
     if not MAINTENANCE_MODE:
         return
 
@@ -227,7 +285,7 @@ async def error_handler(update: object, context) -> None:
 def build_app() -> Application:
     app = Application.builder().token(BOT_TOKEN).build()
 
-    # ── Global middlewares (run BEFORE every other handler) ────────
+    # ── Global middlewares ───────────────────────────────────────
     from telegram.ext import MessageHandler as _MH, CallbackQueryHandler as _CQH, filters as _filters
 
     app.add_handler(_MH(_filters.ALL, maintenance_check), group=-3)
@@ -558,7 +616,7 @@ def build_app() -> Application:
     app.add_handler(MessageHandler(filters.Regex(r"^⭐ ᴠɪᴘ ᴍᴇᴍʙᴇʀꜱʜɪᴘ$"), vip_membership))
     app.add_handler(MessageHandler(filters.Regex(r"^📢 ᴜᴘᴅᴀᴛᴇꜱ$"),        updates_channel))
 
-    # ── Partner: my orders shortcut (reply keyboard) ──────────────
+    # ── Partner: my orders shortcut ──────────────────────────────
     app.add_handler(MessageHandler(
         filters.Regex(r"^🧾 ᴍʏ ᴘᴀʀᴛɴᴇʀ ᴏʀᴅᴇʀꜱ$"),
         my_partner_orders,
