@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import os
-import time
 from telegram import Update, ChatMember
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, CallbackQueryHandler,
@@ -100,7 +99,8 @@ async def force_join_leave_handler(
 ) -> None:
     """
     Force-join channel থেকে কেউ Leave নিলে —
-    ইউজারকে জানায় + rejoin বাটন দেয়। ৬০ সেকেন্ড পরে auto-delete।
+    সাথে সাথে ইউজারকে নোটিফাই + rejoin বাটন।
+    কোনো delay বা auto-delete নেই।
     """
     cmu = update.chat_member
     if not cmu:
@@ -136,13 +136,7 @@ async def force_join_leave_handler(
     if not matched:
         return
 
-    # ── কুলডাউন (১ ঘণ্টায় ১ বার) ──
-    key = f"leave_notify:{user.id}"
-    if time.time() - context.bot_data.get(key, 0) < 3600:
-        return
-    context.bot_data[key] = time.time()
-
-    # ── PM নোটিফিকেশন ──
+    # ── PM নোটিফিকেশন — সাথে সাথে ──
     try:
         not_joined = await check_force_join(context.bot, user.id, channels)
         kb = force_join_kb(not_joined) if not_joined else None
@@ -153,20 +147,13 @@ async def force_join_leave_handler(
             "নিচের বাটনে ক্লিক করে join করুন 👇"
         )
 
-        msg = await context.bot.send_message(
+        await context.bot.send_message(
             user.id,
             text,
             reply_markup=kb,
             parse_mode="HTML",
             disable_web_page_preview=True,
         )
-
-        # ৬০ সেকেন্ড পরে auto-delete
-        await asyncio.sleep(60)
-        try:
-            await context.bot.delete_message(user.id, msg.message_id)
-        except Exception:
-            pass
 
     except Exception as e:
         logger.debug("Leave notification failed for %s: %s", user.id, e)
@@ -624,13 +611,11 @@ async def on_startup(app: Application):
     logger.info("Database ready.")
 
     if not MAINTENANCE_MODE:
-        # 1. Reconcile pending partner orders
         try:
             asyncio.create_task(reconcile_partner_orders(app))
         except Exception as e:
             logger.warning("Partner reconcile schedule failed: %s", e)
 
-        # 2. Stock alerts — প্রতি ৫ মিনিটে চেক
         try:
             if app.job_queue:
                 app.job_queue.run_repeating(
