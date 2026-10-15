@@ -37,18 +37,13 @@ COIN_TO_BDT = 1.0
 
 # ══════════════════════════════════════════════════════════════════
 #  GAME CONFIGS
-#  product_code  : FlashTopup stable code (Products API)
-#  product_type  : from Products API
-#  order_fields  : exact field names from Products API `fields[]`
-#                  (user_id, server_id, target_id, zone_id, ...)
-#  need_server   : convenience flag → player flow asks for server
 # ══════════════════════════════════════════════════════════════════
 GAME_CONFIGS: Dict[str, Dict[str, Any]] = {
     "TOPUP_FREE_FIRE_BANGLADESH": {
         "name":            "🔥 Free Fire Bangladesh",
         "product_code":    "TOPUP_FREE_FIRE_BANGLADESH",
         "product_type":    "topup",
-        "validation_code": "freefire_bd",          # ← /products থেকে যাচাই করুন
+        "validation_code": "freefire_bd",
         "order_fields":    ["user_id"],
         "need_server_id":  False,
         "player_label":    "Free Fire UID",
@@ -76,7 +71,7 @@ GAME_CONFIGS: Dict[str, Dict[str, Any]] = {
 
 TELEGRAM_CONFIG: Dict[str, Any] = {
     "name":            "✈️ Telegram",
-    "product_code":    "TOPUP_TELEGRAM",           # ← /products থেকে সঠিক কোড বসান
+    "product_code":    "TOPUP_TELEGRAM",
     "product_type":    "topup",
     "validation_code": "telegram",
     "order_fields":    ["user_id"],
@@ -116,7 +111,7 @@ def _games_kb() -> InlineKeyboardMarkup:
 
 
 def _extract_services(result: dict) -> list:
-    """API রেসপন্স থেকে packages লিস্ট বের করে — সব সম্ভাব্য শেপ হ্যান্ডেল করে।"""
+    """API রেসপন্স থেকে packages লিস্ট বের করে।"""
     if not result:
         return []
     data = result.get("data")
@@ -135,10 +130,27 @@ async def _admin_alert(ctx, text: str):
             pass
 
 
+async def _delete_services_list_msg(update, ctx):
+    """Services List মেনু মেসেজ ডিলিট করে (chat_data থেকে)।"""
+    prev = ctx.chat_data.get("services_list_msg_id")
+    if prev:
+        try:
+            await ctx.bot.delete_message(update.effective_chat.id, prev)
+            logger.info("🔄 Deleted services_list msg %s (topup)", prev)
+        except Exception as e:
+            logger.info("🔄 Delete services_list failed: %s", e)
+        ctx.chat_data.pop("services_list_msg_id", None)
+
+
 # ══════════════════════════════════════════════════════════════════
 #  ENTRY POINTS
 # ══════════════════════════════════════════════════════════════════
 async def topup_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    logger.info("🔄 topup_start called")
+
+    # ── Services List menu মেসেজ ডিলিট ──
+    await _delete_services_list_msg(update, ctx)
+
     await update.message.reply_text(
         "🎮 <b>Game Topup</b>\n\nকোন game-এর জন্য topup করতে চাও?",
         reply_markup=_games_kb(),
@@ -148,6 +160,11 @@ async def topup_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def topup_start_telegram(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    logger.info("🔄 topup_start_telegram called")
+
+    # ── Services List menu মেসেজ ডিলিট ──
+    await _delete_services_list_msg(update, ctx)
+
     tg_cfg = TELEGRAM_CONFIG
     ctx.user_data.clear()
     ctx.user_data["topup_game_code"]       = tg_cfg["product_code"]
@@ -259,7 +276,6 @@ async def topup_game_selected(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text("👇 Menu:", reply_markup=main_keyboard())
         return ConversationHandler.END
 
-    # service_code → pkg ম্যাপ (ক trimming এড়াতে)
     ctx.user_data["topup_packages"] = {
         (p.get("service_code") or str(p.get("id", ""))): p for p in packages
     }
@@ -398,14 +414,6 @@ async def _verify_and_confirm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
         data = (check.get("data") or {}) if isinstance(check, dict) else {}
 
-        await _admin_alert(
-            update.effective_message.bot,
-            f"🔍 <b>check_player_id DEBUG</b>\n"
-            f"📤 user_id={player_id} server_id={server_id} code={val_code}\n"
-            f"📥 <code>{json.dumps(check, ensure_ascii=False)[:500]}</code>",
-        ) if False else None  # ডিবাগ বন্ধ রাখতে চাইলে এভাবে; চাইলে True করে দিন
-
-        # সফলতা যাচাই — API valid ফিল্ড না দিলেও account_name থাকলে সফল ধরি
         is_ok = (
             isinstance(check, dict)
             and check.get("success")
@@ -507,7 +515,7 @@ async def topup_confirm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     await query.edit_message_text("⏳ Order দেওয়া হচ্ছে...")
 
-    # ── ডাইনামিক account_fields তৈরি ─────────────────────────────
+    # ── ডাইনামিক account_fields ──────────────────────────────────
     order_fields   = cfg.get("order_fields", ["user_id"])
     account_fields: Dict[str, str] = {}
     for field in order_fields:
@@ -515,7 +523,6 @@ async def topup_confirm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             account_fields[field] = player_id
         elif field in ("server_id", "zone_id", "server"):
             account_fields[field] = server_id
-        # অন্য কাস্টম ফিল্ড লাগলে এখানে হ্যান্ডেল করুন
 
     reference_id = f"TG_{user_id}_{uuid.uuid4().hex[:10]}"
 
@@ -540,7 +547,7 @@ async def topup_confirm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             "সমস্যা হলে যোগাযোগ করো: @shuvo_9882"
         )
         await _admin_alert(
-            query.get_bot(),
+            ctx,
             f"⚠️ <b>Topup Failed</b>\n"
             f"User: <code>{user_id}</code>\n"
             f"Service: <code>{service_code}</code>\n"
