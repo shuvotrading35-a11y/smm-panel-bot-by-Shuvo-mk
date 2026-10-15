@@ -16,6 +16,7 @@ Features:
    ✔ Colored buttons — 🟢 success (in stock) | 🔴 danger (out of stock)
    ✔ API HTML cleaner (<tg-emoji> → unicode, <blockquote> preserved)
    ✔ DUAL BALANCE CHECK — bot wallet + API balance
+   ✔ Auto-delete Services List / New Order menu on entry
 
 ⚠️ Security:
    - delivery.link / code / content কখনো log/DB-তে যায় না
@@ -53,7 +54,6 @@ from database import (
     add_stock_alert, remove_stock_alert, has_stock_alert,
     get_pending_stock_alerts, mark_alert_notified, get_user_alerts,
     record_price, get_price_history,
-    # ── Dual balance support ──
     get_user, deduct_balance, add_balance,
 )
 from keyboards.reply import main_keyboard
@@ -76,11 +76,9 @@ STYLE_DANGER  = "danger"
 
 
 # ─────────────────────────────────────────────────────
-#  STYLED BUTTON  (custom emoji + style support)
+#  STYLED BUTTON
 # ─────────────────────────────────────────────────────
 class StyledButton(InlineKeyboardButton):
-    """InlineKeyboardButton with optional `style` and `icon_custom_emoji_id`."""
-
     __slots__ = ("_style", "_icon_custom_emoji_id")
 
     def __init__(
@@ -109,7 +107,6 @@ def _btn(
     style: str | None = None,
     icon_custom_emoji_id: str | None = None,
 ) -> StyledButton:
-    """Styled inline button helper."""
     return StyledButton(
         text=text,
         callback_data=callback_data,
@@ -182,9 +179,6 @@ _MULTI_NL_RE = re.compile(r'\n{3,}')
 
 
 def _clean_api_html(raw: str) -> str:
-    """
-    Partner API-র description/instructions পরিষ্কার করে।
-    """
     if not raw:
         return ""
     cleaned = _TG_EMOJI_RE.sub(r'\1', raw)
@@ -530,6 +524,18 @@ def _delivery_messages(res: dict) -> list[str]:
     return out
 
 
+async def _delete_menu_msg(context, chat_id: int, key: str):
+    """নির্দিষ্ট menu মেসেজ (chat_data-তে সেভ করা) ডিলিট করে।"""
+    prev = context.chat_data.get(key)
+    if prev:
+        try:
+            await context.bot.delete_message(chat_id, prev)
+            log.info("🔄 Deleted %s msg %s", key, prev)
+        except Exception as e:
+            log.info("🔄 Delete %s failed: %s", key, e)
+        context.chat_data.pop(key, None)
+
+
 # ─────────────────────────────────────────────────────
 #  ENTRY
 # ─────────────────────────────────────────────────────
@@ -537,6 +543,13 @@ async def partner_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not PARTNER_ENABLED:
         await update.effective_message.reply_text("⚠️ Partner Shop এখন নিষ্ক্রিয়।")
         return ConversationHandler.END
+
+    log.info("🔄 partner_entry called")
+
+    # ── Services List / New Order মেসেজ ডিলিট ──
+    chat_id = update.effective_chat.id
+    await _delete_menu_msg(context, chat_id, "services_list_msg_id")
+    await _delete_menu_msg(context, chat_id, "new_order_msg_id")
 
     context.user_data.pop("partner_pending", None)
     context.user_data.pop("partner_search_results", None)
@@ -559,11 +572,19 @@ async def partner_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.effective_message.reply_text("এই মুহূর্তে কোনো ক্যাটাগরি নেই।")
         return ConversationHandler.END
 
-    await update.effective_message.reply_text(
+    # ── আগের partner_entry_msg_id থাকলে ডিলিট ──
+    await _delete_menu_msg(context, chat_id, "partner_entry_msg_id")
+
+    sent = await update.effective_message.reply_text(
         "🛍 <b>Choose a service:</b>",
         reply_markup=_providers_kb(providers),
         parse_mode="HTML",
     )
+
+    # ── entry মেসেজ সেভ ──
+    context.chat_data["partner_entry_msg_id"] = sent.message_id
+    log.info("🔄 Partner entry sent: msg=%s", sent.message_id)
+
     return WAITING_ACTION
 
 
@@ -1177,7 +1198,7 @@ async def check_stock_alerts_job(application):
 
 
 # ═════════════════════════════════════════════════════
-#  CONFIRM + PLACE ORDER  —  DUAL BALANCE CHECK
+#  CONFIRM + PLACE ORDER — DUAL BALANCE CHECK
 # ═════════════════════════════════════════════════════
 async def partner_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
@@ -1192,7 +1213,6 @@ async def partner_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_id = q.from_user.id
 
-    # ── ডেইলি লিমিট ──
     used = await user_partner_orders_today(user_id)
     if used >= MAX_ORDERS_PER_DAY:
         await q.message.reply_text(
@@ -1202,13 +1222,10 @@ async def partner_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop("partner_pending", None)
         return ConversationHandler.END
 
-    # ── প্রয়োজন কত ──
     unit_price = float(data["unit_price"])
     total_required = round(unit_price * qty, 2)
 
-    # ══════════════════════════════════════════════════
-    #  ১) ইউজারের BOT WALLET ব্যালেন্স চেক
-    # ══════════════════════════════════════════════════
+    # ── ১) BOT WALLET চেক ──
     udata = await get_user(user_id)
     if not udata:
         await q.message.reply_text("⚠️ অ্যাকাউন্ট পাওয়া যায়নি। /start দিন।")
@@ -1230,9 +1247,7 @@ async def partner_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop("partner_pending", None)
         return ConversationHandler.END
 
-    # ══════════════════════════════════════════════════
-    #  ২) API (GGSoma) ব্যালেন্স চেক — আসল মান
-    # ══════════════════════════════════════════════════
+    # ── ২) API BALANCE চেক ──
     try:
         bal_resp = await papi.balance()
         api_balance = float(bal_resp.get("balance", 0) or 0)
@@ -1286,9 +1301,7 @@ async def partner_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop("partner_pending", None)
         return ConversationHandler.END
 
-    # ══════════════════════════════════════════════════
-    #  ৩) দুই balance ঠিক → bot wallet থেকে কাটো
-    # ══════════════════════════════════════════════════
+    # ── ৩) Bot wallet থেকে কাটো ──
     deducted = await deduct_balance(
         user_id,
         total_required,
@@ -1302,9 +1315,7 @@ async def partner_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop("partner_pending", None)
         return ConversationHandler.END
 
-    # ══════════════════════════════════════════════════
-    #  ৪) এখন API-তে অর্ডার পাঠাও
-    # ══════════════════════════════════════════════════
+    # ── ৪) API-তে অর্ডার পাঠাও ──
     await q.message.reply_text("⏳ অর্ডার প্রসেস হচ্ছে...")
 
     ext_id = f"tg-{user_id}-{uuid.uuid4().hex[:12]}"
@@ -1334,7 +1345,6 @@ async def partner_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop("partner_pending", None)
         return ConversationHandler.END
 
-    # ── DB-তে সেভ ──
     lines_meta = json.dumps(
         [{"orderCode": ln.get("orderCode")} for ln in res.get("lines", []) or []]
     ) if res.get("lines") else None
