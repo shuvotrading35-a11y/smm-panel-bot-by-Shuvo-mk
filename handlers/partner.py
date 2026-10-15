@@ -15,6 +15,7 @@ Features:
    ✔ Brand emoji mapping (auto-detect from product name/key)
    ✔ Colored buttons — 🟢 success (in stock) | 🔴 danger (out of stock)
    ✔ API HTML cleaner (<tg-emoji> → unicode, <blockquote> preserved)
+   ✔ DUAL BALANCE CHECK — bot wallet + API balance
 
 ⚠️ Security:
    - delivery.link / code / content কখনো log/DB-তে যায় না
@@ -52,6 +53,8 @@ from database import (
     add_stock_alert, remove_stock_alert, has_stock_alert,
     get_pending_stock_alerts, mark_alert_notified, get_user_alerts,
     record_price, get_price_history,
+    # ── Dual balance support ──
+    get_user, deduct_balance, add_balance,
 )
 from keyboards.reply import main_keyboard
 from utils.partner_cache import get_cache, set_cache, invalidate as cache_invalidate
@@ -181,14 +184,6 @@ _MULTI_NL_RE = re.compile(r'\n{3,}')
 def _clean_api_html(raw: str) -> str:
     """
     Partner API-র description/instructions পরিষ্কার করে।
-
-    - <tg-emoji emoji-id="...">📱</tg-emoji>  →  📱
-      (ভেতরের ইউনিকোড এমোজি রাখা হয়, ট্যাগ বাদ)
-
-    - <blockquote>, <b>, <i>, <u>, <s>, <code>, <a>  →  অক্ষত থাকে
-      (Telegram নিজেই বেগুনি বক্স, bold, italic রেন্ডার করবে)
-
-    - ৩+ blank line → ২ (পরিষ্কার দেখতে)
     """
     if not raw:
         return ""
@@ -201,13 +196,10 @@ def _clean_api_html(raw: str) -> str:
 #  PROVIDER EMOJI MAP
 # ─────────────────────────────────────────────────────
 _PROVIDER_EMOJI = [
-    # ── Custom overrides ──
     ("gemini",       "✦"),
     ("google ai",    "✦"),
     ("official",     "֎"),
     ("portal",       "֎"),
-
-    # ── AI ──
     ("chatgpt",      "⚡"),
     ("openai",       "⚡"),
     ("gpt",          "⚡"),
@@ -232,8 +224,6 @@ _PROVIDER_EMOJI = [
     ("wisper",       "🎙"),
     ("heygen",       "🎬"),
     ("sora",         "🎬"),
-
-    # ── Streaming ──
     ("netflix",      "🎬"),
     ("prime video",  "🎬"),
     ("primevideo",   "🎬"),
@@ -246,8 +236,6 @@ _PROVIDER_EMOJI = [
     ("apple music",  "🎵"),
     ("deezer",       "🎵"),
     ("soundcloud",   "🎵"),
-
-    # ── Social ──
     ("telegram",     "✈️"),
     ("instagram",    "📸"),
     ("tiktok",       "🎵"),
@@ -258,8 +246,6 @@ _PROVIDER_EMOJI = [
     ("discord",      "🎮"),
     ("snapchat",     "👻"),
     ("pinterest",    "📌"),
-
-    # ── Design / Creative ──
     ("canva",        "🎨"),
     ("figma",        "🎨"),
     ("adobe",        "🅰"),
@@ -271,8 +257,6 @@ _PROVIDER_EMOJI = [
     ("filmora",      "🎞"),
     ("davinci",      "🎞"),
     ("sketch",       "✏️"),
-
-    # ── Productivity ──
     ("notion",       "📝"),
     ("evernote",     "📓"),
     ("obsidian",     "🗒"),
@@ -289,8 +273,6 @@ _PROVIDER_EMOJI = [
     ("trello",       "📋"),
     ("asana",        "✅"),
     ("clickup",      "🖱"),
-
-    # ── Education ──
     ("duolingo",     "🦉"),
     ("coursera",     "🎓"),
     ("udemy",        "🎓"),
@@ -298,8 +280,6 @@ _PROVIDER_EMOJI = [
     ("edx",          "🎓"),
     ("skillshare",   "🎓"),
     ("khan",         "🎓"),
-
-    # ── Tools / Utility ──
     ("vpn",          "🔒"),
     ("nordvpn",      "🛡"),
     ("expressvpn",   "🛡"),
@@ -320,8 +300,6 @@ _PROVIDER_EMOJI = [
     ("seo",          "📈"),
     ("semrush",      "📈"),
     ("ahrefs",       "📈"),
-
-    # ── Subscription bundles ──
     ("subscription", "⭐"),
     ("premium",      "💎"),
     ("bundle",       "🎁"),
@@ -329,15 +307,12 @@ _PROVIDER_EMOJI = [
 
 
 def _provider_emoji(key: str, name: str, api_emoji: str | None) -> str:
-    """প্রোডাক্ট/প্রোভাইডারের ব্র্যান্ড এমোজি।"""
     if api_emoji and api_emoji not in ("📦", "❓", "?", "", None):
         return api_emoji
-
     hay = f"{key or ''} {name or ''}".lower()
     for kw, emoji in _PROVIDER_EMOJI:
         if kw in hay:
             return emoji
-
     return "🛍"
 
 
@@ -345,17 +320,6 @@ def _provider_emoji(key: str, name: str, api_emoji: str | None) -> str:
 #  SMART STOCK FORMATTER
 # ─────────────────────────────────────────────────────
 def _stock_label(stock: int) -> tuple[str, str]:
-    """
-    স্টকের পরিমাণ অনুযায়ী (icon, label) ফেরত দেয়।
-
-    Return:
-      0          → ("❌", "শেষ")
-      1-4        → ("⚠️", "মাত্র 3")
-      5-9        → ("🟡", "5 left")
-      10-999     → ("✅", "48")
-      1000-9999  → ("✅", "1.2k")
-      10000+     → ("✅", "12k")
-    """
     try:
         s = int(stock)
     except Exception:
@@ -380,12 +344,9 @@ def _stock_label(stock: int) -> tuple[str, str]:
 
 
 def _stock_style(stock: int) -> str:
-    """
-    স্টক থাকলে সবুজ (success), না থাকলে লাল (danger)।
-    """
     if stock <= 0:
-        return STYLE_DANGER      # 🔴 লাল — স্টক শেষ
-    return STYLE_SUCCESS         # 🟢 সবুজ — স্টক আছে
+        return STYLE_DANGER
+    return STYLE_SUCCESS
 
 
 # ─────────────────────────────────────────────────────
@@ -479,7 +440,6 @@ def _trim(text: str, limit: int = 16) -> str:
 
 
 def _providers_kb(providers: list[dict]) -> InlineKeyboardMarkup:
-    """ক্যাটাগরি — ২ কলাম, সব সবুজ (success)।"""
     rows, row = [], []
     for p in providers:
         api_emoji = (p.get("emoji") or {}).get("normal")
@@ -488,7 +448,7 @@ def _providers_kb(providers: list[dict]) -> InlineKeyboardMarkup:
         row.append(_btn(
             f"{emoji} {_trim(p['name'], 14)}",
             f"pprov:{p['key']}:1",
-            STYLE_SUCCESS,          # 🟢 সব ক্যাটাগরি সবুজ
+            STYLE_SUCCESS,
         ))
         if len(row) == 2:
             rows.append(row)
@@ -504,12 +464,6 @@ def _providers_kb(providers: list[dict]) -> InlineKeyboardMarkup:
 
 
 def _products_kb(products, provider_key, page, per_page=8) -> InlineKeyboardMarkup:
-    """
-    প্রোডাক্ট — ১ কলাম, পুরো চওড়া।
-
-    🟢 সবুজ = স্টক আছে
-    🔴 লাল  = স্টক শেষ
-    """
     start = (page - 1) * per_page
     chunk = products[start:start + per_page]
     rows = []
@@ -525,10 +479,9 @@ def _products_kb(products, provider_key, page, per_page=8) -> InlineKeyboardMark
         p_emoji = _provider_emoji(p.get("slug", ""), name, api_emoji)
 
         _s_icon, stock_str = _stock_label(stock)
-        style = _stock_style(stock)             # 🟢 বা 🔴
+        style = _stock_style(stock)
 
         label = f"{p_emoji} {name} — ${price} | {stock_str}"
-
         rows.append([_btn(label, f"pprod:{p['slug']}", style)])
 
     nav = []
@@ -798,7 +751,6 @@ async def partner_product_selected(update: Update, context: ContextTypes.DEFAULT
 
     s_icon, s_str = _stock_label(stock_count)
 
-    # ── GGSoma-style header ──
     text = (
         f"{brand_emoji} <b>{p.get('name', slug)}</b>\n\n"
         f"💵 <b>{p.get('yourPrice', '?')}</b> USD\n"
@@ -816,16 +768,13 @@ async def partner_product_selected(update: Update, context: ContextTypes.DEFAULT
     if (p.get("warranty") or {}).get("enabled"):
         text += f"🛡 ওয়ারেন্টি: {p['warranty']['days']} দিন\n"
 
-    # ── Description (HTML — blockquote, bold, italic অক্ষত) ──
     if p.get("description"):
         desc = _clean_api_html(p["description"])
         if desc:
-            # Telegram এক মেসেজে 4096 char limit — নিরাপদ সীমা
             if len(desc) > 2000:
                 desc = desc[:1997] + "…"
             text += f"\n{desc}\n"
 
-    # ── Instructions ──
     if p.get("instructions"):
         ins = _clean_api_html(p["instructions"])
         if ins:
@@ -833,7 +782,6 @@ async def partner_product_selected(update: Update, context: ContextTypes.DEFAULT
                 ins = ins[:397] + "…"
             text += f"\nℹ️ {ins}\n"
 
-    # ── Price history ──
     try:
         history = await get_price_history(slug, limit=30)
         trend = _price_trend(history)
@@ -842,14 +790,12 @@ async def partner_product_selected(update: Update, context: ContextTypes.DEFAULT
     except Exception as e:
         log.warning("price history failed: %s", e)
 
-    # ── Related products ──
     related_kb = None
     try:
         related_kb = await _related_products_kb(slug, provider_key, slug, limit=4)
     except Exception as e:
         log.warning("related products failed: %s", e)
 
-    # ── Keyboard ──
     rows = []
 
     if in_stk:
@@ -907,7 +853,6 @@ async def partner_product_selected(update: Update, context: ContextTypes.DEFAULT
             reply_markup=InlineKeyboardMarkup(rows),
         )
     except Exception:
-        # Telegram 4096-char limit হলে কেটে পাঠান
         try:
             await q.message.reply_text(
                 text[:4000],
@@ -1231,9 +1176,9 @@ async def check_stock_alerts_job(application):
             log.warning("alert notify user=%s failed: %s", a["user_id"], e)
 
 
-# ─────────────────────────────────────────────────────
-#  CONFIRM + PLACE ORDER
-# ─────────────────────────────────────────────────────
+# ═════════════════════════════════════════════════════
+#  CONFIRM + PLACE ORDER  —  DUAL BALANCE CHECK
+# ═════════════════════════════════════════════════════
 async def partner_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
@@ -1247,6 +1192,7 @@ async def partner_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_id = q.from_user.id
 
+    # ── ডেইলি লিমিট ──
     used = await user_partner_orders_today(user_id)
     if used >= MAX_ORDERS_PER_DAY:
         await q.message.reply_text(
@@ -1256,15 +1202,109 @@ async def partner_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop("partner_pending", None)
         return ConversationHandler.END
 
+    # ── প্রয়োজন কত ──
+    unit_price = float(data["unit_price"])
+    total_required = round(unit_price * qty, 2)
+
+    # ══════════════════════════════════════════════════
+    #  ১) ইউজারের BOT WALLET ব্যালেন্স চেক
+    # ══════════════════════════════════════════════════
+    udata = await get_user(user_id)
+    if not udata:
+        await q.message.reply_text("⚠️ অ্যাকাউন্ট পাওয়া যায়নি। /start দিন।")
+        context.user_data.pop("partner_pending", None)
+        return ConversationHandler.END
+
+    bot_balance = float(udata.get("balance") or 0)
+
+    if bot_balance < total_required:
+        need = round(total_required - bot_balance, 2)
+        await q.message.reply_text(
+            f"❌ <b>পর্যাপ্ত ব্যালেন্স নেই</b>\n\n"
+            f"💵 প্রয়োজন: <b>${total_required:.2f}</b>\n"
+            f"💰 আপনার ব্যালেন্স: <b>${bot_balance:.2f}</b>\n"
+            f"⚠️ আরও দরকার: <b>${need:.2f}</b>\n\n"
+            f"💳 <b>Buy Coins</b> থেকে ব্যালেন্স বাড়ান।",
+            parse_mode="HTML",
+        )
+        context.user_data.pop("partner_pending", None)
+        return ConversationHandler.END
+
+    # ══════════════════════════════════════════════════
+    #  ২) API (GGSoma) ব্যালেন্স চেক — আসল মান
+    # ══════════════════════════════════════════════════
     try:
-        await papi.balance()
+        bal_resp = await papi.balance()
+        api_balance = float(bal_resp.get("balance", 0) or 0)
+        log.info(
+            "Order precheck | user=%s bot=$%.2f api=$%.2f need=$%.2f",
+            user_id, bot_balance, api_balance, total_required,
+        )
     except PartnerAPIError as e:
-        log.error("balance precheck: %s", e.code)
+        log.error("API balance check failed: code=%s req=%s", e.code, e.request_id)
         await _notify_admins_of_error(context, "balance_precheck", e)
         await q.message.reply_text(_friendly_error(e.code), parse_mode="HTML")
         context.user_data.pop("partner_pending", None)
         return ConversationHandler.END
+    except (ValueError, TypeError) as e:
+        log.error("API balance parse error: %s", e)
+        await q.message.reply_text(
+            "⚠️ সার্ভিসে সাময়িক সমস্যা। কিছুক্ষণ পরে আবার চেষ্টা করুন।",
+            parse_mode="HTML",
+        )
+        context.user_data.pop("partner_pending", None)
+        return ConversationHandler.END
 
+    if api_balance < total_required:
+        log.warning("Blocked: api=$%.2f < need=$%.2f", api_balance, total_required)
+
+        await q.message.reply_text(
+            f"❌ <b>সাময়িকভাবে অর্ডার নেওয়া যাচ্ছে না</b>\n\n"
+            f"⏳ অনুগ্রহ করে কিছুক্ষণ পরে চেষ্টা করুন।\n"
+            f"❓ সমস্যা থাকলে সাপোর্টে যোগাযোগ করুন।",
+            parse_mode="HTML",
+        )
+
+        for admin_id in ADMIN_IDS:
+            try:
+                await context.bot.send_message(
+                    admin_id,
+                    f"⚠️ <b>Partner API ব্যালেন্স কম!</b>\n"
+                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                    f"🛍 <code>{data['name']}</code>\n"
+                    f"🔢 Qty: <code>{qty}</code>\n"
+                    f"💵 প্রয়োজন: <code>${total_required:.2f}</code>\n"
+                    f"💰 আছে: <code>${api_balance:.2f}</code>\n"
+                    f"👤 ইউজার: <code>{user_id}</code>\n"
+                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                    f"🔴 API-তে টাকা রিচার্জ করুন!",
+                    parse_mode="HTML",
+                )
+            except Exception:
+                pass
+
+        context.user_data.pop("partner_pending", None)
+        return ConversationHandler.END
+
+    # ══════════════════════════════════════════════════
+    #  ৩) দুই balance ঠিক → bot wallet থেকে কাটো
+    # ══════════════════════════════════════════════════
+    deducted = await deduct_balance(
+        user_id,
+        total_required,
+        description=f"Partner: {data['name']} x{qty}",
+    )
+    if not deducted:
+        await q.message.reply_text(
+            "❌ ব্যালেন্স কাটা যায়নি। আবার চেষ্টা করুন।",
+            parse_mode="HTML",
+        )
+        context.user_data.pop("partner_pending", None)
+        return ConversationHandler.END
+
+    # ══════════════════════════════════════════════════
+    #  ৪) এখন API-তে অর্ডার পাঠাও
+    # ══════════════════════════════════════════════════
     await q.message.reply_text("⏳ অর্ডার প্রসেস হচ্ছে...")
 
     ext_id = f"tg-{user_id}-{uuid.uuid4().hex[:12]}"
@@ -1274,11 +1314,27 @@ async def partner_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except PartnerAPIError as e:
         log.error("create_order user=%s code=%s req=%s",
                   user_id, e.code, e.request_id)
+
+        # ── API অর্ডার ফেল → ইউজারের টাকা ফেরত ──
+        try:
+            await add_balance(
+                user_id,
+                total_required,
+                description=f"Refund: {data['name']} x{qty}",
+            )
+            log.info("Refunded $%.2f to user %s", total_required, user_id)
+        except Exception as ref_err:
+            log.error("Refund failed for user %s: %s", user_id, ref_err)
+
         await _notify_admins_of_error(context, f"create_order:{data['slug']}", e)
-        await q.message.reply_text(_friendly_error(e.code), parse_mode="HTML")
+        await q.message.reply_text(
+            _friendly_error(e.code) + "\n\n💵 আপনার পেমেন্ট ফেরত দেওয়া হয়েছে।",
+            parse_mode="HTML",
+        )
         context.user_data.pop("partner_pending", None)
         return ConversationHandler.END
 
+    # ── DB-তে সেভ ──
     lines_meta = json.dumps(
         [{"orderCode": ln.get("orderCode")} for ln in res.get("lines", []) or []]
     ) if res.get("lines") else None
@@ -1291,8 +1347,8 @@ async def partner_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         product_name=data["name"],
         delivery_type=data["delivery_type"],
         quantity=qty,
-        unit_price=float(res.get("unitPrice") or data["unit_price"]),
-        total_charged=float(res.get("totalCharged") or data["unit_price"] * qty),
+        unit_price=float(res.get("unitPrice") or unit_price),
+        total_charged=float(res.get("totalCharged") or total_required),
         status=res.get("status", "COMPLETED"),
         lines_json=lines_meta,
     )
@@ -1303,7 +1359,7 @@ async def partner_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     head = (
         f"✅ <b>অর্ডার সম্পন্ন</b>\n"
         f"🧾 <code>{res.get('orderCode', '')}</code>\n"
-        f"💵 চার্জ: <b>${res.get('totalCharged', '?')}</b>"
+        f"💵 চার্জ: <b>${res.get('totalCharged', total_required)}</b>"
     )
     await q.message.reply_text(head, parse_mode="HTML")
 
@@ -1322,8 +1378,8 @@ async def partner_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
             product_name=data["name"],
             delivery_type=data["delivery_type"],
             quantity=qty,
-            unit_price=float(res.get("unitPrice") or data["unit_price"]),
-            total_charged=float(res.get("totalCharged") or data["unit_price"] * qty),
+            unit_price=float(res.get("unitPrice") or unit_price),
+            total_charged=float(res.get("totalCharged") or total_required),
             status=res.get("status", "COMPLETED"),
         ))
     except Exception as e:
