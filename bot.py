@@ -297,11 +297,18 @@ def build_app() -> Application:
     app.add_handler(_CQH(global_force_join_check), group=-1)
 
     # ── Force-Join Leave Notification ────────────────────────────
+    # NOTE: chat_member_types supports only one value at a time — use two handlers
     app.add_handler(
         ChatMemberHandler(
             force_join_leave_handler,
-            chat_member_types=ChatMemberHandler.MY_CHAT_MEMBER
-            | ChatMemberHandler.CHAT_MEMBER,
+            chat_member_types=ChatMemberHandler.CHAT_MEMBER,
+        ),
+        group=0,
+    )
+    app.add_handler(
+        ChatMemberHandler(
+            force_join_leave_handler,
+            chat_member_types=ChatMemberHandler.MY_CHAT_MEMBER,
         ),
         group=0,
     )
