@@ -1,5 +1,6 @@
 import logging
 import re
+import asyncio
 import httpx
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler, CommandHandler, MessageHandler, filters, ApplicationHandlerStop
@@ -31,6 +32,39 @@ logger = logging.getLogger(__name__)
     ORDER_CONFIRM, REDEEM_INPUT, TICKET_SUBJECT, TICKET_MESSAGE,
     DEPOSIT_METHOD, DEPOSIT_AMOUNT, DEPOSIT_TXN, TRACKER_INPUT,
 ) = range(13)
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  AUTO-DELETE HELPERS
+# ═══════════════════════════════════════════════════════════════════
+async def _send_replacing(update, ctx, key: str, text: str, **kwargs):
+    """
+    আগের মেসেজ (একই key দিয়ে সেভ করা) ডিলিট করে নতুন পাঠায়।
+    ফলে চ্যাটে সবসময় একটাই মেসেজ থাকে।
+    """
+    prev = ctx.user_data.get(key)
+    if prev:
+        try:
+            await ctx.bot.delete_message(
+                chat_id=update.effective_chat.id,
+                message_id=prev,
+            )
+        except Exception:
+            pass
+        ctx.user_data.pop(key, None)
+
+    sent = await update.effective_message.reply_text(text, **kwargs)
+    ctx.user_data[key] = sent.message_id
+    return sent
+
+
+async def _schedule_delete(bot, chat_id: int, message_id: int, delay: int):
+    """নির্দিষ্ট সময় পরে মেসেজ ডিলিট করে।"""
+    await asyncio.sleep(delay)
+    try:
+        await bot.delete_message(chat_id=chat_id, message_id=message_id)
+    except Exception:
+        pass
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -242,11 +276,16 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if channels and update.effective_user.id not in ADMIN_IDS:
         not_joined = await check_force_join(ctx.bot, user.id, channels)
         if not_joined:
-            await update.message.reply_text(
+            sent = await update.message.reply_text(
                 "📢 <b>Join our channels to unlock the bot:</b>",
                 reply_markup=force_join_kb(not_joined),
                 parse_mode=ParseMode.HTML
             )
+            ctx.user_data["force_join_msg_id"] = sent.message_id
+            # ৫ মিনিট পরে auto-delete
+            asyncio.create_task(_schedule_delete(
+                ctx.bot, user.id, sent.message_id, 300
+            ))
             return
 
     udata = await db.get_user(user.id)
@@ -783,7 +822,7 @@ async def deposit_txn_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  SERVICES LIST
+#  SERVICES LIST  (auto-delete)
 # ═══════════════════════════════════════════════════════════════════
 async def search_service_prompt(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -796,10 +835,21 @@ async def search_service_prompt(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def services_list(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
+    # ── New Order মেসেজ থাকলে ডিলিট ──
+    prev = ctx.user_data.get("new_order_msg_id")
+    if prev:
+        try:
+            await ctx.bot.delete_message(update.effective_chat.id, prev)
+        except Exception:
+            pass
+        ctx.user_data.pop("new_order_msg_id", None)
+
+    # ── আগের Services List থাকলে ডিলিট করে নতুন পাঠাও ──
+    await _send_replacing(
+        update, ctx, "services_list_msg_id",
         "📊 <b>Services List</b>\n\nকোন সার্ভিস দেখতে চাও?",
         reply_markup=service_menu_keyboard(),
-        parse_mode=ParseMode.HTML
+        parse_mode=ParseMode.HTML,
     )
 
 
@@ -844,7 +894,6 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     data     = query.data
 
-    # ── cat_back / svc_list_back: Service list → Category list ──
     if data in ("cat_back", "svc_list_back"):
         platform = ctx.user_data.get("current_platform", "")
         all_cats = await db.get_categories()
@@ -859,7 +908,6 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # ── platform_back: Category list → Platform buttons ──
     if data == "platform_back":
         cats   = await db.get_categories()
         upd_ch = await db.get_setting("updates_channel", "")
@@ -870,7 +918,6 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # ── Platform button tapped ──
     if data.startswith("platform:"):
         platform = data[9:]
         ctx.user_data["current_platform"] = platform
@@ -886,7 +933,6 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # ── sub_back: Sub-cat services → Sub-cat menu ──
     if data == "sub_back":
         category = ctx.user_data.get("current_category", "")
         grouped  = ctx.user_data.get("current_grouped", {})
@@ -918,7 +964,6 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # ── subcat:<label> — Show services of chosen sub-cat ──
     if data.startswith("subcat:"):
         label    = data[7:]
         category = ctx.user_data.get("current_category", "")
@@ -946,7 +991,6 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # ── catidx:<idx> — Category by index ──
     if data.startswith("catidx:"):
         idx = int(data[7:])
         platform = ctx.user_data.get("current_platform", "")
@@ -961,7 +1005,6 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await _show_category_services(query, ctx, category)
         return
 
-    # ── cat:<category> — Category by name ──
     if data.startswith("cat:"):
         category = data[4:]
         await _show_category_services(query, ctx, category)
@@ -1023,7 +1066,6 @@ async def service_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     data  = query.data
 
-    # ── svc_back: Service detail → sub-cat list / full list ──
     if data == "svc_back":
         subcat = ctx.user_data.get("current_subcat")
         if subcat:
@@ -1106,13 +1148,24 @@ async def service_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  NEW ORDER FLOW
+#  NEW ORDER FLOW  (auto-delete)
 # ═══════════════════════════════════════════════════════════════════
 async def new_order(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
+    # ── Services List মেসেজ থাকলে ডিলিট ──
+    prev = ctx.user_data.get("services_list_msg_id")
+    if prev:
+        try:
+            await ctx.bot.delete_message(update.effective_chat.id, prev)
+        except Exception:
+            pass
+        ctx.user_data.pop("services_list_msg_id", None)
+
+    # ── আগের New Order থাকলে ডিলিট করে নতুন পাঠাও ──
+    await _send_replacing(
+        update, ctx, "new_order_msg_id",
         "🛒 <b>New Order</b>\n\nকোন ধরনের অর্ডার দিতে চাও?",
         reply_markup=order_menu_keyboard(),
-        parse_mode=ParseMode.HTML
+        parse_mode=ParseMode.HTML,
     )
     return ConversationHandler.END
 
