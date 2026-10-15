@@ -72,6 +72,18 @@ async def _delete_menu_msg(update, ctx, key: str):
         ctx.chat_data.pop(key, None)
 
 
+async def _restore_service_menu(update, ctx):
+    """Service menu reply keyboard ফিরিয়ে আনে।"""
+    try:
+        await update.effective_message.reply_text(
+            "👇 Services Menu:",
+            reply_markup=service_menu_keyboard(),
+        )
+        logger.info("🔄 Restored service menu keyboard")
+    except Exception as e:
+        logger.warning("🔄 Failed to restore service menu keyboard: %s", e)
+
+
 async def _schedule_delete(bot, chat_id: int, message_id: int, delay: int):
     """নির্দিষ্ট সময় পরে মেসেজ ডিলিট করে।"""
     await asyncio.sleep(delay)
@@ -831,7 +843,7 @@ async def deposit_txn_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  SERVICES LIST  (auto-delete with chat_data + Partner Shop)
+#  SERVICES LIST  (auto-delete + Service menu restore)
 # ═══════════════════════════════════════════════════════════════════
 async def search_service_prompt(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -872,13 +884,18 @@ async def services_list_smm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             "⚠️ No services synced yet.\n"
             "Admin needs to sync services from the API panel."
         )
+        await _restore_service_menu(update, ctx)
         return
+
     upd_ch = await db.get_setting("updates_channel", "")
     await update.message.reply_text(
         "🌐 <b>SMM Services</b>\n\nChoose a platform:",
         reply_markup=categories_kb(cats, CATEGORY_ICONS, upd_ch),
         parse_mode=ParseMode.HTML
     )
+
+    # ── Service menu reply keyboard ফিরিয়ে আনো ──
+    await _restore_service_menu(update, ctx)
 
 
 async def services_list_telegram(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -890,6 +907,9 @@ async def services_list_telegram(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
 
     from handlers.topup import topup_start_telegram
     await topup_start_telegram(update, ctx)
+
+    # ── Service menu reply keyboard ফিরিয়ে আনো ──
+    await _restore_service_menu(update, ctx)
 
 
 # ═══════════════════════════════════════════════════════════════════
