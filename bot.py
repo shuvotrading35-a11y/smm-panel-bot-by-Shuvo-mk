@@ -1,10 +1,11 @@
 import asyncio
 import logging
 import os
-from telegram import Update
+import time
+from telegram import Update, ChatMember
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, CallbackQueryHandler,
-    ConversationHandler, filters, ApplicationHandlerStop
+    ConversationHandler, filters, ApplicationHandlerStop, ChatMemberHandler
 )
 from config import BOT_TOKEN, ADMIN_IDS, MAINTENANCE_MODE
 import database as db
@@ -61,14 +62,18 @@ from handlers.admin import (
 # ── Partner API handlers ──────────────────────────────────────────
 from handlers.partner import (
     build_partner_conversation,
-    partner_entry,              # ← /partner কমান্ডের জন্য
+    partner_entry,
     my_partner_orders,
     partner_stats_cmd,
     reconcile_partner_orders,
-    my_stock_alerts,            # ← NEW: /myalerts
-    check_stock_alerts_job,     # ← NEW: scheduler job
+    my_stock_alerts,
+    check_stock_alerts_job,
 )
 from api.partner_api import close_session as close_partner_session
+
+# ── Inline keyboards & helpers ────────────────────────────────────
+from keyboards.inline import force_join_kb
+from utils.helpers import check_force_join
 
 # ── Logging ───────────────────────────────────────────────────────
 logging.basicConfig(
@@ -88,6 +93,86 @@ ADMIN_FILTER  = filters.User(user_id=ADMIN_IDS)
 
 
 # ─────────────────────────────────────────────────────────────────
+#  FORCE-JOIN LEAVE NOTIFICATION
+# ─────────────────────────────────────────────────────────────────
+async def force_join_leave_handler(
+    update: Update, context
+) -> None:
+    """
+    Force-join channel থেকে কেউ Leave নিলে —
+    ইউজারকে জানায় + rejoin বাটন দেয়। ৬০ সেকেন্ড পরে auto-delete।
+    """
+    cmu = update.chat_member
+    if not cmu:
+        return
+
+    old = cmu.old_chat_member
+    new = cmu.new_chat_member
+
+    was_in = old.status in (
+        ChatMember.MEMBER, ChatMember.ADMINISTRATOR,
+        ChatMember.OWNER, ChatMember.RESTRICTED,
+    )
+    now_out = new.status in (ChatMember.LEFT, ChatMember.BANNED)
+    if not (was_in and now_out):
+        return
+
+    user = new.user
+    if not user or user.is_bot:
+        return
+
+    # শুধু আমাদের force-join চ্যানেল কি না?
+    channels = await db.get_force_channels()
+    if not channels:
+        return
+
+    this_id = str(cmu.chat.id)
+    this_un = (cmu.chat.username or "").lstrip("@")
+    matched = any(
+        str(ch.get("channel_id", "")) == this_id
+        or str(ch.get("channel_id", "")).lstrip("@") == this_un
+        for ch in channels
+    )
+    if not matched:
+        return
+
+    # ── কুলডাউন (১ ঘণ্টায় ১ বার) ──
+    key = f"leave_notify:{user.id}"
+    if time.time() - context.bot_data.get(key, 0) < 3600:
+        return
+    context.bot_data[key] = time.time()
+
+    # ── PM নোটিফিকেশন ──
+    try:
+        not_joined = await check_force_join(context.bot, user.id, channels)
+        kb = force_join_kb(not_joined) if not_joined else None
+
+        text = (
+            "⚠️ <b>আপনি চ্যানেল থেকে লিভ নিয়েছেন!</b>\n\n"
+            "🔒 বট ব্যবহার করতে হলে আবার চ্যানেলে জয়েন করুন।\n"
+            "নিচের বাটনে ক্লিক করে join করুন 👇"
+        )
+
+        msg = await context.bot.send_message(
+            user.id,
+            text,
+            reply_markup=kb,
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+        )
+
+        # ৬০ সেকেন্ড পরে auto-delete
+        await asyncio.sleep(60)
+        try:
+            await context.bot.delete_message(user.id, msg.message_id)
+        except Exception:
+            pass
+
+    except Exception as e:
+        logger.debug("Leave notification failed for %s: %s", user.id, e)
+
+
+# ─────────────────────────────────────────────────────────────────
 #  MAINTENANCE MODE
 # ─────────────────────────────────────────────────────────────────
 async def maintenance_check(update: Update, context) -> None:
@@ -101,7 +186,7 @@ async def maintenance_check(update: Update, context) -> None:
 
     message = (
         "🛠️ <b>Bot Maintenance Mode</b>\n\n"
-        "বর্তমানে আমাদের বটে সাময়িক রক্ষণাবেক্ষণের কাজ চলছে।\n"
+        "বর্তমানে আমাদের বটে সাময়িক রক্ষণাবেক্ষণের কাজ চলছে।\n"
         "অনুগ্রহ করে কিছুক্ষণ পরে আবার চেষ্টা করুন।\n\n"
         "🔄 আমরা খুব শীঘ্রই আবার চালু করছি।\n\n"
         f"👨‍💻 Developer: {__import__('config').DEVELOPER}"
@@ -166,6 +251,16 @@ def build_app() -> Application:
     app.add_handler(_MH(_filters.ALL, global_force_join_check), group=-1)
     app.add_handler(_CQH(global_force_join_check), group=-1)
 
+    # ── Force-Join Leave Notification ────────────────────────────
+    app.add_handler(
+        ChatMemberHandler(
+            force_join_leave_handler,
+            chat_member_types=ChatMemberHandler.MY_CHAT_MEMBER
+            | ChatMemberHandler.CHAT_MEMBER,
+        ),
+        group=0,
+    )
+
     # ── Game Topup ConversationHandler ───────────────────────────
     topup_conv = ConversationHandler(
         entry_points=[
@@ -201,7 +296,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("partner",       partner_entry))
     app.add_handler(CommandHandler("partnerorders", my_partner_orders))
     app.add_handler(CommandHandler("partnerstats",  partner_stats_cmd))
-    app.add_handler(CommandHandler("myalerts",      my_stock_alerts))   # ← NEW
+    app.add_handler(CommandHandler("myalerts",      my_stock_alerts))
 
     # ── Admin commands ────────────────────────────────────────────
     app.add_handler(CommandHandler("admin",          admin_panel))
@@ -229,7 +324,7 @@ def build_app() -> Application:
     app.add_handler(CallbackQueryHandler(order_refresh_callback,      pattern=r"^order_refresh:"))
     app.add_handler(CallbackQueryHandler(order_refill_callback,       pattern=r"^order_refill:"))
     app.add_handler(CallbackQueryHandler(order_cancel_api_callback,   pattern=r"^order_cancel_api:"))
-    app.add_handler(CallbackQueryHandler(category_callback,           pattern=r"^(cat(_back|:.+)|svc_list_back|platform(:.+|_back)|catidx:\d+)$"))
+    app.add_handler(CallbackQueryHandler(category_callback,           pattern=r"^(cat(_back|:.+)|svc_list_back|platform(:.+|_back)|catidx:\d+|sub_back|subcat:.+)$"))
     app.add_handler(CallbackQueryHandler(service_callback,            pattern=r"^svc(_back|:.+)$"))
     app.add_handler(CallbackQueryHandler(admin_user_callback,         pattern=r"^adm_(ban|unban|bal_add|bal_rem|msg):"))
     app.add_handler(CallbackQueryHandler(deposit_approve_callback,    pattern=r"^dep_approve:"))
@@ -528,9 +623,8 @@ async def on_startup(app: Application):
     await db.init_db()
     logger.info("Database ready.")
 
-    # ── Partner API: background jobs ──────────────────────────────
     if not MAINTENANCE_MODE:
-        # 1. Reconcile pending orders (একবার)
+        # 1. Reconcile pending partner orders
         try:
             asyncio.create_task(reconcile_partner_orders(app))
         except Exception as e:
@@ -541,8 +635,8 @@ async def on_startup(app: Application):
             if app.job_queue:
                 app.job_queue.run_repeating(
                     check_stock_alerts_job,
-                    interval=300,       # ৫ মিনিট
-                    first=60,           # ১ মিনিট পর প্রথম চেক
+                    interval=300,
+                    first=60,
                     name="partner_stock_alerts",
                 )
                 logger.info("✅ Stock alert job scheduled (every 5 min)")
@@ -560,7 +654,6 @@ async def on_startup(app: Application):
 
 
 async def on_shutdown(app: Application):
-    # ── SMM API session ──
     try:
         from api.smm_api import smm_api
         await smm_api.close()
@@ -568,7 +661,6 @@ async def on_shutdown(app: Application):
     except Exception as e:
         logger.warning("SMM API close failed: %s", e)
 
-    # ── Partner API session ──
     try:
         await close_partner_session()
         logger.info("Partner API session closed.")
