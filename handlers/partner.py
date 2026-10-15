@@ -17,6 +17,7 @@ Features:
    ✔ API HTML cleaner (<tg-emoji> → unicode, <blockquote> preserved)
    ✔ DUAL BALANCE CHECK — bot wallet + API balance
    ✔ Auto-delete Services List / New Order menu on entry
+   ✔ Service menu reply keyboard restored on entry
 
 ⚠️ Security:
    - delivery.link / code / content কখনো log/DB-তে যায় না
@@ -56,7 +57,7 @@ from database import (
     record_price, get_price_history,
     get_user, deduct_balance, add_balance,
 )
-from keyboards.reply import main_keyboard
+from keyboards.reply import main_keyboard, service_menu_keyboard
 from utils.partner_cache import get_cache, set_cache, invalidate as cache_invalidate
 
 log = logging.getLogger(__name__)
@@ -584,6 +585,18 @@ async def partner_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ── entry মেসেজ সেভ ──
     context.chat_data["partner_entry_msg_id"] = sent.message_id
     log.info("🔄 Partner entry sent: msg=%s", sent.message_id)
+
+    # ══════════════════════════════════════════════════
+    #  Service menu reply keyboard ফিরিয়ে আনো
+    # ══════════════════════════════════════════════════
+    try:
+        kb_msg = await update.effective_message.reply_text(
+            "👇 Services Menu:",
+            reply_markup=service_menu_keyboard(),
+        )
+        log.info("🔄 Restored service menu keyboard: msg=%s", kb_msg.message_id)
+    except Exception as e:
+        log.warning("🔄 Failed to restore service menu keyboard: %s", e)
 
     return WAITING_ACTION
 
