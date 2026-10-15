@@ -38,10 +38,7 @@ logger = logging.getLogger(__name__)
 #  AUTO-DELETE HELPERS  (chat_data ব্যবহার — user_data নয়)
 # ═══════════════════════════════════════════════════════════════════
 async def _send_replacing(update, ctx, key: str, text: str, **kwargs):
-    """
-    আগের মেসেজ (একই key) ডিলিট করে নতুন পাঠায়।
-    chat_data ব্যবহার করা হচ্ছে — কারণ user_data cancel/back-এ clear হয়।
-    """
+    """আগের মেসেজ ডিলিট করে নতুন পাঠায়।"""
     prev = ctx.chat_data.get(key)
     logger.info("🔄 _send_replacing key=%s prev=%s chat=%s",
                 key, prev, update.effective_chat.id)
@@ -834,7 +831,7 @@ async def deposit_txn_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  SERVICES LIST  (auto-delete with chat_data)
+#  SERVICES LIST  (auto-delete with chat_data + Partner Shop)
 # ═══════════════════════════════════════════════════════════════════
 async def search_service_prompt(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -849,10 +846,11 @@ async def search_service_prompt(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def services_list(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     logger.info("🔄 services_list called")
 
-    # New Order মেসেজ থাকলে ডিলিট
+    # New Order + Partner Shop ডিলিট
     await _delete_menu_msg(update, ctx, "new_order_msg_id")
+    await _delete_menu_msg(update, ctx, "partner_entry_msg_id")
 
-    # আগের Services List ডিলিট করে নতুন পাঠাও
+    # Services List replace
     await _send_replacing(
         update, ctx, "services_list_msg_id",
         "📊 <b>Services List</b>\n\nকোন সার্ভিস দেখতে চাও?",
@@ -864,8 +862,9 @@ async def services_list(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def services_list_smm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     logger.info("🔄 services_list_smm called")
 
-    # Services List menu মেসেজ ডিলিট
+    # Services List + Partner Shop ডিলিট
     await _delete_menu_msg(update, ctx, "services_list_msg_id")
+    await _delete_menu_msg(update, ctx, "partner_entry_msg_id")
 
     cats = await db.get_categories()
     if not cats:
@@ -885,8 +884,9 @@ async def services_list_smm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def services_list_telegram(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     logger.info("🔄 services_list_telegram called")
 
-    # Services List menu মেসেজ ডিলিট
+    # Services List + Partner Shop ডিলিট
     await _delete_menu_msg(update, ctx, "services_list_msg_id")
+    await _delete_menu_msg(update, ctx, "partner_entry_msg_id")
 
     from handlers.topup import topup_start_telegram
     await topup_start_telegram(update, ctx)
@@ -1165,15 +1165,16 @@ async def service_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  NEW ORDER FLOW
+#  NEW ORDER FLOW  (auto-delete + Partner Shop)
 # ═══════════════════════════════════════════════════════════════════
 async def new_order(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     logger.info("🔄 new_order called")
 
-    # Services List ডিলিট
+    # Services List + Partner Shop ডিলিট
     await _delete_menu_msg(update, ctx, "services_list_msg_id")
+    await _delete_menu_msg(update, ctx, "partner_entry_msg_id")
 
-    # আগের New Order ডিলিট করে নতুন পাঠাও
+    # New Order replace
     await _send_replacing(
         update, ctx, "new_order_msg_id",
         "🛒 <b>New Order</b>\n\nকোন ধরনের অর্ডার দিতে চাও?",
@@ -2048,7 +2049,7 @@ async def global_force_join_check(update: Update, ctx: ContextTypes.DEFAULT_TYPE
     if not_joined:
         text = (
             "📢 <b>প্রথমে আমাদের channel(s)-এ জয়েন করো!</b>\n\n"
-            "জয়েন করার পর নিচের ✅ বাটনে চাপ দাও।"
+            "জয়েন করার পর নিচের ✅ বাটনে ক্লিক করো।"
         )
         if update.message:
             await update.message.reply_text(
