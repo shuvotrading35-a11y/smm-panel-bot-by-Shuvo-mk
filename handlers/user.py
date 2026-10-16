@@ -122,7 +122,6 @@ _SUBCAT_RULES = {
         (r'\bcomments?\b',                   "💬 Comments"),
         (r'\blive\b',                        "📡 Live"),
     ],
-    # 🔥 Free Fire এর জন্য নতুন রুল যোগ করা হলো
     "freefire": [
         (r'\bdiamond\b',                     "💎 Diamonds"),
         (r'\buc\b',                          "🪙 UC"),
@@ -157,10 +156,9 @@ def _detect_platform(services: list[dict]) -> str | None:
         return None
     for s in services[:5]:
         name = (s.get("name") or "").lower()
-        # 🔥 Free Fire এবং TikTok ডিটেক্ট করার জন্য خاص লজিক
-        if "freefire" in name or "free fire" in name:
+        if "free fire" in name or "freefire" in name or "free_fire" in name:
             return "freefire"
-        if "tiktok" in name or "tik tok" in name:
+        if "tiktok" in name or "tik tok" in name or "tik_tok" in name:
             return "tiktok"
         for plat in _SUBCAT_RULES.keys():
             if plat in name:
@@ -874,7 +872,7 @@ PLATFORM_LABELS = {
     "telegram":  "✈️ TELEGRAM",
     "twitter":   "𝕏 TWITTER",
     "spotify":   "🎧 SPOTIFY",
-    "freefire":  "🎮 FREE FIRE",
+    "freefire":  "🔥 FREE FIRE",
 }
 
 
@@ -925,10 +923,24 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         platform = data[9:]
         ctx.user_data["current_platform"] = platform
         all_cats = await db.get_categories(api_source=api_src)
-        filtered = [c for c in all_cats if platform in c.lower()]
-        if not filtered:
-            filtered = all_cats
         
+        def get_platform_name(cat: str) -> str:
+            cl = cat.lower()
+            if "free fire" in cl or "freefire" in cl or "free_fire" in cl: return "freefire"
+            if "tik tok" in cl or "tiktok" in cl or "tik_tok" in cl: return "tiktok"
+            for p in ["facebook", "instagram", "youtube", "telegram", "twitter", "spotify"]:
+                if p in cl: return p
+            return "other"
+
+        filtered = [c for c in all_cats if get_platform_name(c) == platform]
+        
+        if not filtered:
+            filtered = [c for c in all_cats if platform in c.lower()]
+            
+        if not filtered:
+            await query.answer("⚠️ এই ক্যাটাগরিতে এখনো কোনো সার্ভিস নেই।", show_alert=True)
+            return
+            
         if len(filtered) == 1:
             await _show_category_services(query, ctx, filtered[0], api_src)
             return
@@ -1246,10 +1258,24 @@ async def order_platform_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
         platform = data[9:]
         ctx.user_data["order_platform"] = platform
         all_cats = await db.get_categories(api_source=api_src)
-        filtered = [c for c in all_cats if platform in c.lower()]
-        if not filtered:
-            filtered = all_cats
         
+        def get_platform_name(cat: str) -> str:
+            cl = cat.lower()
+            if "free fire" in cl or "freefire" in cl or "free_fire" in cl: return "freefire"
+            if "tik tok" in cl or "tiktok" in cl or "tik_tok" in cl: return "tiktok"
+            for p in ["facebook", "instagram", "youtube", "telegram", "twitter", "spotify"]:
+                if p in cl: return p
+            return "other"
+
+        filtered = [c for c in all_cats if get_platform_name(c) == platform]
+        
+        if not filtered:
+            filtered = [c for c in all_cats if platform in c.lower()]
+            
+        if not filtered:
+            await query.answer("⚠️ এই ক্যাটাগরিতে এখনো কোনো সার্ভিস নেই।", show_alert=True)
+            return ORDER_PLATFORM
+            
         if len(filtered) == 1:
             category = filtered[0]
             ctx.user_data["order_category"] = category
