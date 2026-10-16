@@ -7,11 +7,11 @@ from telegram import ReplyKeyboardMarkup, KeyboardButton
 def service_menu_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup([
         [{"text": "🌐 ꜱᴍᴍ ꜱᴇʀᴠɪᴄᴇ (1)", "style": "danger"},
-         {"text": "🌐 ꜱᴍᴍ ꜱᴇʀᴠɪᴄᴇ (2)", "style": "success"}],
+         {"text": "🌐 ꜱᴍᴍ ꜱᴇʀᴠɪᴄᴇ (2)", "style": "primary"}],
         [{"text": "🎮 ᴛᴏᴘ ᴜᴘ ꜱᴇʀᴠɪᴄᴇ", "style": "danger"}],
         [{"text": "✈️ ᴛᴇʟᴇɢʀᴀᴍ ꜱᴇʀᴠɪᴄᴇ", "style": "primary"}],
         [{"text": "🛍 ᴘᴀʀᴛɴᴇʀ ꜱʜᴏᴘ", "style": "success"}],
-        [{"text": "🔙 ʙᴀᴄᴋ", "style": "success"}],
+        [{"text": "🔙 ʙᴀᴄᴋ", "style": "danger"}],
     ], resize_keyboard=True, input_field_placeholder="📊 BY SHUVO......")
 
 
@@ -21,11 +21,11 @@ def service_menu_keyboard() -> ReplyKeyboardMarkup:
 def order_menu_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup([
         [{"text": "🌐 ꜱᴍᴍ ᴏʀᴅᴇʀ (1)", "style": "danger"},
-         {"text": "🌐 ꜱᴍᴍ ᴏʀᴅᴇʀ (2)", "style": "success"}],
+         {"text": "🌐 ꜱᴍᴍ ᴏʀᴅᴇʀ (2)", "style": "primary"}],
         [{"text": "🎮 ᴛᴏᴘ ᴜᴘ ᴏʀᴅᴇʀ", "style": "danger"}],
         [{"text": "✈️ ᴛᴇʟᴇɢʀᴀᴍ ᴏʀᴅᴇʀ", "style": "primary"}],
         [{"text": "🛍 ᴘᴀʀᴛɴᴇʀ ᴏʀᴅᴇʀ", "style": "success"}],
-        [{"text": "🔙 ʙᴀᴄᴋ", "style": "success"}],
+        [{"text": "🔙 ʙᴀᴄᴋ", "style": "danger"}],
     ], resize_keyboard=True, input_field_placeholder="🛒 BY SHUVO......")
 
 
@@ -35,7 +35,7 @@ def order_menu_keyboard() -> ReplyKeyboardMarkup:
 def main_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup([
         # Row 1
-        [{"text": "📊 ꜱᴇʀᴠɪᴄᴇꜱ ʟɪꜱᴛ", "style": "success"}],
+        [{"text": "📊 ꜱᴇʀᴠɪᴄᴇꜱ ʟɪꜱᴛ", "style": "primary"}],
         # Row 2
         [{"text": "🛒 ɴᴇᴡ ᴏʀᴅᴇʀ", "style": "success"},
          {"text": "📦 ᴍʏ ᴏʀᴅᴇʀꜱ", "style": "danger"}],
