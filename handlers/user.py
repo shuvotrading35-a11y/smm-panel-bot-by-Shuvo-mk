@@ -28,7 +28,6 @@ from config import CATEGORY_ICONS, MAX_ORDERS_PER_DAY
 
 logger = logging.getLogger(__name__)
 
-# ── Conversation states ───────────────────────────────────────────
 (
     ORDER_PLATFORM, ORDER_CATEGORY, ORDER_SERVICE, ORDER_LINK, ORDER_QUANTITY,
     ORDER_CONFIRM, REDEEM_INPUT, TICKET_SUBJECT, TICKET_MESSAGE,
@@ -886,10 +885,9 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         platform = ctx.user_data.get("current_platform", "")
         all_cats = await db.get_categories(api_source=api_src)
         filtered = [c for c in all_cats if platform in c.lower()] if platform else all_cats
-        if not filtered:
-            filtered = all_cats
         
-        if len(filtered) <= 1:
+        # 🔥 FIX: ফলব্যাক লজিক সরিয়ে দেওয়া হয়েছে। সরাসরি মেইন মেনুতে যাবে।
+        if not filtered or len(filtered) <= 1:
             cats   = await db.get_categories(api_source=api_src)
             upd_ch = await db.get_setting("updates_channel", "")
             await query.edit_message_text(
@@ -928,15 +926,13 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             cl = cat.lower()
             if "free fire" in cl or "freefire" in cl or "free_fire" in cl: return "freefire"
             if "tik tok" in cl or "tiktok" in cl or "tik_tok" in cl: return "tiktok"
-            for p in ["facebook", "instagram", "youtube", "telegram", "twitter", "spotify"]:
+            for p in ["facebook", "instagram", "youtube", "telegram", "twitter", "spotify", "website"]:
                 if p in cl: return p
             return "other"
 
         filtered = [c for c in all_cats if get_platform_name(c) == platform]
         
-        if not filtered:
-            filtered = [c for c in all_cats if platform in c.lower()]
-            
+        # 🔥 FIX: ফলব্যাক লজিক সরিয়ে দেওয়া হয়েছে
         if not filtered:
             await query.answer("⚠️ এই ক্যাটাগরিতে এখনো কোনো সার্ভিস নেই।", show_alert=True)
             return
@@ -1263,15 +1259,13 @@ async def order_platform_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
             cl = cat.lower()
             if "free fire" in cl or "freefire" in cl or "free_fire" in cl: return "freefire"
             if "tik tok" in cl or "tiktok" in cl or "tik_tok" in cl: return "tiktok"
-            for p in ["facebook", "instagram", "youtube", "telegram", "twitter", "spotify"]:
+            for p in ["facebook", "instagram", "youtube", "telegram", "twitter", "spotify", "website"]:
                 if p in cl: return p
             return "other"
 
         filtered = [c for c in all_cats if get_platform_name(c) == platform]
         
-        if not filtered:
-            filtered = [c for c in all_cats if platform in c.lower()]
-            
+        # 🔥 FIX: ফলব্যাক লজিক সরিয়ে দেওয়া হয়েছে
         if not filtered:
             await query.answer("⚠️ এই ক্যাটাগরিতে এখনো কোনো সার্ভিস নেই।", show_alert=True)
             return ORDER_PLATFORM
