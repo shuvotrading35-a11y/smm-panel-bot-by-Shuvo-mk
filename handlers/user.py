@@ -11,6 +11,7 @@ from config import (ADMIN_IDS, BOT_NAME, DEVELOPER, DAILY_BONUS_AMOUNT,
                     REFERRAL_REWARD, VIP_PLANS, COIN_RATE, BOT_USERNAME)
 from keyboards.reply import main_keyboard, cancel_keyboard, back_keyboard, service_menu_keyboard, order_menu_keyboard
 from keyboards.inline import (
+    StyledButton,
     leaderboard_kb, wallet_kb, account_kb, vip_plans_kb,
     categories_kb, platform_categories_kb, order_categories_kb, services_kb, service_detail_kb, force_join_kb,
     coin_packages_kb, pkg_payment_kb,
@@ -1014,12 +1015,12 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
         rows = []
         for label, items in sorted(grouped.items(), key=lambda x: -len(x[1])):
-            rows.append([InlineKeyboardButton(
+            rows.append([StyledButton(
                 text=f"{label} ({len(items)})",
                 callback_data=f"subcat:{label}",
                 style="success",
             )])
-        rows.append([InlineKeyboardButton(
+        rows.append([StyledButton(
             text="🔙 Back",
             callback_data="cat_back",
             style="danger",
@@ -1124,12 +1125,12 @@ async def _show_category_services(query, ctx, category: str, api_source: str = N
 
         rows = []
         for label, items in sorted(grouped.items(), key=lambda x: -len(x[1])):
-            rows.append([InlineKeyboardButton(
+            rows.append([StyledButton(
                 text=f"{label} ({len(items)})",
                 callback_data=f"subcat:{label}",
                 style="success",
             )])
-        rows.append([InlineKeyboardButton(
+        rows.append([StyledButton(
             text="◀ Back",
             callback_data="cat_back",
             style="danger",
@@ -1181,12 +1182,12 @@ async def service_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if grouped and platform:
             rows = []
             for label, items in sorted(grouped.items(), key=lambda x: -len(x[1])):
-                rows.append([InlineKeyboardButton(
+                rows.append([StyledButton(
                     text=f"{label} ({len(items)})",
                     callback_data=f"subcat:{label}",
                     style="success",
                 )])
-            rows.append([InlineKeyboardButton(
+            rows.append([StyledButton(
                 text="🔙 Back",
                 callback_data="cat_back",
                 style="danger",
