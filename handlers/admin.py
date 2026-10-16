@@ -13,6 +13,7 @@ from keyboards.inline import (
 )
 from utils.helpers import fmt_coins, fmt_date, broadcast_message
 from api.smm_api import smm_api
+from api.csb_api import csb_api
 from api.flashtopup_api import get_balance as ft_get_balance
 
 logger = logging.getLogger(__name__)
@@ -421,17 +422,21 @@ async def api_manager(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         return
 
-    # SMM Panel API status
-    ok, msg = await smm_api.test_connection()
-    smm_status = "✅ Connected" if ok else "❌ Not Connected"
+    # SMM Panel API 1 status
+    ok1, msg1 = await smm_api.test_connection()
+    smm1_status = "✅ Connected" if ok1 else "❌ Not Connected"
+
+    # CSB SMM API 2 status
+    ok2, msg2 = await csb_api.test_connection()
+    smm2_status = "✅ Connected" if ok2 else "❌ Not Connected"
 
     # FlashTopup API balance
     ft_result  = await ft_get_balance()
     ft_data    = ft_result.get("data") or {}
     if ft_result.get("success") and ft_data:
-        ft_balance = ft_data.get("balance", "N/A")
+        ft_balance  = ft_data.get("balance", "N/A")
         ft_currency = ft_data.get("currency", "")
-        ft_status  = f"✅ {ft_balance} {ft_currency}"
+        ft_status   = f"✅ {ft_balance} {ft_currency}"
     else:
         err = (ft_result.get("error") or {})
         ft_status = f"❌ {err.get('message', 'Error')}"
@@ -439,9 +444,12 @@ async def api_manager(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     text = (
         f"⚙️ <b>API Manager</b>\n"
         f"{'─'*28}\n"
-        f"📊 <b>SMM Panel API</b>\n"
-        f"Status: {smm_status}\n"
-        f"Info: <code>{msg}</code>\n\n"
+        f"1️⃣ <b>SMM Panel API</b>\n"
+        f"Status: {smm1_status}\n"
+        f"Info: <code>{msg1}</code>\n\n"
+        f"2️⃣ <b>CSB SMM API</b>\n"
+        f"Status: {smm2_status}\n"
+        f"Info: <code>{msg2}</code>\n\n"
         f"✈️ <b>FlashTopup API</b>\n"
         f"Balance: {ft_status}\n\n"
         f"Use /syncservices to sync all services.\n"
@@ -453,16 +461,33 @@ async def api_manager(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def sync_services(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         return
-    await update.message.reply_text("🔄 Syncing services from API...")
-    services = await smm_api.get_services()
-    if not services:
-        await update.message.reply_text("❌ No services received. Check API config.")
+    await update.message.reply_text("🔄 Syncing services from both APIs...")
+
+    # ── API 1 (SMM Panel) ─────────────────────────────────────────
+    services1 = await smm_api.get_services()
+    count1 = 0
+    if services1:
+        await db.upsert_services(services1, api_source="smm1")
+        count1 = len(services1)
+
+    # ── API 2 (CSB SMM) ───────────────────────────────────────────
+    services2 = await csb_api.get_services()
+    count2 = 0
+    if services2:
+        await db.upsert_services(services2, api_source="smm2")
+        count2 = len(services2)
+
+    if count1 == 0 and count2 == 0:
+        await update.message.reply_text("❌ No services received from either API. Check config.")
         return
-    await db.upsert_services(services)
+
     cats = await db.get_categories()
     await update.message.reply_text(
-        f"✅ <b>Synced {len(services)} services!</b>\n"
-        f"📂 Categories: <code>{len(cats)}</code>",
+        f"✅ <b>Sync Complete!</b>\n"
+        f"{'─'*24}\n"
+        f"1️⃣ SMM Panel API: <code>{count1}</code> services\n"
+        f"2️⃣ CSB SMM API:   <code>{count2}</code> services\n\n"
+        f"📂 Total Categories: <code>{len(cats)}</code>",
         parse_mode=ParseMode.HTML
     )
 
@@ -470,9 +495,11 @@ async def sync_services(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def test_api(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         return
-    ok, msg = await smm_api.test_connection()
+    ok1, msg1 = await smm_api.test_connection()
+    ok2, msg2 = await csb_api.test_connection()
     await update.message.reply_text(
-        f"{'✅' if ok else '❌'} API Test: <code>{msg}</code>",
+        f"1️⃣ SMM Panel API: {'✅' if ok1 else '❌'} <code>{msg1}</code>\n"
+        f"2️⃣ CSB SMM API:   {'✅' if ok2 else '❌'} <code>{msg2}</code>",
         parse_mode=ParseMode.HTML
     )
 
