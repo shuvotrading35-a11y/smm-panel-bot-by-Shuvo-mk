@@ -809,13 +809,20 @@ async def upsert_services(services: list[dict], api_source: str = "smm1"):
             )
         await db.commit()
 
-async def get_categories() -> list[str]:
+async def get_categories(api_source: str = None) -> list[str]:
     async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute(
-            "SELECT DISTINCT category FROM services_cache ORDER BY category"
-        ) as cur:
-            rows = await cur.fetchall()
-            return [r[0] for r in rows]
+        if api_source:
+            async with db.execute(
+                "SELECT DISTINCT category FROM services_cache WHERE api_source=? ORDER BY category",
+                (api_source,)
+            ) as cur:
+                rows = await cur.fetchall()
+        else:
+            async with db.execute(
+                "SELECT DISTINCT category FROM services_cache ORDER BY category"
+            ) as cur:
+                rows = await cur.fetchall()
+        return [r[0] for r in rows]
 
 async def get_services_by_category(category: str) -> list[dict]:
     async with aiosqlite.connect(DB_PATH) as db:
