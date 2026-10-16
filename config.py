@@ -16,9 +16,13 @@ ADMIN_IDS: list[int] = [int(x.strip()) for x in _raw.split(",") if x.strip().isd
 # ── Maintenance Mode ─────────────────────────────────
 MAINTENANCE_MODE = os.getenv("MAINTENANCE_MODE", "false").strip().lower() in ("1", "true", "yes", "on")
 
-# ── SMM API ──────────────────────────────────────────
+# ── SMM API (Provider 1) ─────────────────────────────
 SMM_API_URL = os.getenv("SMM_API_URL", "")
 SMM_API_KEY = os.getenv("SMM_API_KEY", "")
+
+# ── CSB SMM API (Provider 2) ─────────────────────────
+CSB_API_URL = os.getenv("CSB_API_URL", "https://csbservice.top/api/v2.php")
+CSB_API_KEY = os.getenv("CSB_API_KEY", "")
 
 # ── FlashTopup API (Game Topup) ───────────────────────
 FLASHTOPUP_API_ID  = os.getenv("FLASHTOPUP_API_ID", "")
