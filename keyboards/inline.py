@@ -214,33 +214,40 @@ def categories_kb(categories: list[str], icons: dict, updates_channel: str = "")
     return InlineKeyboardMarkup(rows)
 
 
-# 🔥 এই ফাংশনটিই পরিবর্তন করা হয়েছে (২ কলামের জন্য)
 def platform_categories_kb(platform: str, categories: list[str], icons: dict) -> InlineKeyboardMarkup:
+    # এই লিস্টে থাকা ক্যাটাগরিগুলো "Other" এ দেখানো হবে না (কারণ এগুলো আগের মেনুতেই আছে)
+    MAIN_PLATFORMS = [
+        "facebook", "telegram", "tiktok", "instagram", 
+        "youtube", "twitter", "spotify", "website"
+    ]
+    
     rows = []
-    current_row = []  # বাটনগুলো জমা করার জন্য খালি লিস্ট
+    current_row = []  # ২ কলামে সাজানোর জন্য অস্থায়ী রো
     
     for idx, cat in enumerate(categories):
+        # মেইন প্ল্যাটফর্মগুলো বাদ দেওয়া হচ্ছে
+        if any(mp in cat.lower() for mp in MAIN_PLATFORMS):
+            continue
+            
         icon = next((v for k, v in icons.items() if k.lower() in cat.lower()), "🔹")
         
         # বাটনটি current_row-তে যোগ করুন
         current_row.append(StyledButton(
             f"{icon}  {cat.upper()}",
             style="success",
-            callback_data=f"catidx:{idx}"
+            callback_data=f"catidx:{idx}" # ⚠️ এখানে মূল ইনডেক্স (idx) ঠিক রাখা হয়েছে
         ))
         
-        # যখন current_row-তে ২টি বাটন হয়ে যাবে, তখন সেটি মেইন rows-এ যোগ করুন
+        # ২টি বাটন হলে সেটি মেইন rows-এ যোগ করুন
         if len(current_row) == 2:
             rows.append(current_row)
-            current_row = []  # রো খালি করুন
+            current_row = [] 
             
-    # যদি লিস্টে বিজোড় সংখ্যক (odd) ক্যাটাগরি থাকে, শেষের ১টি বাটন আলাদা রো-তে যাবে
+    # বিজোড় সংখ্যক ক্যাটাগরি থাকলে শেষেরটি যোগ করুন
     if current_row:
         rows.append(current_row)
         
-    # সবার নিচে Back বাটন
     rows.append([StyledButton("◀ Back", style="danger", callback_data="platform_back")])
-    
     return InlineKeyboardMarkup(rows)
 
 
