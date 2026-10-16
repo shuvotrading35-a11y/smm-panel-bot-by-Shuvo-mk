@@ -225,11 +225,23 @@ def platform_categories_kb(platform: str, categories: list[str], icons: dict) ->
     current_row = [] 
     
     for idx, cat in enumerate(categories):
-        # 🔥 এখানেই মূল ফিক্স: ফিল্টারটি শুধু "other" প্ল্যাটফর্মের জন্য কাজ করবে
-        if platform.lower() == "other" and any(mp in cat.lower() for mp in MAIN_PLATFORMS):
+        cat_lower = cat.lower()
+        platform_lower = platform.lower()
+        
+        # 🔥 ফিক্স ১: যদি ক্যাটাগরির নাম বর্তমান প্ল্যাটফর্মের নামের সাথে মিলে যায়, তবে বাদ দিন
+        # (যেমন: FACEBOOK প্ল্যাটফর্মে আছেন, তাই FACEBOOK নামে ক্যাটাগরি বাদ যাবে)
+        if cat_lower == platform_lower:
             continue
             
-        icon = next((v for k, v in icons.items() if k.lower() in cat.lower()), "🔹")
+        # 🔥 ফিক্স ২: "Other" প্ল্যাটফর্মে থাকলে মেইন প্ল্যাটফর্মগুলো বাদ দিন
+        if platform_lower == "other" and any(mp in cat_lower for mp in MAIN_PLATFORMS):
+            continue
+            
+        # 🔥 ফিক্স ৩: "Other" নামে কোনো ক্যাটাগরি যেন সাব-মেনুতে না আসে
+        if cat_lower == "other":
+            continue
+            
+        icon = next((v for k, v in icons.items() if k.lower() in cat_lower), "🔹")
         
         current_row.append(StyledButton(
             f"{icon}  {cat.upper()}",
