@@ -215,35 +215,32 @@ def categories_kb(categories: list[str], icons: dict, updates_channel: str = "")
 
 
 def platform_categories_kb(platform: str, categories: list[str], icons: dict) -> InlineKeyboardMarkup:
-    # এই লিস্টে থাকা ক্যাটাগরিগুলো "Other" এ দেখানো হবে না (কারণ এগুলো আগের মেনুতেই আছে)
+    # মেইন প্ল্যাটফর্মগুলোর লিস্ট
     MAIN_PLATFORMS = [
         "facebook", "telegram", "tiktok", "instagram", 
         "youtube", "twitter", "spotify", "website"
     ]
     
     rows = []
-    current_row = []  # ২ কলামে সাজানোর জন্য অস্থায়ী রো
+    current_row = [] 
     
     for idx, cat in enumerate(categories):
-        # মেইন প্ল্যাটফর্মগুলো বাদ দেওয়া হচ্ছে
-        if any(mp in cat.lower() for mp in MAIN_PLATFORMS):
+        # 🔥 এখানেই মূল ফিক্স: ফিল্টারটি শুধু "other" প্ল্যাটফর্মের জন্য কাজ করবে
+        if platform.lower() == "other" and any(mp in cat.lower() for mp in MAIN_PLATFORMS):
             continue
             
         icon = next((v for k, v in icons.items() if k.lower() in cat.lower()), "🔹")
         
-        # বাটনটি current_row-তে যোগ করুন
         current_row.append(StyledButton(
             f"{icon}  {cat.upper()}",
             style="success",
-            callback_data=f"catidx:{idx}" # ⚠️ এখানে মূল ইনডেক্স (idx) ঠিক রাখা হয়েছে
+            callback_data=f"catidx:{idx}"
         ))
         
-        # ২টি বাটন হলে সেটি মেইন rows-এ যোগ করুন
         if len(current_row) == 2:
             rows.append(current_row)
             current_row = [] 
             
-    # বিজোড় সংখ্যক ক্যাটাগরি থাকলে শেষেরটি যোগ করুন
     if current_row:
         rows.append(current_row)
         
@@ -259,7 +256,6 @@ def services_kb(services: list[dict], category: str, page: int = 0) -> InlineKey
     page_svcs = services[start:end]
     total_pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
 
-    # Service emoji map by keyword
     EMOJI_MAP = {
         "view":     "👁️",  "views":    "👁️",
         "follow":   "👥",  "member":   "👥",  "members":  "👥",
@@ -294,7 +290,6 @@ def services_kb(services: list[dict], category: str, page: int = 0) -> InlineKey
             callback_data=f"svc:{svc['service_id']}"
         )])
 
-    # Pagination row
     if total_pages > 1:
         nav = []
         if page > 0:
