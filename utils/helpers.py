@@ -21,10 +21,6 @@ import logging
 _fj_logger = logging.getLogger("force_join")
 
 async def check_force_join(bot: Bot, user_id: int, channels: list[dict]) -> list[dict]:
-    """Return list of channels the user has NOT joined.
-    Fail-open: if the bot can't check (not admin / wrong ID / etc.),
-    skip that channel instead of blocking the user.
-    """
     not_joined = []
     for ch in channels:
         try:
@@ -32,39 +28,32 @@ async def check_force_join(bot: Bot, user_id: int, channels: list[dict]) -> list
             if member.status in ("left", "kicked"):
                 not_joined.append(ch)
         except TelegramError as e:
-            # Log the real reason so admin can fix it (wrong channel_id,
-            # bot not added as admin, channel deleted, etc.)
-            _fj_logger.warning(
-                f"Force-join check failed for channel {ch.get('channel_id')}: {e}"
-            )
-            # Fail-open — don't block the user just because the check itself failed
+            _fj_logger.warning(f"Force-join check failed for channel {ch.get('channel_id')}: {e}")
             continue
     return not_joined
 
 # ── Formatters ────────────────────────────────────────────────────
-# Conversion rates
-COIN_TO_BDT = 1.0      # 1 coin = ৳1
-BDT_TO_USD  = 1/135    # 1 BDT  = $0.0074
+# 🔥 রেট সেটিং: ১ কয়েন = ১ টাকা, ১ ডলার = ১৩৫ টাকা
+COIN_TO_BDT = 1.0      
+USD_TO_BDT  = 135.0    # আপনি চাইলে এখানে রেট পরিবর্তন করতে পারেন (যেমন 120 বা 135)
 
 def fmt_coins(amount: float) -> str:
-    """Just the number — for calculations/internal use."""
     return f"{amount:,.2f}"
 
 def fmt_coins_full(amount: float) -> str:
-    """Coins + BDT + USD — for display to users."""
-    bdt = float(amount) * COIN_TO_BDT
-    usd = bdt * BDT_TO_USD
-    return f"{float(amount):,.2f} Coins (≈ ৳{bdt:.1f} / ${usd:.3f})"
+    """Coins + BDT + USD — সব একসাথে দেখাবে"""
+    try:
+        amount = float(amount)
+        bdt = amount * COIN_TO_BDT
+        usd = bdt / USD_TO_BDT
+        return f"{amount:,.2f} Coins (≈ ৳{bdt:,.1f} / ${usd:.3f})"
+    except (ValueError, TypeError):
+        return "0.00 Coins"
 
 def fmt_status(status: str) -> str:
     icons = {
-        "Pending":     "⏳",
-        "Processing":  "🔄",
-        "In progress": "⚙️",
-        "Completed":   "✅",
-        "Partial":     "⚠️",
-        "Cancelled":   "❌",
-        "Refunded":    "💸",
+        "Pending":     "⏳", "Processing":  "🔄", "In progress": "⚙️",
+        "Completed":   "✅", "Partial":     "⚠️", "Cancelled":   "❌", "Refunded":    "💸",
     }
     return f"{icons.get(status, '❓')} {status}"
 
@@ -114,5 +103,5 @@ async def broadcast_message(bot: Bot, user_ids: list[int],
             sent += 1
         except TelegramError:
             failed += 1
-        await asyncio.sleep(0.05)  # 20 msg/sec limit
+        await asyncio.sleep(0.05)
     return sent, failed
