@@ -37,57 +37,42 @@ logger = logging.getLogger(__name__)
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  AUTO-DELETE HELPERS  (chat_data ব্যবহার — user_data নয়)
+#  AUTO-DELETE HELPERS
 # ═══════════════════════════════════════════════════════════════════
 async def _send_replacing(update, ctx, key: str, text: str, **kwargs):
-    """আগের মেসেজ ডিলিট করে নতুন পাঠায়।"""
     prev = ctx.chat_data.get(key)
-    logger.info("🔄 _send_replacing key=%s prev=%s chat=%s",
-                key, prev, update.effective_chat.id)
-
     if prev:
         try:
-            await ctx.bot.delete_message(
-                chat_id=update.effective_chat.id,
-                message_id=prev,
-            )
-            logger.info("🔄 Deleted old msg %s", prev)
-        except Exception as e:
-            logger.info("🔄 Delete failed for msg %s: %s", prev, e)
+            await ctx.bot.delete_message(chat_id=update.effective_chat.id, message_id=prev)
+        except Exception:
+            pass
         ctx.chat_data.pop(key, None)
-
     sent = await update.effective_message.reply_text(text, **kwargs)
     ctx.chat_data[key] = sent.message_id
-    logger.info("🔄 Sent new msg %s", sent.message_id)
     return sent
 
 
 async def _delete_menu_msg(update, ctx, key: str):
-    """নির্দিষ্ট menu মেসেজ (chat_data-তে সেভ করা) ডিলিট করে।"""
     prev = ctx.chat_data.get(key)
     if prev:
         try:
             await ctx.bot.delete_message(update.effective_chat.id, prev)
-            logger.info("🔄 Deleted %s msg %s", key, prev)
-        except Exception as e:
-            logger.info("🔄 Delete %s failed: %s", key, e)
+        except Exception:
+            pass
         ctx.chat_data.pop(key, None)
 
 
 async def _restore_service_menu(update, ctx):
-    """Service menu reply keyboard ফিরিয়ে আনে।"""
     try:
         await update.effective_message.reply_text(
             "👇 Services Menu:",
             reply_markup=service_menu_keyboard(),
         )
-        logger.info("🔄 Restored service menu keyboard")
-    except Exception as e:
-        logger.warning("🔄 Failed to restore service menu keyboard: %s", e)
+    except Exception:
+        pass
 
 
 async def _schedule_delete(bot, chat_id: int, message_id: int, delay: int):
-    """নির্দিষ্ট সময় পরে মেসেজ ডিলিট করে।"""
     await asyncio.sleep(delay)
     try:
         await bot.delete_message(chat_id=chat_id, message_id=message_id)
@@ -233,9 +218,7 @@ async def check_shuvopay_invoice(invoice_id: str) -> str:
             )
             if resp.status_code == 200:
                 return resp.json().get("status", "pending")
-            logger.error(
-                f"ShuvoPay invoice check failed | status={resp.status_code} | body={resp.text[:500]}"
-            )
+            logger.error(f"ShuvoPay invoice check failed | status={resp.status_code}")
     except Exception as e:
         logger.error(f"ShuvoPay invoice check exception: {e!r}")
     return "pending"
@@ -258,14 +241,9 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         try:
             from telegram.helpers import escape_markdown
             total_users = await db.get_user_count()
-
             safe_name = escape_markdown(user.full_name or "Unknown", version=2)
-            username_text = (
-                f"@{escape_markdown(user.username, version=2)}"
-                if user.username else "No username"
-            )
+            username_text = f"@{escape_markdown(user.username, version=2)}" if user.username else "No username"
             referral_text = f"`{ref_id}`" if ref_id else "None"
-
             notification = (
                 "🆕 *NEW USER JOINED*\n"
                 "━━━━━━━━━━━━━━━━━━━━\n"
@@ -278,23 +256,16 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 "━━━━━━━━━━━━━━━━━━━━\n"
                 f"🤖 *{escape_markdown(BOT_NAME, version=2)}*"
             )
-
             for admin_id in ADMIN_IDS:
                 try:
                     await ctx.bot.send_message(
-                        chat_id=admin_id,
-                        text=notification,
-                        parse_mode="MarkdownV2",
-                        disable_web_page_preview=True,
+                        chat_id=admin_id, text=notification,
+                        parse_mode="MarkdownV2", disable_web_page_preview=True,
                     )
-                except Exception as admin_err:
-                    logger.warning(
-                        "Could not send new-user notification to admin %s: %s",
-                        admin_id,
-                        admin_err,
-                    )
-        except Exception as notify_err:
-            logger.warning("New-user notification failed: %s", notify_err)
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     channels = await db.get_force_channels()
     if channels and update.effective_user.id not in ADMIN_IDS:
@@ -306,23 +277,19 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 parse_mode=ParseMode.HTML
             )
             ctx.user_data["force_join_msg_id"] = sent.message_id
-            asyncio.create_task(_schedule_delete(
-                ctx.bot, user.id, sent.message_id, 300
-            ))
+            asyncio.create_task(_schedule_delete(ctx.bot, user.id, sent.message_id, 300))
             return
 
     udata = await db.get_user(user.id)
     if udata and udata["is_banned"]:
         await update.message.reply_text(
-            "🚫 <b>Access Denied</b>\n\n"
-            "You have been banned from using this bot.\n"
+            "🚫 <b>Access Denied</b>\n\nYou have been banned from using this bot.\n"
             f"Contact support: {DEVELOPER}",
             parse_mode=ParseMode.HTML
         )
         return
 
     first_name = user.first_name or "Friend"
-
     text = (
         f"━━━━━━━━━━━━━━━━━━━━━━\n"
         f"👋 Welcome, <b>{first_name}</b>!\n"
@@ -340,12 +307,7 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         f"👨‍💻 Developer: {DEVELOPER}\n"
         f"⚙️ Powered by <b>Shuvo SMM</b>"
     )
-
-    await update.message.reply_text(
-        text,
-        reply_markup=main_keyboard(),
-        parse_mode=ParseMode.HTML
-    )
+    await update.message.reply_text(text, reply_markup=main_keyboard(), parse_mode=ParseMode.HTML)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -367,13 +329,10 @@ async def force_join_check(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
     else:
         first_name = user.first_name or "Friend"
-
         await query.edit_message_text(
-            "✅ *Verification successful!*\n\n"
-            "You're all set — enjoy using the bot! 🎉",
+            "✅ *Verification successful!*\n\nYou're all set — enjoy using the bot! 🎉",
             parse_mode="Markdown"
         )
-
         welcome_text = (
             f"━━━━━━━━━━━━━━━━━━━━━━\n"
             f"👋 Welcome, *{first_name}*!\n"
@@ -387,13 +346,7 @@ async def force_join_check(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             f"┗ 💳 Fast & Easy Payments\n\n"
             f"👇 Use the menu below to get started!"
         )
-
-        await ctx.bot.send_message(
-            user.id,
-            welcome_text,
-            parse_mode="Markdown",
-            reply_markup=main_keyboard()
-        )
+        await ctx.bot.send_message(user.id, welcome_text, parse_mode="Markdown", reply_markup=main_keyboard())
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -463,10 +416,7 @@ async def account_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             return
         lines = ["💳 <b>Deposit History</b>\n"]
         for d in deps:
-            lines.append(
-                f"#{d['id']} | {d['method']} | {fmt_coins_full(d['amount'])} | "
-                f"{d['status']} | {fmt_date(d['created_at'])}"
-            )
+            lines.append(f"#{d['id']} | {d['method']} | {fmt_coins_full(d['amount'])} | {d['status']} | {fmt_date(d['created_at'])}")
         await query.edit_message_text("\n".join(lines), parse_mode=ParseMode.HTML)
 
     elif action == "acc_transactions":
@@ -477,10 +427,7 @@ async def account_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         lines = ["📤 <b>Transaction History</b>\n"]
         for t in txns:
             sign = "+" if t["type"] in ("credit", "deposit", "redeem", "daily", "referral") else "-"
-            lines.append(
-                f"{sign}{fmt_coins_full(t['amount'])} | {t['type'].title()} | "
-                f"{t.get('description','')} | {fmt_date(t['created_at'])}"
-            )
+            lines.append(f"{sign}{fmt_coins_full(t['amount'])} | {t['type'].title()} | {t.get('description','')} | {fmt_date(t['created_at'])}")
         await query.edit_message_text("\n".join(lines), parse_mode=ParseMode.HTML)
 
 
@@ -648,13 +595,11 @@ async def payment_method_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE
 
         if not invoice or "id" not in invoice:
             error_detail = invoice.get("error", "Unknown error") if invoice else "No response"
-
             await query.edit_message_text(
                 "❌ Payment gateway সংযোগ করা যায়নি।\n"
                 "অনুগ্রহ করে @shuvo_9882 এ যোগাযোগ করুন।",
                 parse_mode=ParseMode.HTML
             )
-
             user = query.from_user
             for admin_id in ADMIN_IDS:
                 try:
@@ -670,7 +615,6 @@ async def payment_method_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE
                     )
                 except Exception:
                     pass
-
             return DEPOSIT_METHOD
 
         invoice_id = invoice["id"]
@@ -726,7 +670,6 @@ async def payment_method_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE
 async def check_payment_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer("যাচাই করা হচ্ছে...")
-
     invoice_id = query.data.split(":")[1]
     status = await check_shuvopay_invoice(invoice_id)
 
@@ -734,9 +677,7 @@ async def check_payment_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
         user_id = update.effective_user.id
         amount  = ctx.user_data.get("deposit_amount", 0)
         coins   = ctx.user_data.get("deposit_coins", amount)
-
         await db.add_coins(user_id, float(coins), method="ShuvoPay (bKash)", txn_id=invoice_id)
-
         await query.edit_message_text(
             f"🎉 <b>পেমেন্ট সফল!</b>\n\n"
             f"✅ <b>{fmt_coins_full(float(coins))} Coins</b> তোমার account এ যোগ হয়েছে।\n\n"
@@ -744,7 +685,6 @@ async def check_payment_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
             parse_mode=ParseMode.HTML,
             reply_markup=None
         )
-
         udata = await db.get_user(user_id)
         for admin_id in ADMIN_IDS:
             try:
@@ -758,7 +698,6 @@ async def check_payment_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
                 )
             except Exception:
                 pass
-
         ctx.user_data.clear()
     else:
         price = ctx.user_data.get("deposit_price", "")
@@ -768,7 +707,6 @@ async def check_payment_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
         ], [
             InlineKeyboardButton("✅ আমি পেমেন্ট করেছি", callback_data=f"check_pay:{invoice_id}")
         ]])
-
         await query.edit_message_text(
             f"⏳ <b>পেমেন্ট এখনো confirm হয়নি।</b>\n\n"
             f"পেমেন্ট করে থাকলে কিছুক্ষণ অপেক্ষা করুন।\n"
@@ -834,9 +772,7 @@ async def deposit_txn_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     from keyboards.inline import deposit_approve_kb
     for admin_id in ADMIN_IDS:
         try:
-            await ctx.bot.send_message(admin_id, admin_msg,
-                                       reply_markup=deposit_approve_kb(dep_id),
-                                       parse_mode=ParseMode.HTML)
+            await ctx.bot.send_message(admin_id, admin_msg, reply_markup=deposit_approve_kb(dep_id), parse_mode=ParseMode.HTML)
         except Exception:
             pass
 
@@ -845,7 +781,7 @@ async def deposit_txn_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  SERVICES LIST  (auto-delete + Service menu restore)
+#  SERVICES LIST
 # ═══════════════════════════════════════════════════════════════════
 async def search_service_prompt(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -858,13 +794,8 @@ async def search_service_prompt(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def services_list(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    logger.info("🔄 services_list called")
-
-    # New Order + Partner Shop ডিলিট
     await _delete_menu_msg(update, ctx, "new_order_msg_id")
     await _delete_menu_msg(update, ctx, "partner_entry_msg_id")
-
-    # Services List replace
     await _send_replacing(
         update, ctx, "services_list_msg_id",
         "📊 <b>Services List</b>\n\nকোন সার্ভিস দেখতে চাও?",
@@ -874,22 +805,14 @@ async def services_list(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def services_list_smm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    logger.info("🔄 services_list_smm called")
-
     await _delete_menu_msg(update, ctx, "services_list_msg_id")
     await _delete_menu_msg(update, ctx, "partner_entry_msg_id")
-
     ctx.user_data["current_api_source"] = "smm1"
-
     cats = await db.get_categories(api_source="smm1")
     if not cats:
-        await update.message.reply_text(
-            "⚠️ No services synced yet.\n"
-            "Admin needs to sync services from the API panel."
-        )
+        await update.message.reply_text("⚠️ No services synced yet.\nAdmin needs to sync services from the API panel.")
         await _restore_service_menu(update, ctx)
         return
-
     upd_ch = await db.get_setting("updates_channel", "")
     await update.message.reply_text(
         "🛒 <b>Select Service Category:</b>\n\n"
@@ -901,22 +824,14 @@ async def services_list_smm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def services_list_smm2(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    logger.info("🔄 services_list_smm2 called")
-
     await _delete_menu_msg(update, ctx, "services_list_msg_id")
     await _delete_menu_msg(update, ctx, "partner_entry_msg_id")
-
     ctx.user_data["current_api_source"] = "smm2"
-
     cats = await db.get_categories(api_source="smm2")
     if not cats:
-        await update.message.reply_text(
-            "⚠️ CSB SMM services synced হয়নি।\n"
-            "Admin /syncservices দিয়ে sync করুন।"
-        )
+        await update.message.reply_text("⚠️ CSB SMM services synced হয়নি।\nAdmin /syncservices দিয়ে sync করুন।")
         await _restore_service_menu(update, ctx)
         return
-
     upd_ch = await db.get_setting("updates_channel", "")
     await update.message.reply_text(
         "🛒 <b>Select Service Category:</b>\n\n"
@@ -928,16 +843,10 @@ async def services_list_smm2(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def services_list_telegram(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    logger.info("🔄 services_list_telegram called")
-
-    # Services List + Partner Shop ডিলিট
     await _delete_menu_msg(update, ctx, "services_list_msg_id")
     await _delete_menu_msg(update, ctx, "partner_entry_msg_id")
-
     from handlers.topup import topup_start_telegram
     await topup_start_telegram(update, ctx)
-
-    # ── Service menu reply keyboard ফিরিয়ে আনো ──
     await _restore_service_menu(update, ctx)
 
 
@@ -960,7 +869,6 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     query    = update.callback_query
     await query.answer()
     data     = query.data
-
     api_src = ctx.user_data.get("current_api_source", "smm1")
 
     if data in ("cat_back", "svc_list_back"):
@@ -969,6 +877,19 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         filtered = [c for c in all_cats if platform in c.lower()] if platform else all_cats
         if not filtered:
             filtered = all_cats
+        
+        # 🔥 FIX: If there's only 1 category, Back goes to main platforms menu
+        if len(filtered) <= 1:
+            cats   = await db.get_categories(api_source=api_src)
+            upd_ch = await db.get_setting("updates_channel", "")
+            await query.edit_message_text(
+                "🛒 <b>Select Service Category:</b>\n\n"
+                "আপনি কোন ক্যাটাগরির সার্ভিস নিতে চান নিচে নির্বাচন করুন 👇",
+                reply_markup=categories_kb(cats, CATEGORY_ICONS, upd_ch),
+                parse_mode=ParseMode.HTML
+            )
+            return
+            
         label = PLATFORM_LABELS.get(platform, f"🔹 {platform.title()}")
         await query.edit_message_text(
             f"{label}\n\nChoose a category:",
@@ -995,6 +916,12 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         filtered = [c for c in all_cats if platform in c.lower()]
         if not filtered:
             filtered = all_cats
+        
+        # 🔥 FIX: If only one category matches, auto-redirect to its subcategories
+        if len(filtered) == 1:
+            await _show_category_services(query, ctx, filtered[0], api_src)
+            return
+            
         label = PLATFORM_LABELS.get(platform, f"🔹 {platform.title()}")
         await query.edit_message_text(
             f"{label}\n\nChoose a category:",
@@ -1015,16 +942,8 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
         rows = []
         for label, items in sorted(grouped.items(), key=lambda x: -len(x[1])):
-            rows.append([StyledButton(
-                text=f"{label} ({len(items)})",
-                callback_data=f"subcat:{label}",
-                style="success",
-            )])
-        rows.append([StyledButton(
-            text="🔙 Back",
-            callback_data="cat_back",
-            style="danger",
-        )])
+            rows.append([StyledButton(text=f"{label} ({len(items)})", callback_data=f"subcat:{label}", style="success")])
+        rows.append([StyledButton(text="🔙 Back", callback_data="cat_back", style="danger")])
 
         icon = category_icon(category)
         await query.edit_message_text(
@@ -1043,8 +962,7 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not platform:
             platform = _detect_platform(services) or ""
 
-        filtered = [s for s in services
-                    if _get_subcat(platform, s.get("name", "")) == label]
+        filtered = [s for s in services if _get_subcat(platform, s.get("name", "")) == label]
 
         if not filtered:
             await query.answer("এই সাব-ক্যাটাগরিতে কিছু নেই।", show_alert=True)
@@ -1081,7 +999,6 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
 
     if data.startswith("svc_page:"):
-        # format: svc_page:{category}:{page}
         parts    = data.split(":", 2)
         category = parts[1]
         page     = int(parts[2])
@@ -1125,16 +1042,8 @@ async def _show_category_services(query, ctx, category: str, api_source: str = N
 
         rows = []
         for label, items in sorted(grouped.items(), key=lambda x: -len(x[1])):
-            rows.append([StyledButton(
-                text=f"{label} ({len(items)})",
-                callback_data=f"subcat:{label}",
-                style="success",
-            )])
-        rows.append([StyledButton(
-            text="◀ Back",
-            callback_data="cat_back",
-            style="danger",
-        )])
+            rows.append([StyledButton(text=f"{label} ({len(items)})", callback_data=f"subcat:{label}", style="success")])
+        rows.append([StyledButton(text="◀ Back", callback_data="cat_back", style="danger")])
 
         icon = category_icon(category)
         await query.edit_message_text(
@@ -1182,16 +1091,8 @@ async def service_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if grouped and platform:
             rows = []
             for label, items in sorted(grouped.items(), key=lambda x: -len(x[1])):
-                rows.append([StyledButton(
-                    text=f"{label} ({len(items)})",
-                    callback_data=f"subcat:{label}",
-                    style="success",
-                )])
-            rows.append([StyledButton(
-                text="🔙 Back",
-                callback_data="cat_back",
-                style="danger",
-            )])
+                rows.append([StyledButton(text=f"{label} ({len(items)})", callback_data=f"subcat:{label}", style="success")])
+            rows.append([StyledButton(text="🔙 Back", callback_data="cat_back", style="danger")])
             icon = category_icon(category)
             await query.edit_message_text(
                 f"{icon} <b>{category}</b>\n\nকোন ধরনের সার্ভিস চান?",
@@ -1235,24 +1136,15 @@ async def service_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         text += f"\n📝 <i>{svc['description']}</i>"
 
     ctx.user_data["viewing_service"] = service_id
-    await query.edit_message_text(
-        text,
-        reply_markup=service_detail_kb(service_id),
-        parse_mode=ParseMode.HTML
-    )
+    await query.edit_message_text(text, reply_markup=service_detail_kb(service_id), parse_mode=ParseMode.HTML)
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  NEW ORDER FLOW  (auto-delete + Partner Shop)
+#  NEW ORDER FLOW
 # ═══════════════════════════════════════════════════════════════════
 async def new_order(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    logger.info("🔄 new_order called")
-
-    # Services List + Partner Shop ডিলিট
     await _delete_menu_msg(update, ctx, "services_list_msg_id")
     await _delete_menu_msg(update, ctx, "partner_entry_msg_id")
-
-    # New Order replace
     await _send_replacing(
         update, ctx, "new_order_msg_id",
         "🛒 <b>New Order</b>\n\nকোন ধরনের অর্ডার দিতে চাও?",
@@ -1282,10 +1174,7 @@ async def new_order_smm2(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ctx.user_data["current_api_source"] = "smm2"
     cats = await db.get_categories(api_source="smm2")
     if not cats:
-        await update.message.reply_text(
-            "⚠️ CSB SMM services নেই।\n"
-            "Admin /syncservices দিয়ে sync করুন।"
-        )
+        await update.message.reply_text("⚠️ CSB SMM services নেই।\nAdmin /syncservices দিয়ে sync করুন।")
         return ConversationHandler.END
     upd_ch = await db.get_setting("updates_channel", "")
     await update.message.reply_text(
@@ -1329,7 +1218,6 @@ async def order_platform_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
     query = update.callback_query
     await query.answer()
     data  = query.data
-
     api_src = ctx.user_data.get("current_api_source", "smm1")
 
     if data == "platform_back" or data == "order_platform_back":
@@ -1350,6 +1238,43 @@ async def order_platform_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
         filtered = [c for c in all_cats if platform in c.lower()]
         if not filtered:
             filtered = all_cats
+        
+        # 🔥 FIX for Order Flow: If only one category matches, auto-redirect to its subcategories
+        if len(filtered) == 1:
+            category = filtered[0]
+            ctx.user_data["order_category"] = category
+            services = await db.get_services_by_category(category, api_source=api_src)
+            if not services:
+                await query.answer("No services in this category.", show_alert=True)
+                return ORDER_PLATFORM
+            
+            platform_detected = _detect_platform(services) or platform
+            grouped = _group_services(services, platform_detected) if platform_detected else {}
+            
+            if platform_detected and _should_show_subcat(services, grouped):
+                ctx.user_data["current_grouped"] = grouped
+                ctx.user_data["sub_platform"] = platform_detected
+                
+                rows = []
+                for label, items in sorted(grouped.items(), key=lambda x: -len(x[1])):
+                    rows.append([StyledButton(text=f"{label} ({len(items)})", callback_data=f"subcat:{label}", style="success")])
+                rows.append([StyledButton(text="◀ Back", callback_data="platform_back", style="danger")])
+                
+                await query.edit_message_text(
+                    f"📦 <b>{category}</b>\n\nকোন ধরনের সার্ভিস চান?",
+                    reply_markup=InlineKeyboardMarkup(rows),
+                    parse_mode=ParseMode.HTML
+                )
+            else:
+                total_pages = max(1, (len(services) + 7) // 8)
+                await query.edit_message_text(
+                    f"📋 <b>Select Service:</b> (Page 1/{total_pages})\n\n"
+                    f"নিচের বাটন থেকে আপনার প্রয়োজনীয় সার্ভিসটি বেছে নিন 👇",
+                    reply_markup=services_kb(services, category),
+                    parse_mode=ParseMode.HTML
+                )
+            return ORDER_SERVICE
+            
         label = PLATFORM_LABELS.get(platform, f"🔹 {platform.title()}")
         await query.edit_message_text(
             f"{label}\n\nStep 2 — Choose a category:",
@@ -1383,6 +1308,45 @@ async def order_platform_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
             parse_mode=ParseMode.HTML
         )
         return ORDER_SERVICE
+
+    # 🔥 Add subcat handling for Order Flow
+    if data.startswith("subcat:"):
+        label    = data[7:]
+        category = ctx.user_data.get("order_category", "")
+        services = await db.get_services_by_category(category, api_source=api_src)
+        platform = ctx.user_data.get("sub_platform", "")
+        if not platform:
+            platform = _detect_platform(services) or ""
+        filtered = [s for s in services if _get_subcat(platform, s.get("name", "")) == label]
+        if not filtered:
+            await query.answer("এই সাব-ক্যাটাগরিতে কিছু নেই।", show_alert=True)
+            return ORDER_SERVICE
+        ctx.user_data["order_subcat"] = label
+        ctx.user_data["order_subcat_services"] = filtered
+        icon = category_icon(category)
+        await query.edit_message_text(
+            f"{icon} <b>{label}</b> — {len(filtered)}টি সার্ভিস\n\nChoose one:",
+            reply_markup=services_kb(filtered, f"{category}::{label}"),
+            parse_mode=ParseMode.HTML
+        )
+        return ORDER_SERVICE
+
+    if data == "sub_back":
+        category = ctx.user_data.get("order_category", "")
+        grouped  = ctx.user_data.get("current_grouped", {})
+        platform = ctx.user_data.get("sub_platform", "")
+        if grouped and platform:
+            rows = []
+            for label, items in sorted(grouped.items(), key=lambda x: -len(x[1])):
+                rows.append([StyledButton(text=f"{label} ({len(items)})", callback_data=f"subcat:{label}", style="success")])
+            rows.append([StyledButton(text="◀ Back", callback_data="platform_back", style="danger")])
+            icon = category_icon(category)
+            await query.edit_message_text(
+                f"{icon} <b>{category}</b>\n\nকোন ধরনের সার্ভিস চান?",
+                reply_markup=InlineKeyboardMarkup(rows),
+                parse_mode=ParseMode.HTML
+            )
+            return ORDER_SERVICE
 
     return ORDER_PLATFORM
 
@@ -1525,11 +1489,7 @@ async def order_quantity_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
         f"✅ Confirm order?"
     )
     service_id = ctx.user_data.get("order_service_id", "")
-    await update.message.reply_text(
-        text,
-        reply_markup=confirm_order_kb(service_id),
-        parse_mode=ParseMode.HTML
-    )
+    await update.message.reply_text(text, reply_markup=confirm_order_kb(service_id), parse_mode=ParseMode.HTML)
     return ORDER_CONFIRM
 
 
@@ -1546,9 +1506,7 @@ async def order_confirm_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
 
     today_orders = await db.user_orders_today(user_id)
     if today_orders >= MAX_ORDERS_PER_DAY:
-        await query.edit_message_text(
-            f"❌ Daily order limit ({MAX_ORDERS_PER_DAY}) reached. Try tomorrow."
-        )
+        await query.edit_message_text(f"❌ Daily order limit ({MAX_ORDERS_PER_DAY}) reached. Try tomorrow.")
         ctx.user_data.clear()
         return ConversationHandler.END
 
@@ -1581,7 +1539,6 @@ async def order_confirm_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
         ctx.user_data.clear()
         return ConversationHandler.END
 
-    # ── Route to correct API based on service source ──────────────
     svc_data   = await db.get_service(service_id)
     api_source = (svc_data or {}).get("api_source", "smm1")
     chosen_api = csb_api if api_source == "smm2" else smm_api
@@ -1604,7 +1561,6 @@ async def order_confirm_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
                 "❓ সমস্যা হলে যোগাযোগ: @shuvo_9882",
                 parse_mode=ParseMode.HTML
             )
-            from config import ADMIN_IDS
             for admin_id in ADMIN_IDS:
                 try:
                     await ctx.bot.send_message(
@@ -1621,10 +1577,7 @@ async def order_confirm_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
                 except Exception:
                     pass
         else:
-            await query.edit_message_text(
-                "⚠️ Order টি process হচ্ছে।\n"
-                "সমস্যা হলে যোগাযোগ করো: @shuvo_9882"
-            )
+            await query.edit_message_text("⚠️ Order টি process হচ্ছে।\nসমস্যা হলে যোগাযোগ করো: @shuvo_9882")
         ctx.user_data.clear()
         return ConversationHandler.END
 
@@ -1654,8 +1607,7 @@ async def order_confirm_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
         f"📊 Status: <code>{api_status}</code>\n\n"
         f"Use 🔎 <b>Order Tracker</b> to check status.",
         parse_mode=ParseMode.HTML,
-        reply_markup=order_actions_kb(order_id, api_order_id or "",
-                                       bool(svc.get("refill")), bool(svc.get("cancel")))
+        reply_markup=order_actions_kb(order_id, api_order_id or "", bool(svc.get("refill")), bool(svc.get("cancel")))
     )
     await query.message.reply_text("👇 Menu:", reply_markup=main_keyboard())
     ctx.user_data.clear()
@@ -1669,10 +1621,7 @@ async def my_orders(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     orders  = await db.get_user_orders(user_id, 10)
     if not orders:
-        await update.message.reply_text(
-            "📦 No orders yet.\n\nUse 🛒 <b>New Order</b> to place one!",
-            parse_mode=ParseMode.HTML
-        )
+        await update.message.reply_text("📦 No orders yet.\n\nUse 🛒 <b>New Order</b> to place one!", parse_mode=ParseMode.HTML)
         return
 
     for o in orders:
@@ -1691,19 +1640,11 @@ async def my_orders(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             f"📅 {fmt_date(o['created_at'])}\n"
         )
 
-        buttons = [[
-            InlineKeyboardButton("🔄 Refresh", callback_data=f"orefresh:{o['id']}"),
-        ]]
+        buttons = [[InlineKeyboardButton("🔄 Refresh", callback_data=f"orefresh:{o['id']}")]]
         if o.get("refill"):
-            buttons[0].append(
-                InlineKeyboardButton("♻️ Refill", callback_data=f"orefill:{o['id']}")
-            )
+            buttons[0].append(InlineKeyboardButton("♻️ Refill", callback_data=f"orefill:{o['id']}"))
 
-        await update.message.reply_text(
-            text,
-            parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup(buttons)
-        )
+        await update.message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(buttons))
 
 
 async def order_refresh_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -1719,11 +1660,7 @@ async def order_refresh_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
     _api = csb_api if _src == "smm2" else smm_api
     result = await _api.order_status(order["api_order_id"])
     if "status" in result:
-        await db.update_order_status(
-            order_id, result["status"],
-            int(result.get("start_count", 0)),
-            int(result.get("remains", 0))
-        )
+        await db.update_order_status(order_id, result["status"], int(result.get("start_count", 0)), int(result.get("remains", 0)))
         await query.edit_message_text(
             f"📦 <b>Order #{order_id} Updated</b>\n"
             f"📊 Status: <code>{result['status']}</code>\n"
@@ -1767,7 +1704,6 @@ async def order_cancel_api_callback(update: Update, ctx: ContextTypes.DEFAULT_TY
     result = await _api.cancel_order(order["api_order_id"])
     if "cancel" in result or result.get("status") == "1":
         await db.update_order_status(order_id, "Cancelled")
-
         charge   = float(order.get("charge", 0))
         quantity = int(order.get("quantity", 1))
         remains  = int(order.get("remains", 0))
@@ -1775,20 +1711,12 @@ async def order_cancel_api_callback(update: Update, ctx: ContextTypes.DEFAULT_TY
             refund = round(charge * (remains / quantity), 2)
         else:
             refund = charge
-
         if refund > 0:
-            await db.add_balance(
-                order["user_id"], refund,
-                f"Refund: Order #{order_id} cancelled"
-            )
+            await db.add_balance(order["user_id"], refund, f"Refund: Order #{order_id} cancelled")
             refund_text = f"\n💰 Refunded: <b>{refund:.2f} Coins</b>"
         else:
             refund_text = ""
-
-        await query.edit_message_text(
-            f"❌ <b>Order #{order_id} Cancelled</b>{refund_text}",
-            parse_mode=ParseMode.HTML
-        )
+        await query.edit_message_text(f"❌ <b>Order #{order_id} Cancelled</b>{refund_text}", parse_mode=ParseMode.HTML)
     else:
         await query.answer(f"Error: {result.get('error','Unknown')}", show_alert=True)
 
@@ -1797,11 +1725,7 @@ async def order_cancel_api_callback(update: Update, ctx: ContextTypes.DEFAULT_TY
 #  ORDER TRACKER
 # ═══════════════════════════════════════════════════════════════════
 async def order_tracker(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "🔎 <b>Order Tracker</b>\n\nEnter your Order ID:",
-        parse_mode=ParseMode.HTML,
-        reply_markup=cancel_keyboard()
-    )
+    await update.message.reply_text("🔎 <b>Order Tracker</b>\n\nEnter your Order ID:", parse_mode=ParseMode.HTML, reply_markup=cancel_keyboard())
     return TRACKER_INPUT
 
 
@@ -1824,11 +1748,7 @@ async def tracker_input_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         _api = csb_api if _src == "smm2" else smm_api
         result = await _api.order_status(order["api_order_id"])
         if "status" in result:
-            await db.update_order_status(
-                order_id, result["status"],
-                int(result.get("start_count", 0)),
-                int(result.get("remains", 0))
-            )
+            await db.update_order_status(order_id, result["status"], int(result.get("start_count", 0)), int(result.get("remains", 0)))
             order = await db.get_order(order_id)
 
     text = (
@@ -1855,11 +1775,7 @@ async def daily_bonus(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     ok, msg = await db.claim_daily(user_id, DAILY_BONUS_AMOUNT)
     if ok:
-        await update.message.reply_text(
-            f"🎁 <b>Daily Bonus Claimed!</b>\n\n{msg}\n\n"
-            f"Come back tomorrow for another bonus!",
-            parse_mode=ParseMode.HTML
-        )
+        await update.message.reply_text(f"🎁 <b>Daily Bonus Claimed!</b>\n\n{msg}\n\nCome back tomorrow for another bonus!", parse_mode=ParseMode.HTML)
     else:
         await update.message.reply_text(f"🎯 <b>Daily Bonus</b>\n\n{msg}", parse_mode=ParseMode.HTML)
 
@@ -1868,11 +1784,7 @@ async def daily_bonus(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 #  REDEEM CODE
 # ═══════════════════════════════════════════════════════════════════
 async def redeem_code(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "🎁 <b>Redeem Code</b>\n\nEnter your redeem code:",
-        parse_mode=ParseMode.HTML,
-        reply_markup=cancel_keyboard()
-    )
+    await update.message.reply_text("🎁 <b>Redeem Code</b>\n\nEnter your redeem code:", parse_mode=ParseMode.HTML, reply_markup=cancel_keyboard())
     return REDEEM_INPUT
 
 
@@ -1880,11 +1792,7 @@ async def redeem_input_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     code    = update.message.text.strip()
     user_id = update.effective_user.id
     ok, msg, amount = await db.use_redeem_code(user_id, code)
-    await update.message.reply_text(
-        f"🎁 <b>Redeem Result</b>\n\n{msg}",
-        parse_mode=ParseMode.HTML,
-        reply_markup=main_keyboard()
-    )
+    await update.message.reply_text(f"🎁 <b>Redeem Result</b>\n\n{msg}", parse_mode=ParseMode.HTML, reply_markup=main_keyboard())
     return ConversationHandler.END
 
 
@@ -1910,11 +1818,7 @@ async def referral(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 #  LEADERBOARD
 # ═══════════════════════════════════════════════════════════════════
 async def leaderboard(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "🏆 <b>Leaderboard</b>\n\nChoose a category:",
-        reply_markup=leaderboard_kb(),
-        parse_mode=ParseMode.HTML
-    )
+    await update.message.reply_text("🏆 <b>Leaderboard</b>\n\nChoose a category:", reply_markup=leaderboard_kb(), parse_mode=ParseMode.HTML)
 
 
 async def leaderboard_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -2046,10 +1950,7 @@ async def support(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 async def ticket_subject_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ctx.user_data["ticket_subject"] = update.message.text.strip()
-    await update.message.reply_text(
-        "📝 Now describe your issue in detail:",
-        reply_markup=cancel_keyboard()
-    )
+    await update.message.reply_text("📝 Now describe your issue in detail:", reply_markup=cancel_keyboard())
     return TICKET_MESSAGE
 
 
@@ -2081,11 +1982,7 @@ async def ticket_message_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
     from keyboards.inline import ticket_reply_kb
     for admin_id in ADMIN_IDS:
         try:
-            await ctx.bot.send_message(
-                admin_id, admin_msg,
-                reply_markup=ticket_reply_kb(ticket_id, user_id),
-                parse_mode=ParseMode.HTML
-            )
+            await ctx.bot.send_message(admin_id, admin_msg, reply_markup=ticket_reply_kb(ticket_id, user_id), parse_mode=ParseMode.HTML)
         except Exception:
             pass
 
@@ -2099,9 +1996,7 @@ async def ticket_message_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
 async def updates_channel(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     channel = await db.get_setting("updates_channel", "")
     if channel:
-        kb = InlineKeyboardMarkup([[
-            InlineKeyboardButton("📢 Join Updates Channel", url=channel)
-        ]])
+        kb = InlineKeyboardMarkup([[InlineKeyboardButton("📢 Join Updates Channel", url=channel)]])
         await update.message.reply_text(
             "📢 <b>Updates Channel</b>\n\n"
             "নিচের বাটনে ক্লিক করে আমাদের Updates Channel-এ জয়েন করো:",
@@ -2117,18 +2012,12 @@ async def updates_channel(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 # ═══════════════════════════════════════════════════════════════════
 async def back_to_main(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ctx.user_data.clear()
-    await update.message.reply_text(
-        "🏠 Main Menu",
-        reply_markup=main_keyboard()
-    )
+    await update.message.reply_text("🏠 Main Menu", reply_markup=main_keyboard())
 
 
 async def cancel_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ctx.user_data.clear()
-    await update.message.reply_text(
-        "❌ Cancelled.",
-        reply_markup=main_keyboard()
-    )
+    await update.message.reply_text("❌ Cancelled.", reply_markup=main_keyboard())
     return ConversationHandler.END
 
 
@@ -2173,14 +2062,8 @@ async def global_force_join_check(update: Update, ctx: ContextTypes.DEFAULT_TYPE
             "জয়েন করার পর নিচের ✅ বাটনে ক্লিক করো।"
         )
         if update.message:
-            await update.message.reply_text(
-                text, reply_markup=force_join_kb(not_joined), parse_mode=ParseMode.HTML
-            )
+            await update.message.reply_text(text, reply_markup=force_join_kb(not_joined), parse_mode=ParseMode.HTML)
         elif update.callback_query:
-            await update.callback_query.answer(
-                "⚠️ প্রথমে channel(s)-এ জয়েন করো!", show_alert=True
-            )
-            await update.callback_query.message.reply_text(
-                text, reply_markup=force_join_kb(not_joined), parse_mode=ParseMode.HTML
-            )
+            await update.callback_query.answer("⚠️ প্রথমে channel(s)-এ জয়েন করো!", show_alert=True)
+            await update.callback_query.message.reply_text(text, reply_markup=force_join_kb(not_joined), parse_mode=ParseMode.HTML)
         raise ApplicationHandlerStop
