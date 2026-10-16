@@ -875,11 +875,10 @@ async def services_list(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def services_list_smm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     logger.info("🔄 services_list_smm called")
 
-    # Services List + Partner Shop ডিলিট
     await _delete_menu_msg(update, ctx, "services_list_msg_id")
     await _delete_menu_msg(update, ctx, "partner_entry_msg_id")
 
-    cats = await db.get_categories()
+    cats = await db.get_categories(api_source="smm1")
     if not cats:
         await update.message.reply_text(
             "⚠️ No services synced yet.\n"
@@ -890,12 +889,34 @@ async def services_list_smm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     upd_ch = await db.get_setting("updates_channel", "")
     await update.message.reply_text(
-        "🌐 <b>SMM Services</b>\n\nChoose a platform:",
+        "🌐 <b>SMM Service (1)</b>\n\nChoose a platform:",
         reply_markup=categories_kb(cats, CATEGORY_ICONS, upd_ch),
         parse_mode=ParseMode.HTML
     )
+    await _restore_service_menu(update, ctx)
 
-    # ── Service menu reply keyboard ফিরিয়ে আনো ──
+
+async def services_list_smm2(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    logger.info("🔄 services_list_smm2 called")
+
+    await _delete_menu_msg(update, ctx, "services_list_msg_id")
+    await _delete_menu_msg(update, ctx, "partner_entry_msg_id")
+
+    cats = await db.get_categories(api_source="smm2")
+    if not cats:
+        await update.message.reply_text(
+            "⚠️ CSB SMM services synced হয়নি।\n"
+            "Admin /syncservices দিয়ে sync করুন।"
+        )
+        await _restore_service_menu(update, ctx)
+        return
+
+    upd_ch = await db.get_setting("updates_channel", "")
+    await update.message.reply_text(
+        "🌐 <b>SMM Service (2)</b>\n\nChoose a platform:",
+        reply_markup=categories_kb(cats, CATEGORY_ICONS, upd_ch),
+        parse_mode=ParseMode.HTML
+    )
     await _restore_service_menu(update, ctx)
 
 
@@ -1206,13 +1227,30 @@ async def new_order(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def new_order_smm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    cats = await db.get_categories()
+    cats = await db.get_categories(api_source="smm1")
     if not cats:
         await update.message.reply_text("⚠️ No services available. Try again later.")
         return ConversationHandler.END
     upd_ch = await db.get_setting("updates_channel", "")
     await update.message.reply_text(
-        "🌐 <b>SMM Order</b>\n\nStep 1 — Choose a platform:",
+        "🌐 <b>SMM Order (1)</b>\n\nStep 1 — Choose a platform:",
+        reply_markup=categories_kb(cats, CATEGORY_ICONS, upd_ch),
+        parse_mode=ParseMode.HTML
+    )
+    return ORDER_PLATFORM
+
+
+async def new_order_smm2(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    cats = await db.get_categories(api_source="smm2")
+    if not cats:
+        await update.message.reply_text(
+            "⚠️ CSB SMM services নেই।\n"
+            "Admin /syncservices দিয়ে sync করুন।"
+        )
+        return ConversationHandler.END
+    upd_ch = await db.get_setting("updates_channel", "")
+    await update.message.reply_text(
+        "🌐 <b>SMM Order (2)</b>\n\nStep 1 — Choose a platform:",
         reply_markup=categories_kb(cats, CATEGORY_ICONS, upd_ch),
         parse_mode=ParseMode.HTML
     )
