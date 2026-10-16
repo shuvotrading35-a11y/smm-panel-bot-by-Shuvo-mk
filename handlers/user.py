@@ -878,6 +878,8 @@ async def services_list_smm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await _delete_menu_msg(update, ctx, "services_list_msg_id")
     await _delete_menu_msg(update, ctx, "partner_entry_msg_id")
 
+    ctx.user_data["current_api_source"] = "smm1"
+
     cats = await db.get_categories(api_source="smm1")
     if not cats:
         await update.message.reply_text(
@@ -902,6 +904,8 @@ async def services_list_smm2(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     await _delete_menu_msg(update, ctx, "services_list_msg_id")
     await _delete_menu_msg(update, ctx, "partner_entry_msg_id")
+
+    ctx.user_data["current_api_source"] = "smm2"
 
     cats = await db.get_categories(api_source="smm2")
     if not cats:
@@ -956,9 +960,11 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     data     = query.data
 
+    api_src = ctx.user_data.get("current_api_source", "smm1")
+
     if data in ("cat_back", "svc_list_back"):
         platform = ctx.user_data.get("current_platform", "")
-        all_cats = await db.get_categories()
+        all_cats = await db.get_categories(api_source=api_src)
         filtered = [c for c in all_cats if platform in c.lower()] if platform else all_cats
         if not filtered:
             filtered = all_cats
@@ -971,7 +977,7 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "platform_back":
-        cats   = await db.get_categories()
+        cats   = await db.get_categories(api_source=api_src)
         upd_ch = await db.get_setting("updates_channel", "")
         await query.edit_message_text(
             "🛒 <b>Select Service Category:</b>\n\n"
@@ -984,7 +990,7 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if data.startswith("platform:"):
         platform = data[9:]
         ctx.user_data["current_platform"] = platform
-        all_cats = await db.get_categories()
+        all_cats = await db.get_categories(api_source=api_src)
         filtered = [c for c in all_cats if platform in c.lower()]
         if not filtered:
             filtered = all_cats
@@ -1055,9 +1061,9 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
 
     if data.startswith("catidx:"):
-        idx = int(data[7:])
+        idx      = int(data[7:])
         platform = ctx.user_data.get("current_platform", "")
-        all_cats = await db.get_categories()
+        all_cats = await db.get_categories(api_source=api_src)
         filtered = [c for c in all_cats if platform in c.lower()] if platform else all_cats
         if not filtered:
             filtered = all_cats
@@ -1065,12 +1071,12 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await query.answer("Category not found.", show_alert=True)
             return
         category = filtered[idx]
-        await _show_category_services(query, ctx, category)
+        await _show_category_services(query, ctx, category, api_src)
         return
 
     if data.startswith("cat:"):
         category = data[4:]
-        await _show_category_services(query, ctx, category)
+        await _show_category_services(query, ctx, category, api_src)
         return
 
     if data.startswith("svc_page:"):
@@ -1078,7 +1084,7 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         parts    = data.split(":", 2)
         category = parts[1]
         page     = int(parts[2])
-        services = await db.get_services_by_category(category)
+        services = await db.get_services_by_category(category, api_source=api_src)
         if not services:
             await query.answer("No services found.", show_alert=True)
             return
@@ -1096,13 +1102,15 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
 
 
-async def _show_category_services(query, ctx, category: str):
-    services = await db.get_services_by_category(category)
+async def _show_category_services(query, ctx, category: str, api_source: str = None):
+    src      = api_source or ctx.user_data.get("current_api_source", "smm1")
+    services = await db.get_services_by_category(category, api_source=src)
     if not services:
         await query.answer("No services in this category.", show_alert=True)
         return
 
-    ctx.user_data["current_category"] = category
+    ctx.user_data["current_category"]   = category
+    ctx.user_data["current_api_source"] = src
     ctx.user_data.pop("current_subcat", None)
     ctx.user_data.pop("current_subcat_services", None)
 
@@ -1122,7 +1130,7 @@ async def _show_category_services(query, ctx, category: str):
                 style="success",
             )])
         rows.append([InlineKeyboardButton(
-            text="🔙 Back",
+            text="◀ Back",
             callback_data="cat_back",
             style="danger",
         )])
@@ -1254,13 +1262,15 @@ async def new_order(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def new_order_smm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    ctx.user_data["current_api_source"] = "smm1"
     cats = await db.get_categories(api_source="smm1")
     if not cats:
         await update.message.reply_text("⚠️ No services available. Try again later.")
         return ConversationHandler.END
     upd_ch = await db.get_setting("updates_channel", "")
     await update.message.reply_text(
-        "🌐 <b>SMM Order (1)</b>\n\nStep 1 — Choose a platform:",
+        "🛒 <b>Select Service Category:</b>\n\n"
+        "আপনি কোন ক্যাটাগরির সার্ভিস নিতে চান নিচে নির্বাচন করুন 👇",
         reply_markup=categories_kb(cats, CATEGORY_ICONS, upd_ch),
         parse_mode=ParseMode.HTML
     )
@@ -1268,6 +1278,7 @@ async def new_order_smm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def new_order_smm2(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    ctx.user_data["current_api_source"] = "smm2"
     cats = await db.get_categories(api_source="smm2")
     if not cats:
         await update.message.reply_text(
@@ -1277,7 +1288,8 @@ async def new_order_smm2(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
     upd_ch = await db.get_setting("updates_channel", "")
     await update.message.reply_text(
-        "🌐 <b>SMM Order (2)</b>\n\nStep 1 — Choose a platform:",
+        "🛒 <b>Select Service Category:</b>\n\n"
+        "আপনি কোন ক্যাটাগরির সার্ভিস নিতে চান নিচে নির্বাচন করুন 👇",
         reply_markup=categories_kb(cats, CATEGORY_ICONS, upd_ch),
         parse_mode=ParseMode.HTML
     )
@@ -1317,11 +1329,14 @@ async def order_platform_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
     await query.answer()
     data  = query.data
 
+    api_src = ctx.user_data.get("current_api_source", "smm1")
+
     if data == "platform_back" or data == "order_platform_back":
-        cats   = await db.get_categories()
+        cats   = await db.get_categories(api_source=api_src)
         upd_ch = await db.get_setting("updates_channel", "")
         await query.edit_message_text(
-            "🛒 <b>New Order</b>\n\nStep 1 — Choose a platform:",
+            "🛒 <b>Select Service Category:</b>\n\n"
+            "আপনি কোন ক্যাটাগরির সার্ভিস নিতে চান নিচে নির্বাচন করুন 👇",
             reply_markup=categories_kb(cats, CATEGORY_ICONS, upd_ch),
             parse_mode=ParseMode.HTML
         )
@@ -1330,7 +1345,7 @@ async def order_platform_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
     if data.startswith("platform:"):
         platform = data[9:]
         ctx.user_data["order_platform"] = platform
-        all_cats = await db.get_categories()
+        all_cats = await db.get_categories(api_source=api_src)
         filtered = [c for c in all_cats if platform in c.lower()]
         if not filtered:
             filtered = all_cats
@@ -1345,7 +1360,7 @@ async def order_platform_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
     if data.startswith("catidx:"):
         idx      = int(data[7:])
         platform = ctx.user_data.get("order_platform", "")
-        all_cats = await db.get_categories()
+        all_cats = await db.get_categories(api_source=api_src)
         filtered = [c for c in all_cats if platform in c.lower()] if platform else all_cats
         if not filtered:
             filtered = all_cats
@@ -1354,13 +1369,15 @@ async def order_platform_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
             return ORDER_PLATFORM
         category = filtered[idx]
         ctx.user_data["order_category"] = category
-        services = await db.get_services_by_category(category)
+        services = await db.get_services_by_category(category, api_source=api_src)
         if not services:
             await query.answer("No services in this category.", show_alert=True)
             return ORDER_PLATFORM
+        total_pages = max(1, (len(services) + 7) // 8)
         icon = category_icon(category)
         await query.edit_message_text(
-            f"{icon} <b>{category}</b>\n\nStep 3 — Choose a service:",
+            f"📋 <b>Select Service:</b> (Page 1/{total_pages})\n\n"
+            f"নিচের বাটন থেকে আপনার প্রয়োজনীয় সার্ভিসটি বেছে নিন 👇",
             reply_markup=services_kb(services, category),
             parse_mode=ParseMode.HTML
         )
@@ -1372,16 +1389,19 @@ async def order_platform_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
 async def order_category_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     query    = update.callback_query
     await query.answer()
+    api_src  = ctx.user_data.get("current_api_source", "smm1")
     category = query.data[4:]
-    services = await db.get_services_by_category(category)
+    services = await db.get_services_by_category(category, api_source=api_src)
     if not services:
         await query.answer("No services.", show_alert=True)
         return ORDER_CATEGORY
 
     ctx.user_data["order_category"] = category
+    total_pages = max(1, (len(services) + 7) // 8)
     icon = category_icon(category)
     await query.edit_message_text(
-        f"{icon} <b>{category}</b>\n\nStep 3 — Choose a service:",
+        f"📋 <b>Select Service:</b> (Page 1/{total_pages})\n\n"
+        f"নিচের বাটন থেকে আপনার প্রয়োজনীয় সার্ভিসটি বেছে নিন 👇",
         reply_markup=services_kb(services, category),
         parse_mode=ParseMode.HTML
     )
