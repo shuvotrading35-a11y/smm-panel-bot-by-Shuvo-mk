@@ -167,9 +167,10 @@ def force_join_kb(channels: list[dict]) -> InlineKeyboardMarkup:
 
 
 def categories_kb(categories: list[str], icons: dict, updates_channel: str = "") -> InlineKeyboardMarkup:
+    # 🔥 Website বাদ দেওয়া হলো, TikTok এবং Free Fire যোগ করা হলো
     PLATFORM_ORDER = [
-        "facebook", "telegram", "tiktok", "instagram",
-        "youtube", "twitter", "spotify", "website",
+        "facebook", "instagram", "tiktok", "youtube", 
+        "telegram", "twitter", "spotify", "freefire"
     ]
     PLATFORM_LABELS = {
         "facebook":  "📘 FACEBOOK",
@@ -179,11 +180,16 @@ def categories_kb(categories: list[str], icons: dict, updates_channel: str = "")
         "telegram":  "✈️ TELEGRAM",
         "twitter":   "𝕏 TWITTER",
         "spotify":   "🎧 SPOTIFY",
-        "website":   "🌐 WEBSITE",
+        "freefire":  "🎮 FREE FIRE",
     }
 
     def get_platform(cat: str) -> str:
         cl = cat.lower()
+        # Free Fire এবং TikTok কে সঠিকভাবে ডিটেক্ট করা
+        if "freefire" in cl or "free fire" in cl:
+            return "freefire"
+        if "tiktok" in cl or "tik tok" in cl:
+            return "tiktok"
         for p in PLATFORM_ORDER:
             if p in cl:
                 return p
@@ -215,6 +221,12 @@ def categories_kb(categories: list[str], icons: dict, updates_channel: str = "")
 
 
 def platform_categories_kb(platform: str, categories: list[str], icons: dict) -> InlineKeyboardMarkup:
+    # 🔥 Website বাদ, TikTok এবং Free Fire যোগ করা হলো
+    MAIN_PLATFORMS = [
+        "facebook", "telegram", "tiktok", "instagram", 
+        "youtube", "twitter", "spotify", "freefire"
+    ]
+    
     rows = []
     current_row = [] 
     
@@ -223,11 +235,9 @@ def platform_categories_kb(platform: str, categories: list[str], icons: dict) ->
         platform_lower = platform.lower()
         
         # "Other" প্ল্যাটফর্মে থাকলে মেইন প্ল্যাটফর্মগুলো বাদ দিন
-        if platform_lower == "other":
-            MAIN_PLATFORMS = ["facebook", "telegram", "tiktok", "instagram", "youtube", "twitter", "spotify", "website"]
-            if any(mp in cat_lower for mp in MAIN_PLATFORMS):
-                continue
-                
+        if platform_lower == "other" and any(mp in cat_lower for mp in MAIN_PLATFORMS):
+            continue
+            
         # "Other" নামে কোনো ক্যাটাগরি সাব-মেনুতে আসা বন্ধ করুন
         if cat_lower == "other":
             continue
