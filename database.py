@@ -47,6 +47,7 @@ async def init_db():
             status          TEXT    DEFAULT 'Pending',
             start_count     INTEGER DEFAULT 0,
             remains         INTEGER DEFAULT 0,
+            api_source      TEXT    DEFAULT 'smm1',
             created_at      TEXT    DEFAULT (datetime('now')),
             updated_at      TEXT    DEFAULT (datetime('now')),
             FOREIGN KEY (user_id) REFERENCES users(user_id)
@@ -163,8 +164,12 @@ async def init_db():
             refill          INTEGER DEFAULT 0,
             cancel          INTEGER DEFAULT 0,
             description     TEXT,
+            api_source      TEXT    DEFAULT 'smm1',
             synced_at       TEXT    DEFAULT (datetime('now'))
         );
+        -- Migration: add api_source if upgrading from older schema
+        CREATE TABLE IF NOT EXISTS _migration_guard (id INTEGER PRIMARY KEY);
+
 
         -- ── Partner API (Instant Delivery: LINK / COUPON / READY_ACCOUNT) ──
         CREATE TABLE IF NOT EXISTS partner_orders (
@@ -221,6 +226,18 @@ async def init_db():
         CREATE INDEX IF NOT EXISTS idx_price_slug       ON partner_price_history(product_slug);
         """)
         await db.commit()
+
+    # ── Migration: add new columns to existing DBs ────────────────
+    async with aiosqlite.connect(DB_PATH) as db:
+        for stmt in [
+            "ALTER TABLE services_cache ADD COLUMN api_source TEXT DEFAULT 'smm1'",
+            "ALTER TABLE orders ADD COLUMN api_source TEXT DEFAULT 'smm1'",
+        ]:
+            try:
+                await db.execute(stmt)
+                await db.commit()
+            except Exception:
+                pass  # Column already exists — safe to ignore
 
 # ─────────────────────────────────────────────────────────────────
 #  USERS
@@ -341,12 +358,12 @@ async def unban_user(user_id: int):
 # ─────────────────────────────────────────────────────────────────
 async def create_order(user_id: int, service_id: str, service_name: str,
                        category: str, link: str, quantity: int, charge: float,
-                       api_order_id: str = None) -> int:
+                       api_order_id: str = None, api_source: str = "smm1") -> int:
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute(
             """INSERT INTO orders (user_id, api_order_id, service_id, service_name,
-               category, link, quantity, charge) VALUES (?,?,?,?,?,?,?,?)""",
-            (user_id, api_order_id, service_id, service_name, category, link, quantity, charge)
+               category, link, quantity, charge, api_source) VALUES (?,?,?,?,?,?,?,?,?)""",
+            (user_id, api_order_id, service_id, service_name, category, link, quantity, charge, api_source)
         )
         await db.execute("UPDATE users SET total_orders = total_orders + 1 WHERE user_id=?", (user_id,))
         await db.commit()
@@ -769,14 +786,14 @@ async def get_vip_count() -> int:
 # ─────────────────────────────────────────────────────────────────
 #  SERVICES CACHE
 # ─────────────────────────────────────────────────────────────────
-async def upsert_services(services: list[dict]):
+async def upsert_services(services: list[dict], api_source: str = "smm1"):
     async with aiosqlite.connect(DB_PATH) as db:
         for s in services:
             await db.execute(
                 """INSERT OR REPLACE INTO services_cache
                    (service_id, name, category, rate, min_order, max_order,
-                    refill, cancel, description, synced_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,datetime('now'))""",
+                    refill, cancel, description, api_source, synced_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,datetime('now'))""",
                 (
                     str(s.get("service", "")),
                     s.get("name", ""),
@@ -787,6 +804,7 @@ async def upsert_services(services: list[dict]):
                     1 if s.get("refill") else 0,
                     1 if s.get("cancel") else 0,
                     s.get("description", ""),
+                    api_source,
                 )
             )
         await db.commit()
