@@ -168,18 +168,18 @@ def force_join_kb(channels: list[dict]) -> InlineKeyboardMarkup:
 
 def categories_kb(categories: list[str], icons: dict, updates_channel: str = "") -> InlineKeyboardMarkup:
     PLATFORM_ORDER = [
-        "facebook", "instagram", "tiktok", "youtube",
-        "telegram", "twitter", "spotify", "website",
+        "facebook", "telegram", "tiktok", "instagram",
+        "youtube", "twitter", "spotify", "website",
     ]
     PLATFORM_LABELS = {
-        "facebook":  "📘 Facebook",
-        "instagram": "📱 Instagram",
-        "tiktok":    "🎵 TikTok",
-        "youtube":   "📺 YouTube",
-        "telegram":  "✈️ Telegram",
-        "twitter":   "🐦 Twitter / X",
-        "spotify":   "🎧 Spotify",
-        "website":   "🌐 Website",
+        "facebook":  "📘 FACEBOOK",
+        "instagram": "📸 INSTAGRAM",
+        "tiktok":    "🎵 TIK TOK",
+        "youtube":   "▶️ YOUTUBE",
+        "telegram":  "✈️ TELEGRAM",
+        "twitter":   "𝕏 TWITTER",
+        "spotify":   "🎧 SPOTIFY",
+        "website":   "🌐 WEBSITE",
     }
 
     def get_platform(cat: str) -> str:
@@ -204,7 +204,7 @@ def categories_kb(categories: list[str], icons: dict, updates_channel: str = "")
     for i in range(0, len(platforms_present), 2):
         row = []
         for p in platforms_present[i:i+2]:
-            label = PLATFORM_LABELS.get(p, f"🔹 {p.title()}")
+            label = PLATFORM_LABELS.get(p, f"🔹 {p.upper()}")
             row.append(StyledButton(label, style="success", callback_data=f"platform:{p}"))
         rows.append(row)
 
@@ -217,21 +217,74 @@ def categories_kb(categories: list[str], icons: dict, updates_channel: str = "")
 def platform_categories_kb(platform: str, categories: list[str], icons: dict) -> InlineKeyboardMarkup:
     rows = []
     for idx, cat in enumerate(categories):
-        icon = next((v for k, v in icons.items() if k.lower() in cat.lower()), "\U0001f539")
-        rows.append([StyledButton(f"{icon}  {cat}", style="success", callback_data=f"catidx:{idx}")])
-    rows.append([StyledButton("⬅️  Back", style="danger", callback_data="platform_back")])
+        icon = next((v for k, v in icons.items() if k.lower() in cat.lower()), "🔹")
+        rows.append([StyledButton(
+            f"{icon}  {cat.upper()}",
+            style="success",
+            callback_data=f"catidx:{idx}"
+        )])
+    rows.append([StyledButton("◀ Back", style="danger", callback_data="platform_back")])
     return InlineKeyboardMarkup(rows)
 
 
-def services_kb(services: list[dict], category: str) -> InlineKeyboardMarkup:
+def services_kb(services: list[dict], category: str, page: int = 0) -> InlineKeyboardMarkup:
+    PAGE_SIZE = 8
+    total     = len(services)
+    start     = page * PAGE_SIZE
+    end       = start + PAGE_SIZE
+    page_svcs = services[start:end]
+    total_pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
+
+    # Service emoji map by keyword
+    EMOJI_MAP = {
+        "view":     "👁️",  "views":    "👁️",
+        "follow":   "👥",  "member":   "👥",  "members":  "👥",
+        "like":     "❤️",  "likes":    "❤️",
+        "comment":  "💬",  "comments": "💬",
+        "share":    "🔁",  "shares":   "🔁",
+        "reaction": "💝",  "reactions":"💝",
+        "story":    "📖",  "stories":  "📖",
+        "sub":      "🔔",  "subscriber":"🔔",
+        "watch":    "⏱️",
+        "group":    "👥",
+        "boost":    "🚀",
+        "post":     "📝",
+        "real":     "✅",
+        "non":      "💎",
+        "premium":  "👑",
+    }
+
+    def get_emoji(name: str) -> str:
+        nl = name.lower()
+        for kw, em in EMOJI_MAP.items():
+            if kw in nl:
+                return em
+        return "🔹"
+
     rows = []
-    for svc in services[:25]:
+    for svc in page_svcs:
+        em = get_emoji(svc["name"])
         rows.append([StyledButton(
-            f"\U0001f4e6  {svc['name']}",
-            style="danger",
+            f"{em}  {svc['name']}",
+            style="success",
             callback_data=f"svc:{svc['service_id']}"
         )])
-    rows.append([StyledButton("⬅️  Back", style="success", callback_data="svc_list_back")])
+
+    # Pagination row
+    if total_pages > 1:
+        nav = []
+        if page > 0:
+            nav.append(StyledButton("◀ Back", style="primary",
+                                    callback_data=f"svc_page:{category}:{page-1}"))
+        nav.append(InlineKeyboardButton(
+            f"📄 {page+1}/{total_pages}", callback_data="noop"
+        ))
+        if end < total:
+            nav.append(StyledButton("Next ▶", style="primary",
+                                    callback_data=f"svc_page:{category}:{page+1}"))
+        rows.append(nav)
+
+    rows.append([StyledButton("◀ Back", style="danger", callback_data="svc_list_back")])
     return InlineKeyboardMarkup(rows)
 
 
