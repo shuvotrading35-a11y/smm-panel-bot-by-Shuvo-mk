@@ -184,16 +184,16 @@ def categories_kb(categories: list[str], icons: dict, updates_channel: str = "")
 
     rows = []
     row = []
-    
+
     platforms_to_show = ["facebook", "telegram", "tiktok", "instagram", "youtube", "twitter", "freefire", "spotify"]
-    
+
     for p in platforms_to_show:
         label = PLATFORM_LABELS.get(p, f"🔹 {p.upper()}")
         row.append(StyledButton(label, style="success", callback_data=f"platform:{p}"))
         if len(row) == 2:
             rows.append(row)
             row = []
-            
+
     row.append(StyledButton("📦 OTHER SERVICE", style="success", callback_data="platform:other"))
     rows.append(row)
 
@@ -208,15 +208,15 @@ def platform_categories_kb(platform: str, categories: list[str], icons: dict) ->
         "facebook", "telegram", "tiktok", "instagram", 
         "youtube", "twitter", "spotify", "freefire"
     ]
-    
+
     rows = []
     current_row = [] 
-    
+
     for idx, cat in enumerate(categories):
         cat_lower = cat.lower()
         platform_lower = platform.lower()
-        
-        # 🔥 FIX: নির্দিষ্ট প্ল্যাটফর্মে থাকলে শুধু সেই প্ল্যাটফর্মের ক্যাটাগরি দেখাবে
+
+        # নির্দিষ্ট প্ল্যাটফর্মে থাকলে শুধু সেই প্ল্যাটফর্মের ক্যাটাগরি দেখাবে
         if platform_lower != "other":
             cat_platform = "other"
             if "free fire" in cat_lower or "freefire" in cat_lower or "free_fire" in cat_lower:
@@ -228,35 +228,35 @@ def platform_categories_kb(platform: str, categories: list[str], icons: dict) ->
                     if p in cat_lower:
                         cat_platform = p
                         break
-            
+
             if cat_platform != platform_lower:
                 continue
-        
+
         # "Other" প্ল্যাটফর্মে থাকলে মেইন প্ল্যাটফর্মগুলো বাদ দিন
         if platform_lower == "other":
             if any(mp in cat_lower for mp in MAIN_PLATFORMS):
                 continue
             if "free fire" in cat_lower or "tiktok" in cat_lower or "tik tok" in cat_lower:
                 continue
-                
+
         if cat_lower == "other":
             continue
-            
+
         icon = next((v for k, v in icons.items() if k.lower() in cat_lower), "🔹")
-        
+
         current_row.append(StyledButton(
             f"{icon}  {cat.upper()}",
             style="success",
             callback_data=f"catidx:{idx}"
         ))
-        
+
         if len(current_row) == 2:
             rows.append(current_row)
             current_row = [] 
-            
+
     if current_row:
         rows.append(current_row)
-        
+
     rows.append([StyledButton("◀ Back", style="danger", callback_data="platform_back")])
     return InlineKeyboardMarkup(rows)
 
@@ -303,17 +303,18 @@ def services_kb(services: list[dict], category: str, page: int = 0) -> InlineKey
             callback_data=f"svc:{svc['service_id']}"
         )])
 
+    # 🔥 FIX: Next/Back বাটনের জন্য ':' এর বদলে '|' ব্যবহার করা হয়েছে
     if total_pages > 1:
         nav = []
         if page > 0:
             nav.append(StyledButton("◀ Back", style="primary",
-                                    callback_data=f"svc_page:{category}:{page-1}"))
+                                    callback_data=f"svc_page|{page-1}|{category}"))
         nav.append(InlineKeyboardButton(
             f"📄 {page+1}/{total_pages}", callback_data="noop"
         ))
         if end < total:
             nav.append(StyledButton("Next ▶", style="primary",
-                                    callback_data=f"svc_page:{category}:{page+1}"))
+                                    callback_data=f"svc_page|{page+1}|{category}"))
         rows.append(nav)
 
     rows.append([StyledButton("◀ Back", style="danger", callback_data="svc_list_back")])
