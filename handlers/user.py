@@ -889,7 +889,8 @@ async def services_list_smm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     upd_ch = await db.get_setting("updates_channel", "")
     await update.message.reply_text(
-        "🌐 <b>SMM Service (1)</b>\n\nChoose a platform:",
+        "🛒 <b>Select Service Category:</b>\n\n"
+        "আপনি কোন ক্যাটাগরির সার্ভিস নিতে চান নিচে নির্বাচন করুন 👇",
         reply_markup=categories_kb(cats, CATEGORY_ICONS, upd_ch),
         parse_mode=ParseMode.HTML
     )
@@ -913,7 +914,8 @@ async def services_list_smm2(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     upd_ch = await db.get_setting("updates_channel", "")
     await update.message.reply_text(
-        "🌐 <b>SMM Service (2)</b>\n\nChoose a platform:",
+        "🛒 <b>Select Service Category:</b>\n\n"
+        "আপনি কোন ক্যাটাগরির সার্ভিস নিতে চান নিচে নির্বাচন করুন 👇",
         reply_markup=categories_kb(cats, CATEGORY_ICONS, upd_ch),
         parse_mode=ParseMode.HTML
     )
@@ -938,14 +940,14 @@ async def services_list_telegram(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
 #  CATEGORY CALLBACK
 # ═══════════════════════════════════════════════════════════════════
 PLATFORM_LABELS = {
-    "facebook":  "📘 Facebook",
-    "instagram": "📱 Instagram",
-    "tiktok":    "🎵 TikTok",
-    "youtube":   "📺 YouTube",
-    "telegram":  "✈️ Telegram",
-    "twitter":   "🐦 Twitter / X",
-    "spotify":   "🎧 Spotify",
-    "website":   "🌐 Website",
+    "facebook":  "📘 FACEBOOK",
+    "instagram": "📸 INSTAGRAM",
+    "tiktok":    "🎵 TIK TOK",
+    "youtube":   "▶️ YOUTUBE",
+    "telegram":  "✈️ TELEGRAM",
+    "twitter":   "𝕏 TWITTER",
+    "spotify":   "🎧 SPOTIFY",
+    "website":   "🌐 WEBSITE",
 }
 
 
@@ -972,7 +974,8 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         cats   = await db.get_categories()
         upd_ch = await db.get_setting("updates_channel", "")
         await query.edit_message_text(
-            "📊 <b>Services List</b>\n\nChoose a platform:",
+            "🛒 <b>Select Service Category:</b>\n\n"
+            "আপনি কোন ক্যাটাগরির সার্ভিস নিতে চান নিচে নির্বাচন করুন 👇",
             reply_markup=categories_kb(cats, CATEGORY_ICONS, upd_ch),
             parse_mode=ParseMode.HTML
         )
@@ -1070,6 +1073,28 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await _show_category_services(query, ctx, category)
         return
 
+    if data.startswith("svc_page:"):
+        # format: svc_page:{category}:{page}
+        parts    = data.split(":", 2)
+        category = parts[1]
+        page     = int(parts[2])
+        services = await db.get_services_by_category(category)
+        if not services:
+            await query.answer("No services found.", show_alert=True)
+            return
+        total_pages = max(1, (len(services) + 7) // 8)
+        await query.edit_message_text(
+            f"📋 <b>Select Service:</b> (Page {page+1}/{total_pages})\n\n"
+            f"নিচের বাটন থেকে আপনার প্রয়োজনীয় সার্ভিসটি বেছে নিন 👇",
+            reply_markup=services_kb(services, category, page=page),
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    if data == "noop":
+        await query.answer()
+        return
+
 
 async def _show_category_services(query, ctx, category: str):
     services = await db.get_services_by_category(category)
@@ -1109,10 +1134,12 @@ async def _show_category_services(query, ctx, category: str):
             parse_mode=ParseMode.HTML
         )
     else:
+        total_pages = max(1, (len(services) + 7) // 8)
         icon = category_icon(category)
         await query.edit_message_text(
-            f"{icon} <b>{category}</b>\n\nChoose a service:",
-            reply_markup=services_kb(services, category),
+            f"📋 <b>Select Service:</b> (Page 1/{total_pages})\n\n"
+            f"নিচের বাটন থেকে আপনার প্রয়োজনীয় সার্ভিসটি বেছে নিন 👇",
+            reply_markup=services_kb(services, category, page=0),
             parse_mode=ParseMode.HTML
         )
 
