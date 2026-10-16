@@ -166,11 +166,12 @@ def force_join_kb(channels: list[dict]) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
+# 🔥 এখানে মেইন ক্যাটাগরি মেনু পরিবর্তন করা হয়েছে
 def categories_kb(categories: list[str], icons: dict, updates_channel: str = "") -> InlineKeyboardMarkup:
-    # 🔥 Website বাদ দেওয়া হলো, TikTok এবং Free Fire যোগ করা হলো
+    # Website বাদ, TikTok এবং Free Fire যোগ করা হলো
     PLATFORM_ORDER = [
-        "facebook", "instagram", "tiktok", "youtube", 
-        "telegram", "twitter", "spotify", "freefire"
+        "facebook", "telegram", "tiktok", "instagram", 
+        "youtube", "twitter", "freefire", "spotify"
     ]
     PLATFORM_LABELS = {
         "facebook":  "📘 FACEBOOK",
@@ -180,39 +181,25 @@ def categories_kb(categories: list[str], icons: dict, updates_channel: str = "")
         "telegram":  "✈️ TELEGRAM",
         "twitter":   "𝕏 TWITTER",
         "spotify":   "🎧 SPOTIFY",
-        "freefire":  "🎮 FREE FIRE",
+        "freefire":  "🔥 FREE FIRE",
     }
 
-    def get_platform(cat: str) -> str:
-        cl = cat.lower()
-        # Free Fire এবং TikTok কে সঠিকভাবে ডিটেক্ট করা
-        if "freefire" in cl or "free fire" in cl:
-            return "freefire"
-        if "tiktok" in cl or "tik tok" in cl:
-            return "tiktok"
-        for p in PLATFORM_ORDER:
-            if p in cl:
-                return p
-        return "other"
-
-    grouped: dict[str, list[str]] = {}
-    for cat in categories:
-        p = get_platform(cat)
-        grouped.setdefault(p, [])
-        if cat not in grouped[p]:
-            grouped[p].append(cat)
-
     rows = []
-    platforms_present = [p for p in PLATFORM_ORDER if p in grouped]
-    if "other" in grouped:
-        platforms_present.append("other")
-
-    for i in range(0, len(platforms_present), 2):
-        row = []
-        for p in platforms_present[i:i+2]:
-            label = PLATFORM_LABELS.get(p, f"🔹 {p.upper()}")
-            row.append(StyledButton(label, style="success", callback_data=f"platform:{p}"))
-        rows.append(row)
+    row = []
+    
+    # ডাটাবেজে সার্ভিস থাকুক বা না থাকুক, বাটনগুলো দেখানো হবে
+    platforms_to_show = ["facebook", "telegram", "tiktok", "instagram", "youtube", "twitter", "freefire", "spotify"]
+    
+    for p in platforms_to_show:
+        label = PLATFORM_LABELS.get(p, f"🔹 {p.upper()}")
+        row.append(StyledButton(label, style="success", callback_data=f"platform:{p}"))
+        if len(row) == 2:
+            rows.append(row)
+            row = []
+            
+    # সবার শেষে Other সার্ভিস
+    row.append(StyledButton("📦 OTHER SERVICE", style="success", callback_data="platform:other"))
+    rows.append(row)
 
     if updates_channel:
         rows.append([InlineKeyboardButton("📢 Join Updates Channel", url=updates_channel)])
@@ -221,7 +208,6 @@ def categories_kb(categories: list[str], icons: dict, updates_channel: str = "")
 
 
 def platform_categories_kb(platform: str, categories: list[str], icons: dict) -> InlineKeyboardMarkup:
-    # 🔥 Website বাদ, TikTok এবং Free Fire যোগ করা হলো
     MAIN_PLATFORMS = [
         "facebook", "telegram", "tiktok", "instagram", 
         "youtube", "twitter", "spotify", "freefire"
@@ -235,9 +221,12 @@ def platform_categories_kb(platform: str, categories: list[str], icons: dict) ->
         platform_lower = platform.lower()
         
         # "Other" প্ল্যাটফর্মে থাকলে মেইন প্ল্যাটফর্মগুলো বাদ দিন
-        if platform_lower == "other" and any(mp in cat_lower for mp in MAIN_PLATFORMS):
-            continue
-            
+        if platform_lower == "other":
+            if any(mp in cat_lower for mp in MAIN_PLATFORMS):
+                continue
+            if "free fire" in cat_lower or "tiktok" in cat_lower or "tik tok" in cat_lower:
+                continue
+                
         # "Other" নামে কোনো ক্যাটাগরি সাব-মেনুতে আসা বন্ধ করুন
         if cat_lower == "other":
             continue
