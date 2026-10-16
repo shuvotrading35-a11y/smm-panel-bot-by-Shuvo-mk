@@ -22,6 +22,7 @@ from utils.helpers import (
 )
 from utils.order_logger import send_order_log
 from api.smm_api import smm_api
+from api.csb_api import csb_api
 from config import CATEGORY_ICONS, MAX_ORDERS_PER_DAY
 
 logger = logging.getLogger(__name__)
@@ -1494,9 +1495,14 @@ async def order_confirm_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
         ctx.user_data.clear()
         return ConversationHandler.END
 
+    # ── Route to correct API based on service source ──────────────
+    svc_data   = await db.get_service(service_id)
+    api_source = (svc_data or {}).get("api_source", "smm1")
+    chosen_api = csb_api if api_source == "smm2" else smm_api
+
     api_order_id = None
     api_status   = "Pending"
-    api_result   = await smm_api.add_order(service_id, link, qty)
+    api_result   = await chosen_api.add_order(service_id, link, qty)
     if "order" in api_result:
         api_order_id = str(api_result["order"])
         api_status   = "Processing"
@@ -1520,6 +1526,7 @@ async def order_confirm_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
                         f"⚠️ <b>API Balance কম!</b>\n\n"
                         f"User: <code>{user_id}</code>\n"
                         f"Service: <code>{service_name}</code>\n"
+                        f"API: <code>{api_source}</code>\n"
                         f"Qty: <code>{qty}</code>\n"
                         f"Error: <code>{error_msg}</code>\n\n"
                         f"🔴 API-তে balance add করো!",
@@ -1537,7 +1544,7 @@ async def order_confirm_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
 
     order_id = await db.create_order(
         user_id, service_id, service_name, category,
-        link, qty, charge, api_order_id
+        link, qty, charge, api_order_id, api_source
     )
 
     await send_order_log(
@@ -1622,7 +1629,9 @@ async def order_refresh_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
     if not order or not order.get("api_order_id"):
         await query.answer("Cannot refresh — no API order ID.", show_alert=True)
         return
-    result = await smm_api.order_status(order["api_order_id"])
+    _src = order.get("api_source", "smm1")
+    _api = csb_api if _src == "smm2" else smm_api
+    result = await _api.order_status(order["api_order_id"])
     if "status" in result:
         await db.update_order_status(
             order_id, result["status"],
@@ -1649,7 +1658,9 @@ async def order_refill_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not order or not order.get("api_order_id"):
         await query.answer("Cannot refill.", show_alert=True)
         return
-    result = await smm_api.refill_order(order["api_order_id"])
+    _src = order.get("api_source", "smm1")
+    _api = csb_api if _src == "smm2" else smm_api
+    result = await _api.refill_order(order["api_order_id"])
     if "refill" in result:
         await query.answer("✅ Refill submitted!", show_alert=True)
     else:
@@ -1665,7 +1676,9 @@ async def order_cancel_api_callback(update: Update, ctx: ContextTypes.DEFAULT_TY
         await query.answer("Cannot cancel.", show_alert=True)
         return
 
-    result = await smm_api.cancel_order(order["api_order_id"])
+    _src = order.get("api_source", "smm1")
+    _api = csb_api if _src == "smm2" else smm_api
+    result = await _api.cancel_order(order["api_order_id"])
     if "cancel" in result or result.get("status") == "1":
         await db.update_order_status(order_id, "Cancelled")
 
@@ -1721,7 +1734,9 @@ async def tracker_input_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
     if order.get("api_order_id"):
-        result = await smm_api.order_status(order["api_order_id"])
+        _src = order.get("api_source", "smm1")
+        _api = csb_api if _src == "smm2" else smm_api
+        result = await _api.order_status(order["api_order_id"])
         if "status" in result:
             await db.update_order_status(
                 order_id, result["status"],
