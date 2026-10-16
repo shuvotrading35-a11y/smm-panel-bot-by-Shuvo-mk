@@ -215,12 +215,6 @@ def categories_kb(categories: list[str], icons: dict, updates_channel: str = "")
 
 
 def platform_categories_kb(platform: str, categories: list[str], icons: dict) -> InlineKeyboardMarkup:
-    # মেইন প্ল্যাটফর্মগুলোর লিস্ট
-    MAIN_PLATFORMS = [
-        "facebook", "telegram", "tiktok", "instagram", 
-        "youtube", "twitter", "spotify", "website"
-    ]
-    
     rows = []
     current_row = [] 
     
@@ -228,10 +222,12 @@ def platform_categories_kb(platform: str, categories: list[str], icons: dict) ->
         cat_lower = cat.lower()
         platform_lower = platform.lower()
         
-        # 🔥 ফিক্স: শুধুমাত্র "other" প্ল্যাটফর্মের ক্ষেত্রেই মেইন ক্যাটাগরিগুলো ফিল্টার হবে
-        if platform_lower == "other" and any(mp in cat_lower for mp in MAIN_PLATFORMS):
-            continue
-            
+        # "Other" প্ল্যাটফর্মে থাকলে মেইন প্ল্যাটফর্মগুলো বাদ দিন
+        if platform_lower == "other":
+            MAIN_PLATFORMS = ["facebook", "telegram", "tiktok", "instagram", "youtube", "twitter", "spotify", "website"]
+            if any(mp in cat_lower for mp in MAIN_PLATFORMS):
+                continue
+                
         # "Other" নামে কোনো ক্যাটাগরি সাব-মেনুতে আসা বন্ধ করুন
         if cat_lower == "other":
             continue
