@@ -824,14 +824,21 @@ async def get_categories(api_source: str = None) -> list[str]:
                 rows = await cur.fetchall()
         return [r[0] for r in rows]
 
-async def get_services_by_category(category: str) -> list[dict]:
+async def get_services_by_category(category: str, api_source: str = None) -> list[dict]:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute(
-            "SELECT * FROM services_cache WHERE category=? ORDER BY name", (category,)
-        ) as cur:
-            rows = await cur.fetchall()
-            return [dict(r) for r in rows]
+        if api_source:
+            async with db.execute(
+                "SELECT * FROM services_cache WHERE category=? AND api_source=? ORDER BY name",
+                (category, api_source)
+            ) as cur:
+                rows = await cur.fetchall()
+        else:
+            async with db.execute(
+                "SELECT * FROM services_cache WHERE category=? ORDER BY name", (category,)
+            ) as cur:
+                rows = await cur.fetchall()
+        return [dict(r) for r in rows]
 
 async def get_service(service_id: str) -> dict | None:
     async with aiosqlite.connect(DB_PATH) as db:
