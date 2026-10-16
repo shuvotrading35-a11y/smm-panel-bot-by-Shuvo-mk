@@ -166,9 +166,7 @@ def force_join_kb(channels: list[dict]) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
-# 🔥 এখানে মেইন ক্যাটাগরি মেনু পরিবর্তন করা হয়েছে
 def categories_kb(categories: list[str], icons: dict, updates_channel: str = "") -> InlineKeyboardMarkup:
-    # Website বাদ, TikTok এবং Free Fire যোগ করা হলো
     PLATFORM_ORDER = [
         "facebook", "telegram", "tiktok", "instagram", 
         "youtube", "twitter", "freefire", "spotify"
@@ -187,7 +185,6 @@ def categories_kb(categories: list[str], icons: dict, updates_channel: str = "")
     rows = []
     row = []
     
-    # ডাটাবেজে সার্ভিস থাকুক বা না থাকুক, বাটনগুলো দেখানো হবে
     platforms_to_show = ["facebook", "telegram", "tiktok", "instagram", "youtube", "twitter", "freefire", "spotify"]
     
     for p in platforms_to_show:
@@ -197,7 +194,6 @@ def categories_kb(categories: list[str], icons: dict, updates_channel: str = "")
             rows.append(row)
             row = []
             
-    # সবার শেষে Other সার্ভিস
     row.append(StyledButton("📦 OTHER SERVICE", style="success", callback_data="platform:other"))
     rows.append(row)
 
@@ -220,6 +216,22 @@ def platform_categories_kb(platform: str, categories: list[str], icons: dict) ->
         cat_lower = cat.lower()
         platform_lower = platform.lower()
         
+        # 🔥 FIX: নির্দিষ্ট প্ল্যাটফর্মে থাকলে শুধু সেই প্ল্যাটফর্মের ক্যাটাগরি দেখাবে
+        if platform_lower != "other":
+            cat_platform = "other"
+            if "free fire" in cat_lower or "freefire" in cat_lower or "free_fire" in cat_lower:
+                cat_platform = "freefire"
+            elif "tik tok" in cat_lower or "tiktok" in cat_lower or "tik_tok" in cat_lower:
+                cat_platform = "tiktok"
+            else:
+                for p in ["facebook", "instagram", "youtube", "telegram", "twitter", "spotify", "website"]:
+                    if p in cat_lower:
+                        cat_platform = p
+                        break
+            
+            if cat_platform != platform_lower:
+                continue
+        
         # "Other" প্ল্যাটফর্মে থাকলে মেইন প্ল্যাটফর্মগুলো বাদ দিন
         if platform_lower == "other":
             if any(mp in cat_lower for mp in MAIN_PLATFORMS):
@@ -227,7 +239,6 @@ def platform_categories_kb(platform: str, categories: list[str], icons: dict) ->
             if "free fire" in cat_lower or "tiktok" in cat_lower or "tik tok" in cat_lower:
                 continue
                 
-        # "Other" নামে কোনো ক্যাটাগরি সাব-মেনুতে আসা বন্ধ করুন
         if cat_lower == "other":
             continue
             
