@@ -122,6 +122,14 @@ _SUBCAT_RULES = {
         (r'\bcomments?\b',                   "💬 Comments"),
         (r'\blive\b',                        "📡 Live"),
     ],
+    # 🔥 Free Fire এর জন্য নতুন রুল যোগ করা হলো
+    "freefire": [
+        (r'\bdiamond\b',                     "💎 Diamonds"),
+        (r'\buc\b',                          "🪙 UC"),
+        (r'\bweekly\b',                      "📅 Weekly"),
+        (r'\bmonthly\b',                     "📅 Monthly"),
+        (r'\blevel\b',                       "⬆️ Level Up"),
+    ],
     "telegram": [
         (r'\bmembers?\b',                    "👥 Members"),
         (r'\bsubscribers?\b',                "🔔 Subscribers"),
@@ -149,6 +157,11 @@ def _detect_platform(services: list[dict]) -> str | None:
         return None
     for s in services[:5]:
         name = (s.get("name") or "").lower()
+        # 🔥 Free Fire এবং TikTok ডিটেক্ট করার জন্য خاص লজিক
+        if "freefire" in name or "free fire" in name:
+            return "freefire"
+        if "tiktok" in name or "tik tok" in name:
+            return "tiktok"
         for plat in _SUBCAT_RULES.keys():
             if plat in name:
                 return plat
@@ -861,7 +874,7 @@ PLATFORM_LABELS = {
     "telegram":  "✈️ TELEGRAM",
     "twitter":   "𝕏 TWITTER",
     "spotify":   "🎧 SPOTIFY",
-    "website":   "🌐 WEBSITE",
+    "freefire":  "🎮 FREE FIRE",
 }
 
 
@@ -878,7 +891,6 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not filtered:
             filtered = all_cats
         
-        # 🔥 FIX: If there's only 1 category, Back goes to main platforms menu
         if len(filtered) <= 1:
             cats   = await db.get_categories(api_source=api_src)
             upd_ch = await db.get_setting("updates_channel", "")
@@ -917,7 +929,6 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not filtered:
             filtered = all_cats
         
-        # 🔥 FIX: If only one category matches, auto-redirect to its subcategories
         if len(filtered) == 1:
             await _show_category_services(query, ctx, filtered[0], api_src)
             return
@@ -1239,7 +1250,6 @@ async def order_platform_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
         if not filtered:
             filtered = all_cats
         
-        # 🔥 FIX for Order Flow: If only one category matches, auto-redirect to its subcategories
         if len(filtered) == 1:
             category = filtered[0]
             ctx.user_data["order_category"] = category
@@ -1309,7 +1319,6 @@ async def order_platform_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
         )
         return ORDER_SERVICE
 
-    # 🔥 Add subcat handling for Order Flow
     if data.startswith("subcat:"):
         label    = data[7:]
         category = ctx.user_data.get("order_category", "")
