@@ -224,7 +224,7 @@ def platform_categories_kb(platform: str, categories: list[str], icons: dict) ->
             elif "tik tok" in cat_lower or "tiktok" in cat_lower or "tik_tok" in cat_lower:
                 cat_platform = "tiktok"
             else:
-                for p in ["facebook", "instagram", "youtube", "telegram", "twitter", "spotify", "website"]:
+                for p in ["facebook", "instagram", "youtube", "telegram", "twitter", "spotify", "website", "discord", "whatsapp", "linkedin", "threads", "reddit"]:
                     if p in cat_lower:
                         cat_platform = p
                         break
