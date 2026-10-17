@@ -121,41 +121,6 @@ def ticket_reply_kb(ticket_id: int, user_id: int) -> InlineKeyboardMarkup:
     ]])
 
 
-def broadcast_type_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [
-            StyledButton("📝 Text",     style="success", callback_data="bc_type:text"),
-            StyledButton("🖼 Photo",    style="primary", callback_data="bc_type:photo"),
-        ],
-        [
-            StyledButton("🎥 Video",    style="danger",  callback_data="bc_type:video"),
-            StyledButton("📄 Document", style="primary", callback_data="bc_type:document"),
-        ],
-        [StyledButton("❌ Cancel", style="danger", callback_data="bc_type:cancel")],
-    ])
-
-
-def export_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [StyledButton("👥 Users CSV",  style="success", callback_data="export:users")],
-        [StyledButton("📦 Orders CSV", style="primary", callback_data="export:orders")],
-    ])
-
-
-def admin_user_kb(target_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [
-            StyledButton("➕ Add Balance",    style="success", callback_data=f"adm_bal_add:{target_id}"),
-            StyledButton("➖ Remove Balance",  style="danger",  callback_data=f"adm_bal_rem:{target_id}"),
-        ],
-        [
-            StyledButton("🚫 Ban",   style="danger",  callback_data=f"adm_ban:{target_id}"),
-            StyledButton("✅ Unban", style="success", callback_data=f"adm_unban:{target_id}"),
-        ],
-        [StyledButton("📩 Message", style="primary", callback_data=f"adm_msg:{target_id}")],
-    ])
-
-
 def force_join_kb(channels: list[dict]) -> InlineKeyboardMarkup:
     rows = []
     for ch in channels:
@@ -167,10 +132,6 @@ def force_join_kb(channels: list[dict]) -> InlineKeyboardMarkup:
 
 
 def categories_kb(categories: list[str], icons: dict, updates_channel: str = "") -> InlineKeyboardMarkup:
-    PLATFORM_ORDER = [
-        "facebook", "telegram", "tiktok", "instagram", 
-        "youtube", "twitter", "freefire", "spotify"
-    ]
     PLATFORM_LABELS = {
         "facebook":  "📘 FACEBOOK",
         "instagram": "📸 INSTAGRAM",
@@ -204,52 +165,17 @@ def categories_kb(categories: list[str], icons: dict, updates_channel: str = "")
 
 
 def platform_categories_kb(platform: str, categories: list[str], icons: dict) -> InlineKeyboardMarkup:
-    MAIN_PLATFORMS = [
-        "facebook", "telegram", "tiktok", "instagram", 
-        "youtube", "twitter", "spotify", "freefire"
-    ]
-
+    # 🔥 FIX: এখানে কোনো ফিল্টার নেই, সরাসরি পাস করা লিস্ট দেখাবে। ফলে index ঠিক থাকবে।
     rows = []
     current_row = [] 
 
     for idx, cat in enumerate(categories):
-        cat_lower = cat.lower()
-        platform_lower = platform.lower()
-
-        # নির্দিষ্ট প্ল্যাটফর্মে থাকলে শুধু সেই প্ল্যাটফর্মের ক্যাটাগরি দেখাবে
-        if platform_lower != "other":
-            cat_platform = "other"
-            if "free fire" in cat_lower or "freefire" in cat_lower or "free_fire" in cat_lower:
-                cat_platform = "freefire"
-            elif "tik tok" in cat_lower or "tiktok" in cat_lower or "tik_tok" in cat_lower:
-                cat_platform = "tiktok"
-            else:
-                for p in ["facebook", "instagram", "youtube", "telegram", "twitter", "spotify", "website", "discord", "whatsapp", "linkedin", "threads", "reddit"]:
-                    if p in cat_lower:
-                        cat_platform = p
-                        break
-
-            if cat_platform != platform_lower:
-                continue
-
-        # "Other" প্ল্যাটফর্মে থাকলে মেইন প্ল্যাটফর্মগুলো বাদ দিন
-        if platform_lower == "other":
-            if any(mp in cat_lower for mp in MAIN_PLATFORMS):
-                continue
-            if "free fire" in cat_lower or "tiktok" in cat_lower or "tik tok" in cat_lower:
-                continue
-
-        if cat_lower == "other":
-            continue
-
-        icon = next((v for k, v in icons.items() if k.lower() in cat_lower), "🔹")
-
+        icon = next((v for k, v in icons.items() if k.lower() in cat.lower()), "🔹")
         current_row.append(StyledButton(
             f"{icon}  {cat.upper()}",
             style="success",
             callback_data=f"catidx:{idx}"
         ))
-
         if len(current_row) == 2:
             rows.append(current_row)
             current_row = [] 
@@ -303,7 +229,6 @@ def services_kb(services: list[dict], category: str, page: int = 0) -> InlineKey
             callback_data=f"svc:{svc['service_id']}"
         )])
 
-    # 🔥 FIX: Next/Back বাটনের জন্য ':' এর বদলে '|' ব্যবহার করা হয়েছে
     if total_pages > 1:
         nav = []
         if page > 0:
