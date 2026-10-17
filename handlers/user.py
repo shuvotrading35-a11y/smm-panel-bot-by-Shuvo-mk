@@ -38,6 +38,15 @@ logger = logging.getLogger(__name__)
 USD_TO_BDT  = 135.0  # 1 USD = 135 BDT
 COIN_TO_BDT = 1.0    # 1 Coin = 1 BDT
 
+# 🔥 Global helper to get platform name from category string
+def get_platform_name(cat: str) -> str:
+    cl = cat.lower()
+    if "free fire" in cl or "freefire" in cl or "free_fire" in cl: return "freefire"
+    if "tik tok" in cl or "tiktok" in cl or "tik_tok" in cl: return "tiktok"
+    for p in ["facebook", "instagram", "youtube", "telegram", "twitter", "spotify", "website", "discord", "whatsapp", "linkedin", "threads", "reddit"]:
+        if p in cl: return p
+    return "other"
+
 # ═══════════════════════════════════════════════════════════════════
 #  AUTO-DELETE HELPERS
 # ═══════════════════════════════════════════════════════════════════
@@ -150,6 +159,26 @@ _SUBCAT_RULES = {
         (r'\bfollowers?\b',                  "👥 Followers"),
         (r'\bmonthly\b|\blisteners?\b',      "🎧 Monthly Listeners"),
     ],
+    "discord": [
+        (r'\bmembers?\b',                    "👥 Members"),
+        (r'\breactions?\b',                  "❤️ Reactions"),
+        (r'\bboosts?\b',                     "🚀 Server Boosts"),
+    ],
+    "whatsapp": [
+        (r'\bmembers?\b',                    "👥 Members"),
+    ],
+    "linkedin": [
+        (r'\bfollowers?\b',                  "👥 Followers"),
+        (r'\breactions?\b',                  "❤️ Reactions"),
+    ],
+    "threads": [
+        (r'\bfollowers?\b',                  "👥 Followers"),
+        (r'\blikes?\b',                      "👍 Likes"),
+    ],
+    "reddit": [
+        (r'\bmembers?\b',                    "👥 Members"),
+        (r'\bupvotes?\b',                    "⬆️ Upvotes"),
+    ]
 }
 
 def _detect_platform(services: list[dict]) -> str | None:
@@ -158,7 +187,7 @@ def _detect_platform(services: list[dict]) -> str | None:
     for s in services[:5]:
         name = (s.get("name") or "").lower()
         if "free fire" in name or "freefire" in name or "free_fire" in name: return "freefire"
-        if "tiktok" in name or "tik tok" in name or "tik_tok" in name: return "tiktok"
+        if "tik tok" in name or "tiktok" in name or "tik_tok" in name: return "tiktok"
         for plat in _SUBCAT_RULES.keys():
             if plat in name: return plat
     return None
@@ -179,7 +208,8 @@ def _group_services(services: list[dict], platform: str) -> dict[str, list[dict]
     return grouped
 
 def _should_show_subcat(services: list[dict], grouped: dict[str, list]) -> bool:
-    return len(services) >= 8 and len(grouped) >= 2
+    # 🔥 FIX: ৮টির কম সার্ভিস থাকলেও যদি ২টি ভিন্ন সাব-ক্যাটাগরি থাকে, তবে গ্রুপ করবে
+    return len(grouped) >= 2
 
 # ═══════════════════════════════════════════════════════════════════
 #  SHUVOPAY — AUTOMATIC PAYMENT GATEWAY
@@ -678,7 +708,6 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     data = query.data
     api_src = ctx.user_data.get("current_api_source", "smm1")
 
-    # 🔥 FIX: Next button handling with '|' separator
     if data.startswith("svc_page|"):
         parts    = data.split("|", 2)
         page     = int(parts[1])
@@ -695,7 +724,14 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if data in ("cat_back", "svc_list_back"):
         platform = ctx.user_data.get("current_platform", "")
         all_cats = await db.get_categories(api_source=api_src)
-        filtered = [c for c in all_cats if platform in c.lower()] if platform else all_cats
+        
+        if platform == "other":
+            filtered = [c for c in all_cats if get_platform_name(c) == "other"]
+        elif platform:
+            filtered = [c for c in all_cats if get_platform_name(c) == platform]
+        else:
+            filtered = all_cats
+            
         if not filtered or len(filtered) <= 1:
             cats   = await db.get_categories(api_source=api_src)
             upd_ch = await db.get_setting("updates_channel", "")
@@ -703,6 +739,7 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 "🛒 <b>Select Service Category:</b>\n\nআপনি কোন ক্যাটাগরির সার্ভিস নিতে চান নিচে নির্বাচন করুন 👇",
                 reply_markup=categories_kb(cats, CATEGORY_ICONS, upd_ch), parse_mode=ParseMode.HTML)
             return
+            
         label = PLATFORM_LABELS.get(platform, f"🔹 {platform.title()}")
         await query.edit_message_text(f"{label}\n\nChoose a category:",
             reply_markup=platform_categories_kb(platform, filtered, CATEGORY_ICONS), parse_mode=ParseMode.HTML)
@@ -720,18 +757,18 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         platform = data[9:]
         ctx.user_data["current_platform"] = platform
         all_cats = await db.get_categories(api_source=api_src)
-        def get_platform_name(cat: str) -> str:
-            cl = cat.lower()
-            if "free fire" in cl or "freefire" in cl or "free_fire" in cl: return "freefire"
-            if "tik tok" in cl or "tiktok" in cl or "tik_tok" in cl: return "tiktok"
-            for p in ["facebook", "instagram", "youtube", "telegram", "twitter", "spotify", "website"]:
-                if p in cl: return p
-            return "other"
-        filtered = [c for c in all_cats if get_platform_name(c) == platform]
+        
+        if platform == "other":
+            filtered = [c for c in all_cats if get_platform_name(c) == "other"]
+        else:
+            filtered = [c for c in all_cats if get_platform_name(c) == platform]
+            
         if not filtered:
             await query.answer("⚠️ এই ক্যাটাগরিতে এখনো কোনো সার্ভিস নেই।", show_alert=True); return
+            
         if len(filtered) == 1:
             await _show_category_services(query, ctx, filtered[0], api_src); return
+            
         label = PLATFORM_LABELS.get(platform, f"🔹 {platform.title()}")
         await query.edit_message_text(f"{label}\n\nChoose a category:",
             reply_markup=platform_categories_kb(platform, filtered, CATEGORY_ICONS), parse_mode=ParseMode.HTML)
@@ -774,8 +811,14 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         idx      = int(data[7:])
         platform = ctx.user_data.get("current_platform", "")
         all_cats = await db.get_categories(api_source=api_src)
-        filtered = [c for c in all_cats if platform in c.lower()] if platform else all_cats
-        if not filtered: filtered = all_cats
+        
+        if platform == "other":
+            filtered = [c for c in all_cats if get_platform_name(c) == "other"]
+        elif platform:
+            filtered = [c for c in all_cats if get_platform_name(c) == platform]
+        else:
+            filtered = all_cats
+            
         if idx >= len(filtered):
             await query.answer("Category not found.", show_alert=True); return
         category = filtered[idx]
@@ -799,9 +842,11 @@ async def _show_category_services(query, ctx, category: str, api_source: str = N
     ctx.user_data["current_api_source"] = src
     ctx.user_data.pop("current_subcat", None)
     ctx.user_data.pop("current_subcat_services", None)
-    platform = _detect_platform(services) or ctx.user_data.get("current_platform", "")
+    
+    platform = _detect_platform(services) or get_platform_name(category)
     ctx.user_data["sub_platform"] = platform
     grouped = _group_services(services, platform) if platform else {}
+    
     if platform and _should_show_subcat(services, grouped):
         ctx.user_data["current_grouped"] = grouped
         rows = []
@@ -864,7 +909,6 @@ async def service_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     cancel_str  = "✅ Yes" if svc.get("cancel")  else "❌ No"
     icon = category_icon(svc.get("category", ""))
     
-    # 🔥 FIX: Rate calculation (BDT & USD)
     api_rate_bdt = float(svc['rate']) * (1 + SERVICE_MARKUP_PCT / 100)
     api_rate_usd = api_rate_bdt / USD_TO_BDT
     
@@ -953,14 +997,12 @@ async def order_platform_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
         platform = data[9:]
         ctx.user_data["order_platform"] = platform
         all_cats = await db.get_categories(api_source=api_src)
-        def get_platform_name(cat: str) -> str:
-            cl = cat.lower()
-            if "free fire" in cl or "freefire" in cl or "free_fire" in cl: return "freefire"
-            if "tik tok" in cl or "tiktok" in cl or "tik_tok" in cl: return "tiktok"
-            for p in ["facebook", "instagram", "youtube", "telegram", "twitter", "spotify", "website"]:
-                if p in cl: return p
-            return "other"
-        filtered = [c for c in all_cats if get_platform_name(c) == platform]
+        
+        if platform == "other":
+            filtered = [c for c in all_cats if get_platform_name(c) == "other"]
+        else:
+            filtered = [c for c in all_cats if get_platform_name(c) == platform]
+            
         if not filtered:
             await query.answer("⚠️ এই ক্যাটাগরিতে এখনো কোনো সার্ভিস নেই।", show_alert=True); return ORDER_PLATFORM
         if len(filtered) == 1:
@@ -995,8 +1037,14 @@ async def order_platform_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
         idx      = int(data[7:])
         platform = ctx.user_data.get("order_platform", "")
         all_cats = await db.get_categories(api_source=api_src)
-        filtered = [c for c in all_cats if platform in c.lower()] if platform else all_cats
-        if not filtered: filtered = all_cats
+        
+        if platform == "other":
+            filtered = [c for c in all_cats if get_platform_name(c) == "other"]
+        elif platform:
+            filtered = [c for c in all_cats if get_platform_name(c) == platform]
+        else:
+            filtered = all_cats
+            
         if idx >= len(filtered):
             await query.answer("Category not found.", show_alert=True); return ORDER_PLATFORM
         category = filtered[idx]
@@ -1063,7 +1111,6 @@ async def order_service_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     data  = query.data
     
-    # 🔥 FIX: Next button handling for Order Flow
     if data.startswith("svc_page|"):
         parts    = data.split("|", 2)
         page     = int(parts[1])
@@ -1116,7 +1163,6 @@ async def order_quantity_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text(f"❌ Quantity must be between <code>{min_q:,}</code> and <code>{max_q:,}</code>.", parse_mode=ParseMode.HTML)
         return ORDER_QUANTITY
 
-    # 🔥 FIX: Rate calculation (BDT & USD)
     rate_bdt = float(svc.get("rate", 0)) * (1 + SERVICE_MARKUP_PCT / 100)
     rate_usd = rate_bdt / USD_TO_BDT
     charge_bdt = round((qty / 1000) * rate_bdt, 2)
