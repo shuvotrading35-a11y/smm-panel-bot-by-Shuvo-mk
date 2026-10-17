@@ -21,8 +21,7 @@ from handlers.user import (
     order_quantity_handler, order_confirm_callback, my_orders,
     order_refresh_callback, order_refill_callback,
     order_cancel_api_callback, order_tracker, tracker_input_handler,
-    daily_bonus, redeem_code, redeem_input_handler, referral,
-    leaderboard, leaderboard_callback, my_statistics, vip_membership,
+    referral, leaderboard, leaderboard_callback, vip_membership,
     vip_buy_callback, support, ticket_subject_handler,
     ticket_message_handler, updates_channel, cancel_handler,
     force_join_check,
@@ -295,7 +294,6 @@ def build_app() -> Application:
     app.add_handler(_CQH(global_force_join_check), group=-1)
 
     # ── Force-Join Leave Notification ────────────────────────────
-    # NOTE: chat_member_types supports only one value at a time — use two handlers
     app.add_handler(
         ChatMemberHandler(
             force_join_leave_handler,
@@ -374,7 +372,7 @@ def build_app() -> Application:
     app.add_handler(CallbackQueryHandler(order_refresh_callback,      pattern=r"^order_refresh:"))
     app.add_handler(CallbackQueryHandler(order_refill_callback,       pattern=r"^order_refill:"))
     app.add_handler(CallbackQueryHandler(order_cancel_api_callback,   pattern=r"^order_cancel_api:"))
-    app.add_handler(CallbackQueryHandler(category_callback,           pattern=r"^(cat(_back|:.+)|svc_list_back|platform(:.+|_back)|catidx:\d+|sub_back|subcat:.+)$"))
+    app.add_handler(CallbackQueryHandler(category_callback,           pattern=r"^(cat(_back|:.+)|svc_list_back|platform(:.+|_back)|catidx:\d+|sub_back|subcat:.+|svc_page\|.*)$"))
     app.add_handler(CallbackQueryHandler(service_callback,            pattern=r"^svc(_back|:.+)$"))
     app.add_handler(CallbackQueryHandler(admin_user_callback,         pattern=r"^adm_(ban|unban|bal_add|bal_rem|msg):"))
     app.add_handler(CallbackQueryHandler(deposit_approve_callback,    pattern=r"^dep_approve:"))
@@ -395,9 +393,9 @@ def build_app() -> Application:
             CallbackQueryHandler(order_start_callback, pattern=r"^order_start:"),
         ],
         states={
-            ORDER_PLATFORM: [CallbackQueryHandler(order_platform_handler, pattern=r"^(platform(:.+|_back)|catidx:\d+)$")],
+            ORDER_PLATFORM: [CallbackQueryHandler(order_platform_handler, pattern=r"^(platform(:.+|_back)|catidx:\d+|subcat:.+)$")],
             ORDER_CATEGORY: [CallbackQueryHandler(order_category_handler, pattern=r"^cat:.+")],
-            ORDER_SERVICE:  [CallbackQueryHandler(order_service_handler,  pattern=r"^svc:.+")],
+            ORDER_SERVICE:  [CallbackQueryHandler(order_service_handler,  pattern=r"^(svc:.+|svc_page\|.*)$")],
             ORDER_LINK:     [MessageHandler(filters.TEXT & ~CANCEL_FILTER, order_link_handler)],
             ORDER_QUANTITY: [MessageHandler(filters.TEXT & ~CANCEL_FILTER, order_quantity_handler)],
             ORDER_CONFIRM:  [CallbackQueryHandler(order_confirm_callback,  pattern=r"^order_(confirm|cancel)")],
@@ -418,17 +416,6 @@ def build_app() -> Application:
         per_message=False,
     )
     app.add_handler(tracker_conv)
-
-    redeem_conv = ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex(r"^🎁 ʀᴇᴅᴇᴇᴍ ᴄᴏᴅᴇ$"), redeem_code)],
-        states={
-            REDEEM_INPUT: [MessageHandler(filters.TEXT & ~CANCEL_FILTER, redeem_input_handler)],
-        },
-        fallbacks=[MessageHandler(CANCEL_FILTER, cancel_handler)],
-        allow_reentry=True,
-        per_message=False,
-    )
-    app.add_handler(redeem_conv)
 
     support_conv = ConversationHandler(
         entry_points=[MessageHandler(filters.Regex(r"^☎️ ꜱᴜᴘᴘᴏʀᴛ$"), support)],
@@ -616,10 +603,8 @@ def build_app() -> Application:
     app.add_handler(MessageHandler(filters.Regex(r"^👤 ᴍʏ ᴀᴄᴄᴏᴜɴᴛ$"),     my_account))
     app.add_handler(MessageHandler(filters.Regex(r"^📦 ᴍʏ ᴏʀᴅᴇʀꜱ$"),      my_orders))
     app.add_handler(MessageHandler(filters.Regex(r"^💰 ᴡᴀʟʟᴇᴛ$"),         wallet))
-    app.add_handler(MessageHandler(filters.Regex(r"^🎯 ᴅᴀɪʟʏ ʙᴏɴᴜꜱ$"),   daily_bonus))
     app.add_handler(MessageHandler(filters.Regex(r"^👥 ʀᴇꜰᴇʀʀᴀʟ$"),       referral))
     app.add_handler(MessageHandler(filters.Regex(r"^🏆 ʟᴇᴀᴅᴇʀʙᴏᴀʀᴅ$"),    leaderboard))
-    app.add_handler(MessageHandler(filters.Regex(r"^📈 ᴍʏ ꜱᴛᴀᴛɪꜱᴛɪᴄꜱ$"), my_statistics))
     app.add_handler(MessageHandler(filters.Regex(r"^⭐ ᴠɪᴘ ᴍᴇᴍʙᴇʀꜱʜɪᴘ$"), vip_membership))
     app.add_handler(MessageHandler(filters.Regex(r"^📢 ᴜᴘᴅᴀᴛᴇꜱ$"),        updates_channel))
 
