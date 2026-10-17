@@ -23,7 +23,7 @@ from handlers.user import (
     order_cancel_api_callback, order_tracker, tracker_input_handler,
     referral, leaderboard, leaderboard_callback, vip_membership,
     vip_buy_callback, support, ticket_subject_handler,
-    ticket_message_handler, updates_channel, cancel_handler,
+    ticket_message_handler, cancel_handler,
     force_join_check,
     ORDER_PLATFORM, ORDER_CATEGORY, ORDER_SERVICE, ORDER_LINK, ORDER_QUANTITY,
     ORDER_CONFIRM, REDEEM_INPUT, TICKET_SUBJECT, TICKET_MESSAGE,
@@ -106,96 +106,43 @@ def _is_member(status) -> bool:
     )
 
 
-async def force_join_leave_handler(
-    update: Update, context
-) -> None:
-    """
-    Force-join channel থেকে কেউ Leave নিলে —
-    সাথে সাথে ইউজারকে rejoin বাটন সহ PM পাঠায়।
-    """
+async def force_join_leave_handler(update: Update, context) -> None:
     cmu = update.chat_member
-    if not cmu:
-        logger.info("🔔 no chat_member in update")
-        return
+    if not cmu: return
 
     chat        = cmu.chat
     user        = cmu.new_chat_member.user
     old_status  = cmu.old_chat_member.status
     new_status  = cmu.new_chat_member.status
 
-    logger.info(
-        "🔔 chat_member | user=%s chat_id=%s chat_un=%s old=%s new=%s",
-        user.id, chat.id, chat.username, old_status, new_status
-    )
+    if not (_was_member(old_status) and not _is_member(new_status)): return
+    if user.is_bot: return
 
-    # শুধু departures
-    if not (_was_member(old_status) and not _is_member(new_status)):
-        logger.info("🔔 Not a leave event — ignore")
-        return
-
-    if user.is_bot:
-        return
-
-    # ── DB-তে চ্যানেল আছে কি? ──
     channels = await db.get_force_channels()
-    logger.info("🔔 DB channels: %s",
-                [c.get("channel_id") for c in channels])
+    if not channels: return
 
-    if not channels:
-        logger.info("🔔 No force channels in DB")
-        return
-
-    this_id = str(chat.id)                       # -1001234567890
-    this_un = (chat.username or "").lstrip("@")  # mychannel
+    this_id = str(chat.id)
+    this_un = (chat.username or "").lstrip("@")
 
     matched_ch = None
     for ch in channels:
         cid = str(ch.get("channel_id", "")).strip()
         cid_clean = cid.lstrip("@")
 
-        if cid == this_id:
-            matched_ch = ch
-            break
-        if cid_clean and this_un and cid_clean.lower() == this_un.lower():
-            matched_ch = ch
-            break
-        if cid_clean and this_id.endswith(cid_clean):
+        if cid == this_id or (cid_clean and this_un and cid_clean.lower() == this_un.lower()) or (cid_clean and this_id.endswith(cid_clean)):
             matched_ch = ch
             break
 
-    logger.info("🔔 Matched channel: %s", bool(matched_ch))
-    if not matched_ch:
-        return
+    if not matched_ch: return
 
-    # ── Rejoin keyboard ──
-    invite_url = (
-        matched_ch.get("invite_link")
-        or (f"https://t.me/{this_un}" if this_un else None)
-    )
-
+    invite_url = matched_ch.get("invite_link") or (f"https://t.me/{this_un}" if this_un else None)
     rows = []
     if invite_url:
-        rows.append([
-            InlineKeyboardButton(
-                "📢 Re-join Channel",
-                url=invite_url,
-            )
-        ])
-    rows.append([
-        InlineKeyboardButton(
-            "✅ I've Joined — Check Again",
-            callback_data="fj_check",
-        )
-    ])
-    kb = InlineKeyboardMarkup(rows)
+        rows.append([InlineKeyboardButton("📢 Re-join Channel", url=invite_url)])
+    rows.append([InlineKeyboardButton("✅ I've Joined — Check Again", callback_data="fj_check")])
+    
+    channel_label = matched_ch.get("channel_name") or (f"@{this_un}" if this_un else chat.title) or "our channel"
 
-    channel_label = (
-        matched_ch.get("channel_name")
-        or (f"@{this_un}" if this_un else chat.title)
-        or "our channel"
-    )
-
-    # ── PM নোটিফিকেশন ──
     try:
         await context.bot.send_message(
             chat_id=user.id,
@@ -206,74 +153,46 @@ async def force_join_leave_handler(
                 f"After joining, tap the button below to continue."
             ),
             parse_mode="HTML",
-            reply_markup=kb,
+            reply_markup=InlineKeyboardMarkup(rows),
             disable_web_page_preview=True,
         )
-        logger.info("🔔 ✅ Notification sent to user %s", user.id)
-
     except Exception as e:
         logger.warning("🔔 ❌ Could not notify user %s: %s", user.id, e)
 
 
 # ─────────────────────────────────────────────────────────────────
-#  MAINTENANCE MODE
+#  MAINTENANCE MODE & ERROR HANDLER
 # ─────────────────────────────────────────────────────────────────
 async def maintenance_check(update: Update, context) -> None:
-    if not MAINTENANCE_MODE:
-        return
-
+    if not MAINTENANCE_MODE: return
     user = update.effective_user
-    if not user or user.id in ADMIN_IDS:
-        return
+    if not user or user.id in ADMIN_IDS: return
 
     message = (
         "🛠️ <b>Bot Maintenance Mode</b>\n\n"
         "বর্তমানে আমাদের বটে সাময়িক রক্ষণাবেক্ষণের কাজ চলছে।\n"
         "অনুগ্রহ করে কিছুক্ষণ পরে আবার চেষ্টা করুন।\n\n"
-        "🔄 আমরা খুব শীঘ্রই আবার চালু করছি।\n\n"
         f"👨‍💻 Developer: {__import__('config').DEVELOPER}"
     )
-
     try:
-        if update.callback_query:
-            await update.callback_query.answer("🛠️ Bot is under maintenance", show_alert=True)
-        elif update.effective_message:
-            await update.effective_message.reply_text(message, parse_mode="HTML")
-    except Exception as exc:
-        logger.warning("Maintenance response failed: %s", exc)
-
+        if update.callback_query: await update.callback_query.answer("🛠️ Bot is under maintenance", show_alert=True)
+        elif update.effective_message: await update.effective_message.reply_text(message, parse_mode="HTML")
+    except Exception as exc: logger.warning("Maintenance response failed: %s", exc)
     raise ApplicationHandlerStop
 
 
-# ─────────────────────────────────────────────────────────────────
-#  ERROR HANDLER
-# ─────────────────────────────────────────────────────────────────
 async def error_handler(update: object, context) -> None:
     import traceback
     err = context.error
-
-    harmless = (
-        "Message is not modified",
-        "Query is too old",
-        "message to edit not found",
-        "Message to delete not found",
-    )
-    if any(h in str(err) for h in harmless):
-        return
+    harmless = ("Message is not modified", "Query is too old", "message to edit not found", "Message to delete not found")
+    if any(h in str(err) for h in harmless): return
 
     tb = "".join(traceback.format_exception(type(err), err, err.__traceback__))
     logger.error(f"Exception: {tb}")
 
-    from config import ADMIN_IDS
     for admin_id in ADMIN_IDS:
-        try:
-            await context.bot.send_message(
-                admin_id,
-                f"🔴 <b>Bot Error</b>\n\n<code>{str(err)[:300]}</code>",
-                parse_mode="HTML"
-            )
-        except Exception:
-            pass
+        try: await context.bot.send_message(admin_id, f"🔴 <b>Bot Error</b>\n\n<code>{str(err)[:300]}</code>", parse_mode="HTML")
+        except Exception: pass
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -287,27 +206,13 @@ def build_app() -> Application:
 
     app.add_handler(_MH(_filters.ALL, maintenance_check), group=-3)
     app.add_handler(_CQH(maintenance_check), group=-3)
-
     app.add_handler(_MH(_filters.ALL, check_banned), group=-2)
     app.add_handler(_CQH(check_banned), group=-2)
     app.add_handler(_MH(_filters.ALL, global_force_join_check), group=-1)
     app.add_handler(_CQH(global_force_join_check), group=-1)
 
-    # ── Force-Join Leave Notification ────────────────────────────
-    app.add_handler(
-        ChatMemberHandler(
-            force_join_leave_handler,
-            chat_member_types=ChatMemberHandler.CHAT_MEMBER,
-        ),
-        group=0,
-    )
-    app.add_handler(
-        ChatMemberHandler(
-            force_join_leave_handler,
-            chat_member_types=ChatMemberHandler.MY_CHAT_MEMBER,
-        ),
-        group=0,
-    )
+    app.add_handler(ChatMemberHandler(force_join_leave_handler, chat_member_types=ChatMemberHandler.CHAT_MEMBER), group=0)
+    app.add_handler(ChatMemberHandler(force_join_leave_handler, chat_member_types=ChatMemberHandler.MY_CHAT_MEMBER), group=0)
 
     # ── Game Topup ConversationHandler ───────────────────────────
     topup_conv = ConversationHandler(
@@ -334,13 +239,10 @@ def build_app() -> Application:
 
     # ── 🛍 Partner Shop ConversationHandler ──────────────────────
     app.add_handler(build_partner_conversation())
-
     app.add_error_handler(error_handler)
 
-    # ── /start ────────────────────────────────────────────────────
+    # ── /start & Partner commands ────────────────────────────────
     app.add_handler(CommandHandler("start", start))
-
-    # ── Partner API commands ─────────────────────────────────────
     app.add_handler(CommandHandler("partner",       partner_entry))
     app.add_handler(CommandHandler("partnerorders", my_partner_orders))
     app.add_handler(CommandHandler("partnerstats",  partner_stats_cmd))
@@ -363,10 +265,7 @@ def build_app() -> Application:
     app.add_handler(CallbackQueryHandler(force_join_check, pattern=r"^fj_check$"))
     app.add_handler(CallbackQueryHandler(check_payment_callback, pattern=r"^check_pay:"))
     app.add_handler(CallbackQueryHandler(account_callback, pattern=r"^acc_"))
-    app.add_handler(CallbackQueryHandler(
-        lambda u, c: u.callback_query.answer("📩 যোগাযোগ: @shuvo_9882", show_alert=True),
-        pattern=r"^contact_admin$"
-    ))
+    app.add_handler(CallbackQueryHandler(lambda u, c: u.callback_query.answer("📩 যোগাযোগ: @shuvo_9882", show_alert=True), pattern=r"^contact_admin$"))
     app.add_handler(CallbackQueryHandler(leaderboard_callback,        pattern=r"^lb:"))
     app.add_handler(CallbackQueryHandler(vip_buy_callback,            pattern=r"^vip_buy:"))
     app.add_handler(CallbackQueryHandler(order_refresh_callback,      pattern=r"^order_refresh:"))
@@ -439,16 +338,10 @@ def build_app() -> Application:
                 CallbackQueryHandler(package_callback,        pattern=r"^(pkg:.+|pkg_back|contact_admin)$"),
                 CallbackQueryHandler(payment_method_callback, pattern=r"^pay_method:.+$"),
             ],
-            DEPOSIT_AMOUNT: [
-                MessageHandler(filters.TEXT & ~CANCEL_FILTER, deposit_amount_handler),
-            ],
-            DEPOSIT_TXN: [
-                MessageHandler(filters.TEXT & ~CANCEL_FILTER, deposit_txn_handler),
-            ],
+            DEPOSIT_AMOUNT: [MessageHandler(filters.TEXT & ~CANCEL_FILTER, deposit_amount_handler)],
+            DEPOSIT_TXN:    [MessageHandler(filters.TEXT & ~CANCEL_FILTER, deposit_txn_handler)],
         },
-        fallbacks=[
-            MessageHandler(CANCEL_FILTER, cancel_handler),
-        ],
+        fallbacks=[MessageHandler(CANCEL_FILTER, cancel_handler)],
         allow_reentry=True,
         per_message=False,
         conversation_timeout=120,
@@ -460,134 +353,87 @@ def build_app() -> Application:
     # ═══════════════════════════════════════════════════════════════
 
     user_mgmt_conv = ConversationHandler(
-        entry_points=[MessageHandler(
-            filters.Regex(r"^👥 ᴜꜱᴇʀ ᴍᴀɴᴀɢᴇᴍᴇɴᴛ$") & ADMIN_FILTER,
-            user_management
-        )],
-        states={
-            SEARCH_USER: [MessageHandler(filters.TEXT & ~CANCEL_FILTER, search_user_handler)],
-        },
+        entry_points=[MessageHandler(filters.Regex(r"^👥 ᴜꜱᴇʀ ᴍᴀɴᴀɢᴇᴍᴇɴᴛ$") & ADMIN_FILTER, user_management)],
+        states={SEARCH_USER: [MessageHandler(filters.TEXT & ~CANCEL_FILTER, search_user_handler)]},
         fallbacks=[MessageHandler(CANCEL_FILTER, cancel_admin)],
-        allow_reentry=True,
-        per_message=False,
+        allow_reentry=True, per_message=False,
     )
     app.add_handler(user_mgmt_conv)
 
     bal_conv = ConversationHandler(
-        entry_points=[MessageHandler(
-            filters.Regex(r"^💰 ʙᴀʟᴀɴᴄᴇ ᴍᴀɴᴀɢᴇʀ$") & ADMIN_FILTER,
-            balance_manager
-        )],
+        entry_points=[MessageHandler(filters.Regex(r"^💰 ʙᴀʟᴀɴᴄᴇ ᴍᴀɴᴀɢᴇʀ$") & ADMIN_FILTER, balance_manager)],
         states={
             ADD_BAL_ID:     [MessageHandler(filters.TEXT & ~CANCEL_FILTER, add_bal_id_handler)],
             ADD_BAL_AMOUNT: [MessageHandler(filters.TEXT & ~CANCEL_FILTER, add_bal_amount_handler)],
         },
         fallbacks=[MessageHandler(CANCEL_FILTER, cancel_admin)],
-        allow_reentry=True,
-        per_message=False,
+        allow_reentry=True, per_message=False,
     )
     app.add_handler(bal_conv)
 
     code_conv = ConversationHandler(
-        entry_points=[MessageHandler(
-            filters.Regex(r"^🎁 ᴄᴏᴅᴇ ᴍᴀɴᴀɢᴇʀ$") & ADMIN_FILTER,
-            code_manager
-        )],
+        entry_points=[MessageHandler(filters.Regex(r"^🎁 ᴄᴏᴅᴇ ᴍᴀɴᴀɢᴇʀ$") & ADMIN_FILTER, code_manager)],
         states={
             CREATE_CODE:        [MessageHandler(filters.TEXT & ~CANCEL_FILTER, create_code_handler)],
             CREATE_CODE_AMOUNT: [MessageHandler(filters.TEXT & ~CANCEL_FILTER, create_code_amount_handler)],
             CREATE_CODE_USES:   [MessageHandler(filters.TEXT & ~CANCEL_FILTER, create_code_uses_handler)],
         },
         fallbacks=[MessageHandler(CANCEL_FILTER, cancel_admin)],
-        allow_reentry=True,
-        per_message=False,
+        allow_reentry=True, per_message=False,
     )
     app.add_handler(code_conv)
 
     bc_conv = ConversationHandler(
-        entry_points=[MessageHandler(
-            filters.Regex(r"^📢 ʙʀᴏᴀᴅᴄᴀꜱᴛ$") & ADMIN_FILTER,
-            broadcast
-        )],
+        entry_points=[MessageHandler(filters.Regex(r"^📢 ʙʀᴏᴀᴅᴄᴀꜱᴛ$") & ADMIN_FILTER, broadcast)],
         states={
             BC_TYPE: [CallbackQueryHandler(broadcast_type_callback, pattern=r"^bc_type:")],
-            BC_TEXT: [MessageHandler(
-                (filters.TEXT | filters.PHOTO | filters.VIDEO | filters.Document.ALL)
-                & ~CANCEL_FILTER,
-                broadcast_content_handler
-            )],
+            BC_TEXT: [MessageHandler((filters.TEXT | filters.PHOTO | filters.VIDEO | filters.Document.ALL) & ~CANCEL_FILTER, broadcast_content_handler)],
         },
         fallbacks=[MessageHandler(CANCEL_FILTER, cancel_admin)],
-        allow_reentry=True,
-        per_message=False,
+        allow_reentry=True, per_message=False,
     )
     app.add_handler(bc_conv)
 
     ban_conv = ConversationHandler(
-        entry_points=[MessageHandler(
-            filters.Regex(r"^🚫 ʙᴀɴ ꜱʏꜱᴛᴇᴍ$") & ADMIN_FILTER,
-            ban_system
-        )],
-        states={
-            BAN_ID: [MessageHandler(filters.TEXT & ~CANCEL_FILTER, ban_id_handler)],
-        },
+        entry_points=[MessageHandler(filters.Regex(r"^🚫 ʙᴀɴ ꜱʏꜱᴛᴇᴍ$") & ADMIN_FILTER, ban_system)],
+        states={BAN_ID: [MessageHandler(filters.TEXT & ~CANCEL_FILTER, ban_id_handler)]},
         fallbacks=[MessageHandler(CANCEL_FILTER, cancel_admin)],
-        allow_reentry=True,
-        per_message=False,
+        allow_reentry=True, per_message=False,
     )
     app.add_handler(ban_conv)
 
     ticket_reply_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(ticket_reply_callback, pattern=r"^ticket_reply:")],
-        states={
-            TICKET_REPLY_STATE: [MessageHandler(filters.TEXT & ~CANCEL_FILTER, ticket_reply_text_handler)],
-        },
+        states={TICKET_REPLY_STATE: [MessageHandler(filters.TEXT & ~CANCEL_FILTER, ticket_reply_text_handler)]},
         fallbacks=[MessageHandler(CANCEL_FILTER, cancel_admin)],
-        allow_reentry=True,
-        per_message=False,
+        allow_reentry=True, per_message=False,
     )
     app.add_handler(ticket_reply_conv)
 
     order_mgr_conv = ConversationHandler(
-        entry_points=[MessageHandler(
-            filters.Regex(r"^📦 ᴏʀᴅᴇʀ ᴍᴀɴᴀɢᴇʀ$") & ADMIN_FILTER,
-            order_manager
-        )],
-        states={
-            ADMIN_ORDER_SEARCH: [MessageHandler(filters.TEXT & ~CANCEL_FILTER, admin_order_search_handler)],
-        },
+        entry_points=[MessageHandler(filters.Regex(r"^📦 ᴏʀᴅᴇʀ ᴍᴀɴᴀɢᴇʀ$") & ADMIN_FILTER, order_manager)],
+        states={ADMIN_ORDER_SEARCH: [MessageHandler(filters.TEXT & ~CANCEL_FILTER, admin_order_search_handler)]},
         fallbacks=[MessageHandler(CANCEL_FILTER, cancel_admin)],
-        allow_reentry=True,
-        per_message=False,
+        allow_reentry=True, per_message=False,
     )
     app.add_handler(order_mgr_conv)
 
     vip_conv = ConversationHandler(
-        entry_points=[MessageHandler(
-            filters.Regex(r"^💎 ᴠɪᴘ ᴍᴀɴᴀɢᴇʀ$") & ADMIN_FILTER,
-            vip_manager
-        )],
+        entry_points=[MessageHandler(filters.Regex(r"^💎 ᴠɪᴘ ᴍᴀɴᴀɢᴇʀ$") & ADMIN_FILTER, vip_manager)],
         states={
             SET_VIP_ID:   [MessageHandler(filters.TEXT & ~CANCEL_FILTER, set_vip_id_handler)],
             SET_VIP_PLAN: [MessageHandler(filters.TEXT & ~CANCEL_FILTER, set_vip_plan_handler)],
         },
         fallbacks=[MessageHandler(CANCEL_FILTER, cancel_admin)],
-        allow_reentry=True,
-        per_message=False,
+        allow_reentry=True, per_message=False,
     )
     app.add_handler(vip_conv)
 
     notif_conv = ConversationHandler(
-        entry_points=[MessageHandler(
-            filters.Regex(r"^🔔 ɴᴏᴛɪꜰɪᴄᴀᴛɪᴏɴ$") & ADMIN_FILTER,
-            notification
-        )],
-        states={
-            NOTIFICATION_TEXT: [MessageHandler(filters.TEXT & ~CANCEL_FILTER, notification_text_handler)],
-        },
+        entry_points=[MessageHandler(filters.Regex(r"^🔔 ɴᴏᴛɪꜰɪᴄᴀᴛɪᴏɴ$") & ADMIN_FILTER, notification)],
+        states={NOTIFICATION_TEXT: [MessageHandler(filters.TEXT & ~CANCEL_FILTER, notification_text_handler)]},
         fallbacks=[MessageHandler(CANCEL_FILTER, cancel_admin)],
-        allow_reentry=True,
-        per_message=False,
+        allow_reentry=True, per_message=False,
     )
     app.add_handler(notif_conv)
 
@@ -606,48 +452,23 @@ def build_app() -> Application:
     app.add_handler(MessageHandler(filters.Regex(r"^👥 ʀᴇꜰᴇʀʀᴀʟ$"),       referral))
     app.add_handler(MessageHandler(filters.Regex(r"^🏆 ʟᴇᴀᴅᴇʀʙᴏᴀʀᴅ$"),    leaderboard))
     app.add_handler(MessageHandler(filters.Regex(r"^⭐ ᴠɪᴘ ᴍᴇᴍʙᴇʀꜱʜɪᴘ$"), vip_membership))
-    app.add_handler(MessageHandler(filters.Regex(r"^📢 ᴜᴘᴅᴀᴛᴇꜱ$"),        updates_channel))
-
+    
     # ── Partner: my orders shortcut ──────────────────────────────
-    app.add_handler(MessageHandler(
-        filters.Regex(r"^🧾 ᴍʏ ᴘᴀʀᴛɴᴇʀ ᴏʀᴅᴇʀꜱ$"),
-        my_partner_orders,
-    ))
+    app.add_handler(MessageHandler(filters.Regex(r"^🧾 ᴍʏ ᴘᴀʀᴛɴᴇʀ ᴏʀᴅᴇʀꜱ$"), my_partner_orders))
 
     # ── Admin reply keyboard ──────────────────────────────────────
-    app.add_handler(MessageHandler(
-        filters.Regex(r"^📊 ʙᴏᴛ ꜱᴛᴀᴛɪꜱᴛɪᴄꜱ$") & ADMIN_FILTER,   bot_stats))
-    app.add_handler(MessageHandler(
-        filters.Regex(r"^📊 ᴘᴀʀᴛɴᴇʀ ꜱᴛᴀᴛꜱ$") & ADMIN_FILTER,     partner_stats_cmd))
-    app.add_handler(MessageHandler(
-        filters.Regex(r"^⚙️ ᴀᴘɪ ᴍᴀɴᴀɢᴇʀ$") & ADMIN_FILTER,      api_manager))
-    app.add_handler(MessageHandler(
-        filters.Regex(r"^📣 ꜰᴏʀᴄᴇ ᴊᴏɪɴ$") & ADMIN_FILTER,        force_join_admin))
-    app.add_handler(MessageHandler(
-        filters.Regex(r"^☎️ ꜱᴜᴘᴘᴏʀᴛ ᴍᴀɴᴀɢᴇʀ$") & ADMIN_FILTER,  support_manager))
-    app.add_handler(MessageHandler(
-        filters.Regex(r"^🛒 ꜱᴇʀᴠɪᴄᴇ ᴍᴀɴᴀɢᴇʀ$") & ADMIN_FILTER,  sync_services))
-    app.add_handler(MessageHandler(
-        filters.Regex(r"^🏆 ʟᴇᴀᴅᴇʀʙᴏᴀʀᴅ$") & ADMIN_FILTER,       admin_leaderboard))
-    app.add_handler(MessageHandler(
-        filters.Regex(r"^📤 ᴇxᴘᴏʀᴛ ᴅᴀᴛᴀ$") & ADMIN_FILTER,       export_data))
-    app.add_handler(MessageHandler(
-        filters.Regex(r"^🗄 ᴅᴀᴛᴀʙᴀꜱᴇ ᴍᴀɴᴀɢᴇʀ$") & ADMIN_FILTER,  database_manager))
-    app.add_handler(MessageHandler(
-        filters.Regex(r"^🔄 ʀᴇꜱᴛᴀʀᴛ ʙᴏᴛ$") & ADMIN_FILTER,       restart_bot))
-    app.add_handler(MessageHandler(
-        filters.Regex(r"^🧹 ᴄʟᴇᴀɴ ᴜᴘ$") & ADMIN_FILTER,
-        lambda u, c: u.message.reply_text("🧹 Clean up not implemented yet.")
-    ))
-    app.add_handler(MessageHandler(
-        filters.Regex(r"^🏠 ᴍᴀɪɴ ᴍᴇɴᴜ$") & ADMIN_FILTER,
-        lambda u, c: u.message.reply_text(
-            "🏠 Main Menu",
-            reply_markup=__import__(
-                "keyboards.reply", fromlist=["main_keyboard"]
-            ).main_keyboard()
-        )
-    ))
+    app.add_handler(MessageHandler(filters.Regex(r"^📊 ʙᴏᴛ ꜱᴛᴀᴛɪꜱᴛɪᴄꜱ$") & ADMIN_FILTER,   bot_stats))
+    app.add_handler(MessageHandler(filters.Regex(r"^📊 ᴘᴀʀᴛɴᴇʀ ꜱᴛᴀᴛꜱ$") & ADMIN_FILTER,     partner_stats_cmd))
+    app.add_handler(MessageHandler(filters.Regex(r"^⚙️ ᴀᴘɪ ᴍᴀɴᴀɢᴇʀ$") & ADMIN_FILTER,      api_manager))
+    app.add_handler(MessageHandler(filters.Regex(r"^📣 ꜰᴏʀᴄᴇ ᴊᴏɪɴ$") & ADMIN_FILTER,        force_join_admin))
+    app.add_handler(MessageHandler(filters.Regex(r"^☎️ ꜱᴜᴘᴘᴏʀᴛ ᴍᴀɴᴀɢᴇʀ$") & ADMIN_FILTER,  support_manager))
+    app.add_handler(MessageHandler(filters.Regex(r"^🛒 ꜱᴇʀᴠɪᴄᴇ ᴍᴀɴᴀɢᴇʀ$") & ADMIN_FILTER,  sync_services))
+    app.add_handler(MessageHandler(filters.Regex(r"^🏆 ʟᴇᴀᴅᴇʀʙᴏᴀʀᴅ$") & ADMIN_FILTER,       admin_leaderboard))
+    app.add_handler(MessageHandler(filters.Regex(r"^📤 ᴇxᴘᴏʀᴛ ᴅᴀᴛᴀ$") & ADMIN_FILTER,       export_data))
+    app.add_handler(MessageHandler(filters.Regex(r"^🗄 ᴅᴀᴛᴀʙᴀꜱᴇ ᴍᴀɴᴀɢᴇʀ$") & ADMIN_FILTER,  database_manager))
+    app.add_handler(MessageHandler(filters.Regex(r"^🔄 ʀᴇꜱᴛᴀʀᴛ ʙᴏᴛ$") & ADMIN_FILTER,       restart_bot))
+    app.add_handler(MessageHandler(filters.Regex(r"^🧹 ᴄʟᴇᴀɴ ᴜᴘ$") & ADMIN_FILTER, lambda u, c: u.message.reply_text("🧹 Clean up not implemented yet.")))
+    app.add_handler(MessageHandler(filters.Regex(r"^🏠 ᴍᴀɪɴ ᴍᴇɴᴜ$") & ADMIN_FILTER, lambda u, c: u.message.reply_text("🏠 Main Menu", reply_markup=__import__("keyboards.reply", fromlist=["main_keyboard"]).main_keyboard())))
 
     return app
 
@@ -661,31 +482,20 @@ async def on_startup(app: Application):
     logger.info("Database ready.")
 
     if not MAINTENANCE_MODE:
-        try:
-            asyncio.create_task(reconcile_partner_orders(app))
-        except Exception as e:
-            logger.warning("Partner reconcile schedule failed: %s", e)
+        try: asyncio.create_task(reconcile_partner_orders(app))
+        except Exception as e: logger.warning("Partner reconcile schedule failed: %s", e)
 
         try:
             if app.job_queue:
-                app.job_queue.run_repeating(
-                    check_stock_alerts_job,
-                    interval=300,
-                    first=60,
-                    name="partner_stock_alerts",
-                )
+                app.job_queue.run_repeating(check_stock_alerts_job, interval=300, first=60, name="partner_stock_alerts")
                 logger.info("✅ Stock alert job scheduled (every 5 min)")
             else:
-                logger.warning("⚠️ JobQueue unavailable — install "
-                               "python-telegram-bot[job-queue]")
-        except Exception as e:
-            logger.warning("Stock alert job failed to schedule: %s", e)
+                logger.warning("⚠️ JobQueue unavailable — install python-telegram-bot[job-queue]")
+        except Exception as e: logger.warning("Stock alert job failed to schedule: %s", e)
 
     for admin_id in ADMIN_IDS:
-        try:
-            await app.bot.send_message(admin_id, "🚀 Bot started successfully!")
-        except Exception:
-            pass
+        try: await app.bot.send_message(admin_id, "🚀 Bot started successfully!")
+        except Exception: pass
 
 
 async def on_shutdown(app: Application):
@@ -693,23 +503,19 @@ async def on_shutdown(app: Application):
         from api.smm_api import smm_api
         await smm_api.close()
         logger.info("SMM API session closed.")
-    except Exception as e:
-        logger.warning("SMM API close failed: %s", e)
+    except Exception as e: logger.warning("SMM API close failed: %s", e)
 
     try:
         await close_partner_session()
         logger.info("Partner API session closed.")
-    except Exception as e:
-        logger.warning("Partner session close failed: %s", e)
+    except Exception as e: logger.warning("Partner session close failed: %s", e)
 
 
 # ─────────────────────────────────────────────────────────────────
 #  MAIN
 # ─────────────────────────────────────────────────────────────────
 def main():
-    if not BOT_TOKEN:
-        raise ValueError("BOT_TOKEN is not set. Check your .env file.")
-
+    if not BOT_TOKEN: raise ValueError("BOT_TOKEN is not set. Check your .env file.")
     os.makedirs("data", exist_ok=True)
 
     app = build_app()
