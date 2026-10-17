@@ -121,6 +121,41 @@ def ticket_reply_kb(ticket_id: int, user_id: int) -> InlineKeyboardMarkup:
     ]])
 
 
+def broadcast_type_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [
+            StyledButton("📝 Text",     style="success", callback_data="bc_type:text"),
+            StyledButton("🖼 Photo",    style="primary", callback_data="bc_type:photo"),
+        ],
+        [
+            StyledButton("🎥 Video",    style="danger",  callback_data="bc_type:video"),
+            StyledButton("📄 Document", style="primary", callback_data="bc_type:document"),
+        ],
+        [StyledButton("❌ Cancel", style="danger", callback_data="bc_type:cancel")],
+    ])
+
+
+def export_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [StyledButton("👥 Users CSV",  style="success", callback_data="export:users")],
+        [StyledButton("📦 Orders CSV", style="primary", callback_data="export:orders")],
+    ])
+
+
+def admin_user_kb(target_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [
+            StyledButton("➕ Add Balance",    style="success", callback_data=f"adm_bal_add:{target_id}"),
+            StyledButton("➖ Remove Balance",  style="danger",  callback_data=f"adm_bal_rem:{target_id}"),
+        ],
+        [
+            StyledButton("🚫 Ban",   style="danger",  callback_data=f"adm_ban:{target_id}"),
+            StyledButton("✅ Unban", style="success", callback_data=f"adm_unban:{target_id}"),
+        ],
+        [StyledButton("📩 Message", style="primary", callback_data=f"adm_msg:{target_id}")],
+    ])
+
+
 def force_join_kb(channels: list[dict]) -> InlineKeyboardMarkup:
     rows = []
     for ch in channels:
@@ -165,7 +200,6 @@ def categories_kb(categories: list[str], icons: dict, updates_channel: str = "")
 
 
 def platform_categories_kb(platform: str, categories: list[str], icons: dict) -> InlineKeyboardMarkup:
-    # 🔥 FIX: এখানে কোনো ফিল্টার নেই, সরাসরি পাস করা লিস্ট দেখাবে। ফলে index ঠিক থাকবে।
     rows = []
     current_row = [] 
 
