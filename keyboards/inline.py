@@ -175,13 +175,13 @@ def categories_kb(categories: list[str], icons: dict, updates_channel: str = "")
         "telegram":  "✈️ TELEGRAM",
         "twitter":   "𝕏 TWITTER",
         "spotify":   "🎧 SPOTIFY",
-        "freefire":  "🔥 FREE FIRE",
+        "whatsapp":  "💬 WHATSAPP",  # 🔥 Free Fire বাদ দিয়ে WhatsApp যোগ করা হলো
     }
 
     rows = []
     row = []
 
-    platforms_to_show = ["facebook", "telegram", "tiktok", "instagram", "youtube", "twitter", "freefire", "spotify"]
+    platforms_to_show = ["facebook", "telegram", "tiktok", "instagram", "youtube", "twitter", "whatsapp", "spotify"]
 
     for p in platforms_to_show:
         label = PLATFORM_LABELS.get(p, f"🔹 {p.upper()}")
