@@ -863,14 +863,13 @@ async def new_order_game2(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Free Fire services not found in CSB API.")
         return ConversationHandler.END
         
-    upd_ch = await db.get_setting("updates_channel", "")
+    # 🔥 FIX: categories_kb এর বদলে order_categories_kb ব্যবহার করা হলো
     await update.message.reply_text(
         "🎮 <b>Game TopUp (2) - Free Fire</b>\n\nSelect a package category:",
-        reply_markup=categories_kb(ff_cats, CATEGORY_ICONS, upd_ch), 
+        reply_markup=order_categories_kb(ff_cats, CATEGORY_ICONS), 
         parse_mode=ParseMode.HTML
     )
-    return ORDER_PLATFORM
-
+    return ORDER_CATEGORY
 async def new_order_telegram(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     from handlers.topup import topup_start_telegram
     return await topup_start_telegram(update, ctx)
