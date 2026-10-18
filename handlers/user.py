@@ -37,6 +37,11 @@ logger = logging.getLogger(__name__)
 USD_TO_BDT  = 135.0
 COIN_TO_BDT = 1.0
 
+# 🔥 Helper: Detect if it's a Game Service
+def is_game_service(svc_name: str) -> bool:
+    nl = svc_name.lower()
+    return any(kw in nl for kw in ["free fire", "freefire", "free_fire", "diamond", "uc", "unipin"])
+
 # 🔥 Global helper to get platform name from category string
 def get_platform_name(cat: str) -> str:
     cl = cat.lower()
@@ -802,10 +807,16 @@ async def service_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     api_rate_bdt = float(svc['rate']) * (1 + SERVICE_MARKUP_PCT / 100)
     api_rate_usd = api_rate_bdt / USD_TO_BDT
     
+    # 🔥 FIX: Free Fire বা গেম হলে per 1000 এর বদলে per Package দেখাবে
+    if is_game_service(svc.get("name", "")):
+        rate_text = f"💵 Rate: <code>৳{api_rate_bdt:,.2f} per Package</code>\n"
+    else:
+        rate_text = f"💵 Rate: <code>৳{api_rate_bdt:,.2f} per 1000 (≈ ${api_rate_usd:,.4f})</code>\n"
+    
     text = (
         f"{icon} <b>{svc['name']}</b>\n" f"{'─'*28}\n"
         f"🆔 Service ID: <code>{svc['service_id']}</code>\n"
-        f"💵 Rate: <code>৳{api_rate_bdt:,.2f} per 1000 (≈ ${api_rate_usd:,.4f})</code>\n"
+        f"{rate_text}"
         f"📊 Min: <code>{svc['min_order']:,}</code>\n"
         f"📈 Max: <code>{svc['max_order']:,}</code>\n"
         f"♻️ Refill: {refill_str}\n" f"❌ Cancel: {cancel_str}\n"
@@ -856,7 +867,14 @@ async def order_start_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ctx.user_data["order_service_name"] = svc["name"]
     ctx.user_data["order_service"]      = svc
     ctx.user_data["order_category"]     = svc["category"]
-    await query.edit_message_text(f"🔗 <b>Step — Enter Link</b>\n\nService: <b>{svc['name']}</b>\n\nPlease send the target link/username:", parse_mode=ParseMode.HTML)
+    
+    # 🔥 FIX: গেম হলে UID চাইবে, নাহলে লিংক চাইবে
+    if is_game_service(svc.get("name", "")):
+        prompt = f"🔗 <b>Step — Enter UID</b>\n\nService: <b>{svc['name']}</b>\n\nPlease send your Free Fire UID:"
+    else:
+        prompt = f"🔗 <b>Step — Enter Link</b>\n\nService: <b>{svc['name']}</b>\n\nPlease send the target link/username:"
+        
+    await query.edit_message_text(prompt, parse_mode=ParseMode.HTML)
     return ORDER_LINK
 
 async def order_platform_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -997,13 +1015,20 @@ async def order_service_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ctx.user_data["order_service_id"]   = service_id
     ctx.user_data["order_service_name"] = svc["name"]
     ctx.user_data["order_service"]      = svc
-    await query.edit_message_text(f"🔗 <b>Step 3 — Enter Link</b>\n\nService: <b>{svc['name']}</b>\n📊 Min: <code>{svc['min_order']:,}</code> | Max: <code>{svc['max_order']:,}</code>\n\nPlease send the target URL / username:", parse_mode=ParseMode.HTML)
+    
+    # 🔥 FIX: গেম হলে UID চাইবে, নাহলে লিংক চাইবে
+    if is_game_service(svc.get("name", "")):
+        prompt = f"🔗 <b>Step 3 — Enter UID</b>\n\nService: <b>{svc['name']}</b>\n📊 Min: <code>{svc['min_order']:,}</code> | Max: <code>{svc['max_order']:,}</code>\n\nPlease send your Free Fire UID:"
+    else:
+        prompt = f"🔗 <b>Step 3 — Enter Link</b>\n\nService: <b>{svc['name']}</b>\n📊 Min: <code>{svc['min_order']:,}</code> | Max: <code>{svc['max_order']:,}</code>\n\nPlease send the target URL / username:"
+        
+    await query.edit_message_text(prompt, parse_mode=ParseMode.HTML)
     return ORDER_LINK
 
 async def order_link_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     link = update.message.text.strip()
     if len(link) < 3:
-        await update.message.reply_text("❌ Invalid link. Please try again:"); return ORDER_LINK
+        await update.message.reply_text("❌ Invalid. Please try again:"); return ORDER_LINK
     ctx.user_data["order_link"] = link
     svc = ctx.user_data.get("order_service", {})
     await update.message.reply_text(f"📊 <b>Step 4 — Enter Quantity</b>\n\nMin: <code>{svc.get('min_order',1):,}</code> | Max: <code>{svc.get('max_order',1000000):,}</code>\n\nHow many?", parse_mode=ParseMode.HTML, reply_markup=cancel_keyboard())
@@ -1062,7 +1087,7 @@ async def order_quantity_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
 
     text = (
         f"📋 <b>Order Confirmation</b>\n" f"{'─'*28}\n"
-        f"📦 Service: <code>{name}</code>\n" f"🔗 Link: <code>{link}</code>\n"
+        f"📦 Service: <code>{name}</code>\n" f"🔗 Link/UID: <code>{link}</code>\n"
         f"📊 Quantity: <code>{qty:,}</code>\n"
         f"💵 Cost: <code>{charge:,.2f} Coins = ৳{charge_bdt} (${charge_usd:.4f})</code>{disc_str}\n\n"
         f"💰 Balance: <code>{bal_coins:,.2f} Coins = ৳{bal_bdt} (${bal_usd})</code>\n\n"
@@ -1137,7 +1162,7 @@ async def order_confirm_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
     await query.edit_message_text(
         f"✅ <b>Order Placed Successfully!</b>\n" f"{'─'*28}\n"
         f"🆔 Order ID: <code>#{order_id}</code>\n" f"📦 Service: <code>{service_name}</code>\n"
-        f"🔗 Link: <code>{link}</code>\n" f"📊 Quantity: <code>{qty:,}</code>\n"
+        f"🔗 Link/UID: <code>{link}</code>\n" f"📊 Quantity: <code>{qty:,}</code>\n"
         f"💵 Charged: <code>{fmt_coins_full(charge)}</code>\n" f"📊 Status: <code>{api_status}</code>\n\n"
         f"Use 🔎 <b>Order Tracker</b> to check status.",
         parse_mode=ParseMode.HTML,
@@ -1255,7 +1280,7 @@ async def tracker_input_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     text = (
         f"🔎 <b>Order Details</b>\n" f"{'─'*28}\n"
         f"🆔 Order ID: <code>#{order['id']}</code>\n" f"📦 Service: <code>{order.get('service_name','—')}</code>\n"
-        f"🔗 Link: <code>{order['link']}</code>\n" f"📊 Quantity: <code>{order['quantity']:,}</code>\n"
+        f"🔗 Link/UID: <code>{order['link']}</code>\n" f"📊 Quantity: <code>{order['quantity']:,}</code>\n"
         f"💵 Charge: <code>{fmt_coins_full(order['charge'])}</code>\n" f"📊 Status: {fmt_status(order['status'])}\n"
         f"📈 Start Count: <code>{order.get('start_count',0):,}</code>\n" f"📉 Remains: <code>{order.get('remains',0):,}</code>\n"
         f"📅 Created: <code>{fmt_date(order['created_at'])}</code>"
@@ -1353,7 +1378,7 @@ async def vip_buy_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         f"Enjoy your premium benefits! 🚀", parse_mode=ParseMode.HTML)
 
 # ═══════════════════════════════════════════════════════════════════
-#  SUPPORT TICKETS & OTHERS
+#  SUPPORT TICKETS & UPDATES CHANNEL
 # ═══════════════════════════════════════════════════════════════════
 async def support(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("☎️ <b>Support</b>\n\nDescribe your issue and we'll help you!\n\nEnter your subject:", parse_mode=ParseMode.HTML, reply_markup=cancel_keyboard())
@@ -1382,6 +1407,17 @@ async def ticket_message_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
         except Exception: pass
     ctx.user_data.clear()
     return ConversationHandler.END
+
+async def updates_channel(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    channel = await db.get_setting("updates_channel", "")
+    if channel:
+        kb = InlineKeyboardMarkup([[InlineKeyboardButton("📢 Join Updates Channel", url=channel)]])
+        await update.message.reply_text(
+            "📢 <b>Updates Channel</b>\n\n"
+            "নিচের বাটনে ক্লিক করে আমাদের Updates Channel-এ জয়েন করো:",
+            reply_markup=kb, parse_mode=ParseMode.HTML)
+    else:
+        await update.message.reply_text("📢 No updates channel set yet.")
 
 async def back_to_main(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ctx.user_data.clear()
