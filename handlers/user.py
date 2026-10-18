@@ -1,4 +1,4 @@
- import logging
+import logging
 import re
 import asyncio
 import httpx
@@ -47,7 +47,7 @@ def get_platform_name(cat: str) -> str:
     cl = cat.lower()
     if "free fire" in cl or "freefire" in cl or "free_fire" in cl: return "freefire"
     if "tik tok" in cl or "tiktok" in cl or "tik_tok" in cl: return "tiktok"
-    for p in ["facebook", "instagram", "youtube", "telegram", "twitter", "spotify"]:
+    for p in ["facebook", "instagram", "youtube", "telegram", "twitter", "spotify", "whatsapp"]:
         if p in cl: return p
     return "other"
 
@@ -154,10 +154,21 @@ _SUBCAT_RULES = {
         (r'\breactions?\b', "❤️ Reactions"),
         (r'\bboosts?\b', "🚀 Server Boosts"),
     ],
-    "whatsapp": [(r'\bmembers?\b', "👥 Members")],
-    "linkedin": [(r'\bfollowers?\b', "👥 Followers"), (r'\breactions?\b', "❤️ Reactions")],
-    "threads": [(r'\bfollowers?\b', "👥 Followers"), (r'\blikes?\b', "👍 Likes")],
-    "reddit": [(r'\bmembers?\b', "👥 Members"), (r'\bupvotes?\b', "⬆️ Upvotes")]
+    "whatsapp": [
+        (r'\bmembers?\b', "👥 Members"),
+    ],
+    "linkedin": [
+        (r'\bfollowers?\b', "👥 Followers"),
+        (r'\breactions?\b', "❤️ Reactions"),
+    ],
+    "threads": [
+        (r'\bfollowers?\b', "👥 Followers"),
+        (r'\blikes?\b', "👍 Likes"),
+    ],
+    "reddit": [
+        (r'\bmembers?\b', "👥 Members"),
+        (r'\bupvotes?\b', "⬆️ Upvotes"),
+    ]
 }
 
 def _detect_platform(services: list[dict]) -> str | None:
@@ -601,7 +612,7 @@ async def services_list_telegram(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
 PLATFORM_LABELS = {
     "facebook": "📘 FACEBOOK", "instagram": "📸 INSTAGRAM", "tiktok": "🎵 TIK TOK",
     "youtube": "▶️ YOUTUBE", "telegram": "✈️ TELEGRAM", "twitter": "𝕏 TWITTER",
-    "spotify": "🎧 SPOTIFY", "freefire": "🔥 FREE FIRE",
+    "spotify": "🎧 SPOTIFY", "whatsapp": "💬 WHATSAPP",
 }
 
 async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -1038,13 +1049,11 @@ async def order_link_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ctx.user_data["order_link"] = link
     svc = ctx.user_data.get("order_service", {})
     
-    # 🔥 If Game Service, skip quantity step and set to 1
     if is_game_service(svc.get("name", "")):
         qty = 1
         ctx.user_data["order_quantity"] = qty
-        
         rate_bdt = float(svc.get("rate", 0)) * (1 + SERVICE_MARKUP_PCT / 100)
-        charge = rate_bdt # 1 package
+        charge = rate_bdt
         ctx.user_data["order_charge"] = charge
         
         user_id = update.effective_user.id
@@ -1063,7 +1072,6 @@ async def order_link_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(text, reply_markup=confirm_order_kb(service_id), parse_mode=ParseMode.HTML)
         return ORDER_CONFIRM
         
-    # Regular flow for SMM services
     await update.message.reply_text(f"📊 <b>Step 4 — Enter Quantity</b>\n\nMin: <code>{svc.get('min_order',1):,}</code> | Max: <code>{svc.get('max_order',1000000):,}</code>\n\nHow many?", parse_mode=ParseMode.HTML, reply_markup=cancel_keyboard())
     return ORDER_QUANTITY
 
