@@ -16,7 +16,7 @@ from handlers.user import (
     buy_coins, payment_method_callback, check_payment_callback, deposit_amount_handler,
     deposit_txn_handler, package_callback, services_list, search_service_prompt, category_callback,
     service_callback, services_list_smm, services_list_smm2, services_list_telegram,
-    new_order, new_order_smm, new_order_smm2, new_order_telegram, back_to_main, order_start_callback,
+    new_order, new_order_smm, new_order_smm2, new_order_game2, new_order_telegram, back_to_main, order_start_callback,
     order_platform_handler, order_category_handler, order_service_handler, order_link_handler,
     order_quantity_handler, order_confirm_callback, my_orders,
     order_refresh_callback, order_refill_callback,
@@ -140,7 +140,7 @@ async def force_join_leave_handler(update: Update, context) -> None:
     if invite_url:
         rows.append([InlineKeyboardButton("📢 Re-join Channel", url=invite_url)])
     rows.append([InlineKeyboardButton("✅ I've Joined — Check Again", callback_data="fj_check")])
-    
+
     channel_label = matched_ch.get("channel_name") or (f"@{this_un}" if this_un else chat.title) or "our channel"
 
     try:
@@ -214,12 +214,11 @@ def build_app() -> Application:
     app.add_handler(ChatMemberHandler(force_join_leave_handler, chat_member_types=ChatMemberHandler.CHAT_MEMBER), group=0)
     app.add_handler(ChatMemberHandler(force_join_leave_handler, chat_member_types=ChatMemberHandler.MY_CHAT_MEMBER), group=0)
 
-    # ── Game Topup ConversationHandler ───────────────────────────
+    # ── Game Topup ConversationHandler (Game 1) ───────────────────
     topup_conv = ConversationHandler(
         entry_points=[
-            MessageHandler(filters.Regex(r"^🎮 ɢᴀᴍᴇ ᴛᴏᴘᴜᴘ$"), topup_start),
-            MessageHandler(filters.Regex(r"^🎮 ᴛᴏᴘ ᴜᴘ ꜱᴇʀᴠɪᴄᴇ$"), topup_start),
-            MessageHandler(filters.Regex(r"^🎮 ᴛᴏᴘ ᴜᴘ ᴏʀᴅᴇʀ$"), topup_start),
+            # 🔥 এখানে Game Topup (1) এর রেগুলার এক্সপ্রেশন দেওয়া হলো
+            MessageHandler(filters.Regex(r"^🎮 ɢᴀᴍᴇ ᴛᴏᴘᴜᴘ \(1\)$"), topup_start),
             MessageHandler(filters.Regex(r"^✈️ ᴛᴇʟᴇɢʀᴀᴍ ꜱᴇʀᴠɪᴄᴇ$"), topup_start_telegram),
             MessageHandler(filters.Regex(r"^✈️ ᴛᴇʟᴇɢʀᴀᴍ ᴏʀᴅᴇʀ$"), topup_start_telegram),
         ],
@@ -288,6 +287,10 @@ def build_app() -> Application:
             MessageHandler(filters.Regex(r"^🛒 ɴᴇᴡ ᴏʀᴅᴇʀ$"), new_order),
             MessageHandler(filters.Regex(r"^🌐 ꜱᴍᴍ ᴏʀᴅᴇʀ \(1\)$"), new_order_smm),
             MessageHandler(filters.Regex(r"^🌐 ꜱᴍᴍ ᴏʀᴅᴇʀ \(2\)$"), new_order_smm2),
+            
+            # 🔥 এখানে Game Topup (2) এর রেগুলার এক্সপ্রেশন দেওয়া হলো
+            MessageHandler(filters.Regex(r"^🎮 ɢᴀᴍᴇ ᴛᴏᴘᴜᴘ \(2\)$"), new_order_game2),
+            
             MessageHandler(filters.Regex(r"^✈️ ᴛᴇʟᴇɢʀᴀᴍ ᴏʀᴅᴇʀ$"), new_order_telegram),
             CallbackQueryHandler(order_start_callback, pattern=r"^order_start:"),
         ],
@@ -452,7 +455,7 @@ def build_app() -> Application:
     app.add_handler(MessageHandler(filters.Regex(r"^👥 ʀᴇꜰᴇʀʀᴀʟ$"),       referral))
     app.add_handler(MessageHandler(filters.Regex(r"^🏆 ʟᴇᴀᴅᴇʀʙᴏᴀʀᴅ$"),    leaderboard))
     app.add_handler(MessageHandler(filters.Regex(r"^⭐ ᴠɪᴘ ᴍᴇᴍʙᴇʀꜱʜɪᴘ$"), vip_membership))
-    
+
     # ── Partner: my orders shortcut ──────────────────────────────
     app.add_handler(MessageHandler(filters.Regex(r"^🧾 ᴍʏ ᴘᴀʀᴛɴᴇʀ ᴏʀᴅᴇʀꜱ$"), my_partner_orders))
 
