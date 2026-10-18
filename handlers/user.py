@@ -1,4 +1,4 @@
-import logging
+ import logging
 import re
 import asyncio
 import httpx
@@ -154,21 +154,10 @@ _SUBCAT_RULES = {
         (r'\breactions?\b', "❤️ Reactions"),
         (r'\bboosts?\b', "🚀 Server Boosts"),
     ],
-    "whatsapp": [
-        (r'\bmembers?\b', "👥 Members"),
-    ],
-    "linkedin": [
-        (r'\bfollowers?\b', "👥 Followers"),
-        (r'\breactions?\b', "❤️ Reactions"),
-    ],
-    "threads": [
-        (r'\bfollowers?\b', "👥 Followers"),
-        (r'\blikes?\b', "👍 Likes"),
-    ],
-    "reddit": [
-        (r'\bmembers?\b', "👥 Members"),
-        (r'\bupvotes?\b', "⬆️ Upvotes"),
-    ]
+    "whatsapp": [(r'\bmembers?\b', "👥 Members")],
+    "linkedin": [(r'\bfollowers?\b', "👥 Followers"), (r'\breactions?\b', "❤️ Reactions")],
+    "threads": [(r'\bfollowers?\b', "👥 Followers"), (r'\blikes?\b', "👍 Likes")],
+    "reddit": [(r'\bmembers?\b', "👥 Members"), (r'\bupvotes?\b', "⬆️ Upvotes")]
 }
 
 def _detect_platform(services: list[dict]) -> str | None:
@@ -807,7 +796,6 @@ async def service_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     api_rate_bdt = float(svc['rate']) * (1 + SERVICE_MARKUP_PCT / 100)
     api_rate_usd = api_rate_bdt / USD_TO_BDT
     
-    # 🔥 FIX: Free Fire বা গেম হলে per 1000 এর বদলে per Package দেখাবে
     if is_game_service(svc.get("name", "")):
         rate_text = f"💵 Rate: <code>৳{api_rate_bdt:,.2f} per Package</code>\n"
     else:
@@ -852,6 +840,26 @@ async def new_order_smm2(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🛒 <b>Select Service Category:</b>\n\nআপনি কোন ক্যাটাগরির সার্ভিস নিতে চান নিচে নির্বাচন করুন 👇", reply_markup=categories_kb(cats, CATEGORY_ICONS, upd_ch), parse_mode=ParseMode.HTML)
     return ORDER_PLATFORM
 
+# 🔥 NEW: Game Topup 2 (CSB API Free Fire only)
+async def new_order_game2(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    ctx.user_data["current_api_source"] = "smm2"
+    cats = await db.get_categories(api_source="smm2")
+    
+    # Filter only Free Fire categories
+    ff_cats = [c for c in cats if any(kw in c.lower() for kw in ["free fire", "freefire", "free_fire", "diamond", "uc"])]
+    
+    if not ff_cats:
+        await update.message.reply_text("⚠️ Free Fire services not found in CSB API.")
+        return ConversationHandler.END
+        
+    upd_ch = await db.get_setting("updates_channel", "")
+    await update.message.reply_text(
+        "🎮 <b>Game TopUp (2) - Free Fire</b>\n\nSelect a package category:",
+        reply_markup=categories_kb(ff_cats, CATEGORY_ICONS, upd_ch), 
+        parse_mode=ParseMode.HTML
+    )
+    return ORDER_PLATFORM
+
 async def new_order_telegram(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     from handlers.topup import topup_start_telegram
     return await topup_start_telegram(update, ctx)
@@ -868,7 +876,6 @@ async def order_start_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ctx.user_data["order_service"]      = svc
     ctx.user_data["order_category"]     = svc["category"]
     
-    # 🔥 FIX: গেম হলে UID চাইবে, নাহলে লিংক চাইবে
     if is_game_service(svc.get("name", "")):
         prompt = f"🔗 <b>Step — Enter UID</b>\n\nService: <b>{svc['name']}</b>\n\nPlease send your Free Fire UID:"
     else:
@@ -1016,7 +1023,6 @@ async def order_service_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ctx.user_data["order_service_name"] = svc["name"]
     ctx.user_data["order_service"]      = svc
     
-    # 🔥 FIX: গেম হলে UID চাইবে, নাহলে লিংক চাইবে
     if is_game_service(svc.get("name", "")):
         prompt = f"🔗 <b>Step 3 — Enter UID</b>\n\nService: <b>{svc['name']}</b>\n📊 Min: <code>{svc['min_order']:,}</code> | Max: <code>{svc['max_order']:,}</code>\n\nPlease send your Free Fire UID:"
     else:
@@ -1031,6 +1037,33 @@ async def order_link_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Invalid. Please try again:"); return ORDER_LINK
     ctx.user_data["order_link"] = link
     svc = ctx.user_data.get("order_service", {})
+    
+    # 🔥 If Game Service, skip quantity step and set to 1
+    if is_game_service(svc.get("name", "")):
+        qty = 1
+        ctx.user_data["order_quantity"] = qty
+        
+        rate_bdt = float(svc.get("rate", 0)) * (1 + SERVICE_MARKUP_PCT / 100)
+        charge = rate_bdt # 1 package
+        ctx.user_data["order_charge"] = charge
+        
+        user_id = update.effective_user.id
+        udata   = await db.get_user(user_id)
+        bal_coins = float(udata['balance'])
+        
+        text = (
+            f"📋 <b>Order Confirmation</b>\n" f"{'─'*28}\n"
+            f"📦 Service: <code>{svc['name']}</code>\n" f"🔗 UID: <code>{link}</code>\n"
+            f"📊 Quantity: <code>1 Package</code>\n"
+            f"💵 Cost: <code>{charge:,.2f} Coins</code>\n\n"
+            f"💰 Balance: <code>{bal_coins:,.2f} Coins</code>\n\n"
+            f"✅ Confirm order?"
+        )
+        service_id = ctx.user_data.get("order_service_id", "")
+        await update.message.reply_text(text, reply_markup=confirm_order_kb(service_id), parse_mode=ParseMode.HTML)
+        return ORDER_CONFIRM
+        
+    # Regular flow for SMM services
     await update.message.reply_text(f"📊 <b>Step 4 — Enter Quantity</b>\n\nMin: <code>{svc.get('min_order',1):,}</code> | Max: <code>{svc.get('max_order',1000000):,}</code>\n\nHow many?", parse_mode=ParseMode.HTML, reply_markup=cancel_keyboard())
     return ORDER_QUANTITY
 
@@ -1047,9 +1080,7 @@ async def order_quantity_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
         return ORDER_QUANTITY
 
     rate_bdt = float(svc.get("rate", 0)) * (1 + SERVICE_MARKUP_PCT / 100)
-    rate_usd = rate_bdt / USD_TO_BDT
     charge_bdt = round((qty / 1000) * rate_bdt, 2)
-    charge_usd = round((qty / 1000) * rate_usd, 6)
     charge     = charge_bdt
 
     user_id = update.effective_user.id
@@ -1058,28 +1089,24 @@ async def order_quantity_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
     discount = 0
     if vip_ok and udata.get("vip_plan"):
         discount   = VIP_PLANS.get(udata["vip_plan"], {}).get("discount", 0)
-        charge_usd = round(charge_usd * (1 - discount / 100), 6)
         charge_bdt = round(charge_bdt * (1 - discount / 100), 2)
         charge     = charge_bdt
 
     ctx.user_data["order_quantity"]   = qty
     ctx.user_data["order_charge"]     = charge
-    ctx.user_data["order_charge_usd"] = charge_usd
     link = ctx.user_data.get("order_link", "")
     name = ctx.user_data.get("order_service_name", "")
     disc_str = f"\n🏷️ VIP Discount: <code>{discount}%</code>" if discount else ""
 
     bal_coins = float(udata['balance'])
-    bal_bdt   = round(bal_coins * COIN_TO_BDT, 1)
-    bal_usd   = round(bal_bdt / USD_TO_BDT, 3)
-
+    
     if bal_coins < charge:
         needed = round(charge - bal_coins, 2)
         await update.effective_message.reply_text(
             f"❌ <b>Balance কম!</b>\n\n"
-            f"💵 Cost: <code>{charge:,.2f} Coins (৳{charge_bdt} / ${charge_usd:.4f})</code>\n"
-            f"💰 তোমার Balance: <code>{bal_coins:,.2f} Coins (৳{bal_bdt} / ${bal_usd})</code>\n"
-            f"⚠️ আরও <code>{needed:,.2f} Coins (৳{needed:.0f})</code> দরকার\n\n"
+            f"💵 Cost: <code>{charge:,.2f} Coins</code>\n"
+            f"💰 তোমার Balance: <code>{bal_coins:,.2f} Coins</code>\n"
+            f"⚠️ আরও <code>{needed:,.2f} Coins</code> দরকার\n\n"
             f"💳 <b>Buy Coins</b> থেকে balance বাড়াও।",
             reply_markup=main_keyboard(), parse_mode=ParseMode.HTML)
         ctx.user_data.clear()
@@ -1087,10 +1114,10 @@ async def order_quantity_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
 
     text = (
         f"📋 <b>Order Confirmation</b>\n" f"{'─'*28}\n"
-        f"📦 Service: <code>{name}</code>\n" f"🔗 Link/UID: <code>{link}</code>\n"
+        f"📦 Service: <code>{name}</code>\n" f"🔗 Link: <code>{link}</code>\n"
         f"📊 Quantity: <code>{qty:,}</code>\n"
-        f"💵 Cost: <code>{charge:,.2f} Coins = ৳{charge_bdt} (${charge_usd:.4f})</code>{disc_str}\n\n"
-        f"💰 Balance: <code>{bal_coins:,.2f} Coins = ৳{bal_bdt} (${bal_usd})</code>\n\n"
+        f"💵 Cost: <code>{charge:,.2f} Coins</code>{disc_str}\n\n"
+        f"💰 Balance: <code>{bal_coins:,.2f} Coins</code>\n\n"
         f"✅ Confirm order?"
     )
     service_id = ctx.user_data.get("order_service_id", "")
