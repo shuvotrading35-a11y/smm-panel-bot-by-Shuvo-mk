@@ -639,6 +639,24 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     if data in ("cat_back", "svc_list_back"):
         platform = ctx.user_data.get("current_platform", "")
+        
+        # 🔥 FIX: যদি Game Topup 2 থেকে Back চাপা হয়
+        if ctx.user_data.get("is_game2_flow"):
+            cats = await db.get_categories(api_source="smm2")
+            ff_cats = [c for c in cats if any(kw in c.lower() for kw in ["free fire", "freefire", "free_fire", "diamond", "uc"])]
+            rows = []
+            row = []
+            for cat in ff_cats:
+                icon = next((v for k, v in CATEGORY_ICONS.items() if k.lower() in cat.lower()), "🔹")
+                row.append(StyledButton(f"{icon} {cat}", style="success", callback_data=f"cat:{cat}"))
+                if len(row) == 2:
+                    rows.append(row)
+                    row = []
+            if row: rows.append(row)
+            rows.append([StyledButton("🔙 Back to Main", style="danger", callback_data="back_to_main_cb")])
+            await query.edit_message_text("🎮 <b>Game TopUp (2) - Free Fire</b>\n\nSelect a package category:", reply_markup=InlineKeyboardMarkup(rows), parse_mode=ParseMode.HTML)
+            return
+            
         all_cats = await db.get_categories(api_source=api_src)
         
         if platform == "other":
@@ -838,6 +856,7 @@ async def new_order(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 async def new_order_smm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ctx.user_data["current_api_source"] = "smm1"
+    ctx.user_data["is_game2_flow"] = False
     cats = await db.get_categories(api_source="smm1")
     if not cats:
         await update.message.reply_text("⚠️ No services available. Try again later.")
@@ -848,6 +867,7 @@ async def new_order_smm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 async def new_order_smm2(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ctx.user_data["current_api_source"] = "smm2"
+    ctx.user_data["is_game2_flow"] = False
     cats = await db.get_categories(api_source="smm2")
     if not cats:
         await update.message.reply_text("⚠️ CSB SMM services নেই।\nAdmin /syncservices দিয়ে sync করুন।")
@@ -860,6 +880,7 @@ async def new_order_smm2(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def new_order_game2(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ctx.user_data["current_api_source"] = "smm2"
     ctx.user_data["current_platform"] = "freefire" 
+    ctx.user_data["is_game2_flow"] = True # 🔥 ফ্ল্যাগ বসানো হলো
     
     cats = await db.get_categories(api_source="smm2")
     
@@ -874,7 +895,6 @@ async def new_order_game2(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     row = []
     for cat in ff_cats:
         icon = next((v for k, v in CATEGORY_ICONS.items() if k.lower() in cat.lower()), "🔹")
-        # 🔥 cat[:30] এর বদলে শুধু cat বসানো হলো যাতে নাম কেটে না যায়
         row.append(StyledButton(f"{icon} {cat}", style="success", callback_data=f"cat:{cat}"))
         if len(row) == 2:
             rows.append(row)
