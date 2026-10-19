@@ -16,7 +16,7 @@ from handlers.user import (
     buy_coins, payment_method_callback, check_payment_callback, deposit_amount_handler,
     deposit_txn_handler, package_callback, services_list, search_service_prompt, category_callback,
     service_callback, services_list_smm, services_list_smm2, services_list_telegram,
-    new_order, new_order_smm, new_order_smm2, new_order_game2, new_order_telegram, back_to_main, order_start_callback,
+    new_order, new_order_smm, new_order_smm2, new_order_game2, new_order_telegram, back_to_main, back_to_main_cb, order_start_callback,
     order_platform_handler, order_category_handler, order_service_handler, order_link_handler,
     order_quantity_handler, order_confirm_callback, my_orders,
     order_refresh_callback, order_refill_callback,
@@ -217,7 +217,6 @@ def build_app() -> Application:
     # ── Game Topup ConversationHandler (Game 1) ───────────────────
     topup_conv = ConversationHandler(
         entry_points=[
-            # 🔥 এখানে Game Topup (1) এর রেগুলার এক্সপ্রেশন দেওয়া হলো
             MessageHandler(filters.Regex(r"^🎮 ɢᴀᴍᴇ ᴛᴏᴘᴜᴘ \(1\)$"), topup_start),
             MessageHandler(filters.Regex(r"^✈️ ᴛᴇʟᴇɢʀᴀᴍ ꜱᴇʀᴠɪᴄᴇ$"), topup_start_telegram),
             MessageHandler(filters.Regex(r"^✈️ ᴛᴇʟᴇɢʀᴀᴍ ᴏʀᴅᴇʀ$"), topup_start_telegram),
@@ -262,6 +261,10 @@ def build_app() -> Application:
 
     # ── Standalone CallbackQuery handlers ────────────────────────
     app.add_handler(CallbackQueryHandler(force_join_check, pattern=r"^fj_check$"))
+    
+    # 🔥 নতুন যোগ করা Back to main handler
+    app.add_handler(CallbackQueryHandler(back_to_main_cb, pattern=r"^back_to_main_cb$"))
+    
     app.add_handler(CallbackQueryHandler(check_payment_callback, pattern=r"^check_pay:"))
     app.add_handler(CallbackQueryHandler(account_callback, pattern=r"^acc_"))
     app.add_handler(CallbackQueryHandler(lambda u, c: u.callback_query.answer("📩 যোগাযোগ: @shuvo_9882", show_alert=True), pattern=r"^contact_admin$"))
@@ -288,7 +291,7 @@ def build_app() -> Application:
             MessageHandler(filters.Regex(r"^🌐 ꜱᴍᴍ ᴏʀᴅᴇʀ \(1\)$"), new_order_smm),
             MessageHandler(filters.Regex(r"^🌐 ꜱᴍᴍ ᴏʀᴅᴇʀ \(2\)$"), new_order_smm2),
             
-            # 🔥 এখানে Game Topup (2) এর রেগুলার এক্সপ্রেশন দেওয়া হলো
+            # 🔥 এখানে Game Topup (2) এর এন্ট্রি পয়েন্ট
             MessageHandler(filters.Regex(r"^🎮 ɢᴀᴍᴇ ᴛᴏᴘᴜᴘ \(2\)$"), new_order_game2),
             
             MessageHandler(filters.Regex(r"^✈️ ᴛᴇʟᴇɢʀᴀᴍ ᴏʀᴅᴇʀ$"), new_order_telegram),
@@ -296,7 +299,13 @@ def build_app() -> Application:
         ],
         states={
             ORDER_PLATFORM: [CallbackQueryHandler(order_platform_handler, pattern=r"^(platform(:.+|_back)|catidx:\d+|subcat:.+)$")],
-            ORDER_CATEGORY: [CallbackQueryHandler(order_category_handler, pattern=r"^cat:.+")],
+            
+            # 🔥 Game Topup (2) এর ক্যাটাগরি হ্যান্ডলার
+            ORDER_CATEGORY: [
+                CallbackQueryHandler(order_category_handler, pattern=r"^cat:.+"),
+                CallbackQueryHandler(back_to_main_cb, pattern=r"^back_to_main_cb$") # Back বাটন সাপোর্ট
+            ],
+            
             ORDER_SERVICE:  [CallbackQueryHandler(order_service_handler,  pattern=r"^(svc:.+|svc_page\|.*)$")],
             ORDER_LINK:     [MessageHandler(filters.TEXT & ~CANCEL_FILTER, order_link_handler)],
             ORDER_QUANTITY: [MessageHandler(filters.TEXT & ~CANCEL_FILTER, order_quantity_handler)],
