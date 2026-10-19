@@ -105,6 +105,7 @@ _SUBCAT_RULES = {
         (r'\blikes?\b', "👍 Likes"),
         (r'\bcomments?\b', "💬 Comments"),
         (r'\bsaves?\b', "🔖 Saves"),
+        (r'\bshares?\b', "🔄 Shares"), # 🔥 Instagram Shares যোগ করা হলো
     ],
     "youtube": [
         (r'\bsubscribers?\b', "🔔 Subscribers"),
@@ -114,6 +115,7 @@ _SUBCAT_RULES = {
         (r'\blikes?\b', "👍 Likes"),
         (r'\bcomments?\b', "💬 Comments"),
         (r'\blive\b', "📡 Live Stream"),
+        (r'\bwatch\s*time\b', "⏱ Watch Time"), # 🔥 YouTube Watch Time যোগ করা হলো
     ],
     "tiktok": [
         (r'\bfollowers?\b', "👥 Followers"),
@@ -122,6 +124,7 @@ _SUBCAT_RULES = {
         (r'\bshares?\b', "🔄 Shares"),
         (r'\bcomments?\b', "💬 Comments"),
         (r'\blive\b', "📡 Live"),
+        (r'\bsaves?\b', "🔖 Saves"), # 🔥 TikTok Saves যোগ করা হলো
     ],
     "freefire": [
         (r'\bdiamond\b', "💎 Diamonds"),
@@ -136,6 +139,8 @@ _SUBCAT_RULES = {
         (r'\bviews?\b', "👁 Views"),
         (r'\breactions?\b', "❤️ Reactions"),
         (r'\bvotes?\b', "🗳 Votes"),
+        (r'\bbot\b.*\bstart\b|\bstart\b.*\bbot\b', "🤖 Bot Start"), # 🔥 Telegram Bot Start যোগ করা হলো
+        (r'\bpost\b.*\bcomments?\b|\bcomments?\b.*\bpost\b', "💬 Post Comment"), # 🔥 Telegram Post Comment যোগ করা হলো
     ],
     "twitter": [
         (r'\bfollowers?\b', "👥 Followers"),
@@ -156,6 +161,8 @@ _SUBCAT_RULES = {
     ],
     "whatsapp": [
         (r'\bmembers?\b', "👥 Members"),
+        (r'\bchannel\b.*\breaction\b|\breaction\b.*\bchannel\b', "👍 Channel Post Reaction"), # 🔥 WhatsApp Channel Post Reaction
+        (r'\bpoll\b.*\bvotes?\b|\bvotes?\b.*\bpoll\b', "🗳 Poll Votes"), # 🔥 WhatsApp Poll Votes
     ],
     "linkedin": [
         (r'\bfollowers?\b', "👥 Followers"),
@@ -854,6 +861,8 @@ async def new_order_smm2(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 # 🔥 NEW: Game Topup 2 (CSB API Free Fire only)
 async def new_order_game2(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ctx.user_data["current_api_source"] = "smm2"
+    ctx.user_data["current_platform"] = "freefire" 
+    
     cats = await db.get_categories(api_source="smm2")
     
     # Filter only Free Fire categories
@@ -863,13 +872,37 @@ async def new_order_game2(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Free Fire services not found in CSB API.")
         return ConversationHandler.END
         
-    # 🔥 FIX: categories_kb এর বদলে order_categories_kb ব্যবহার করা হলো
+    rows = []
+    row = []
+    for cat in ff_cats:
+        icon = next((v for k, v in CATEGORY_ICONS.items() if k.lower() in cat.lower()), "🔹")
+        row.append(StyledButton(f"{icon} {cat}", style="success", callback_data=f"cat:{cat[:30]}"))
+        if len(row) == 2:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+        
+    rows.append([StyledButton("🔙 Back to Main", style="danger", callback_data="back_to_main_cb")])
+    
     await update.message.reply_text(
         "🎮 <b>Game TopUp (2) - Free Fire</b>\n\nSelect a package category:",
-        reply_markup=order_categories_kb(ff_cats, CATEGORY_ICONS), 
+        reply_markup=InlineKeyboardMarkup(rows), 
         parse_mode=ParseMode.HTML
     )
     return ORDER_CATEGORY
+
+async def back_to_main_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    ctx.user_data.clear()
+    try:
+        await query.message.delete()
+    except Exception:
+        pass
+    await ctx.bot.send_message(query.from_user.id, "🏠 Main Menu", reply_markup=main_keyboard())
+    return ConversationHandler.END
+
 async def new_order_telegram(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     from handlers.topup import topup_start_telegram
     return await topup_start_telegram(update, ctx)
