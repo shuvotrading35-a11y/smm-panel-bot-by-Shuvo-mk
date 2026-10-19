@@ -260,25 +260,24 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("stats",          bot_stats))
 
     # ── Standalone CallbackQuery handlers ────────────────────────
-    app.add_handler(CallbackQueryHandler(force_join_check, pattern=r"^fj_check$"))
-    
-    app.add_handler(CallbackQueryHandler(back_to_main_cb, pattern=r"^back_to_main_cb$"))
-    
-    app.add_handler(CallbackQueryHandler(check_payment_callback, pattern=r"^check_pay:"))
-    app.add_handler(CallbackQueryHandler(account_callback, pattern=r"^acc_"))
-    app.add_handler(CallbackQueryHandler(lambda u, c: u.callback_query.answer("📩 যোগাযোগ: @shuvo_9882", show_alert=True), pattern=r"^contact_admin$"))
-    app.add_handler(CallbackQueryHandler(leaderboard_callback,        pattern=r"^lb:"))
-    app.add_handler(CallbackQueryHandler(vip_buy_callback,            pattern=r"^vip_buy:"))
-    app.add_handler(CallbackQueryHandler(order_refresh_callback,      pattern=r"^order_refresh:"))
-    app.add_handler(CallbackQueryHandler(order_refill_callback,       pattern=r"^order_refill:"))
-    app.add_handler(CallbackQueryHandler(order_cancel_api_callback,   pattern=r"^order_cancel_api:"))
-    app.add_handler(CallbackQueryHandler(category_callback,           pattern=r"^(cat(_back|:.+)|svc_list_back|platform(:.+|_back)|catidx:\d+|sub_back|subcat:.+|svc_page\|.*)$"))
-    app.add_handler(CallbackQueryHandler(service_callback,            pattern=r"^svc(_back|:.+)$"))
-    app.add_handler(CallbackQueryHandler(admin_user_callback,         pattern=r"^adm_(ban|unban|bal_add|bal_rem|msg):"))
-    app.add_handler(CallbackQueryHandler(deposit_approve_callback,    pattern=r"^dep_approve:"))
-    app.add_handler(CallbackQueryHandler(deposit_reject_callback,     pattern=r"^dep_reject:"))
-    app.add_handler(CallbackQueryHandler(ticket_close_callback,       pattern=r"^ticket_close:"))
-    app.add_handler(CallbackQueryHandler(export_callback,             pattern=r"^export:"))
+    # 🔥 এখানে group=1 দেওয়া হয়েছে যাতে কনভার্সেশন হ্যান্ডলারের (Group 0) সাথে কনফ্লিক্ট না হয়
+    app.add_handler(CallbackQueryHandler(force_join_check, pattern=r"^fj_check$"), group=1)
+    app.add_handler(CallbackQueryHandler(back_to_main_cb, pattern=r"^back_to_main_cb$"), group=1)
+    app.add_handler(CallbackQueryHandler(check_payment_callback, pattern=r"^check_pay:"), group=1)
+    app.add_handler(CallbackQueryHandler(account_callback, pattern=r"^acc_"), group=1)
+    app.add_handler(CallbackQueryHandler(lambda u, c: u.callback_query.answer("📩 যোগাযোগ: @shuvo_9882", show_alert=True), pattern=r"^contact_admin$"), group=1)
+    app.add_handler(CallbackQueryHandler(leaderboard_callback,        pattern=r"^lb:"), group=1)
+    app.add_handler(CallbackQueryHandler(vip_buy_callback,            pattern=r"^vip_buy:"), group=1)
+    app.add_handler(CallbackQueryHandler(order_refresh_callback,      pattern=r"^order_refresh:"), group=1)
+    app.add_handler(CallbackQueryHandler(order_refill_callback,       pattern=r"^order_refill:"), group=1)
+    app.add_handler(CallbackQueryHandler(order_cancel_api_callback,   pattern=r"^order_cancel_api:"), group=1)
+    app.add_handler(CallbackQueryHandler(category_callback,           pattern=r"^(cat(_back|:.+)|svc_list_back|platform(:.+|_back)|catidx:\d+|sub_back|subcat:.+|svc_page\|.*)$"), group=1)
+    app.add_handler(CallbackQueryHandler(service_callback,            pattern=r"^svc(_back|:.+)$"), group=1)
+    app.add_handler(CallbackQueryHandler(admin_user_callback,         pattern=r"^adm_(ban|unban|bal_add|bal_rem|msg):"), group=1)
+    app.add_handler(CallbackQueryHandler(deposit_approve_callback,    pattern=r"^dep_approve:"), group=1)
+    app.add_handler(CallbackQueryHandler(deposit_reject_callback,     pattern=r"^dep_reject:"), group=1)
+    app.add_handler(CallbackQueryHandler(ticket_close_callback,       pattern=r"^ticket_close:"), group=1)
+    app.add_handler(CallbackQueryHandler(export_callback,             pattern=r"^export:"), group=1)
 
     # ═══════════════════════════════════════════════════════════════
     #  USER CONVERSATIONS
