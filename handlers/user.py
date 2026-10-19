@@ -37,12 +37,10 @@ logger = logging.getLogger(__name__)
 USD_TO_BDT  = 135.0
 COIN_TO_BDT = 1.0
 
-# 🔥 Helper: Detect if it's a Game Service
 def is_game_service(svc_name: str) -> bool:
     nl = svc_name.lower()
     return any(kw in nl for kw in ["free fire", "freefire", "free_fire", "diamond", "uc", "unipin"])
 
-# 🔥 Global helper to get platform name from category string
 def get_platform_name(cat: str) -> str:
     cl = cat.lower()
     if "free fire" in cl or "freefire" in cl or "free_fire" in cl: return "freefire"
@@ -105,7 +103,7 @@ _SUBCAT_RULES = {
         (r'\blikes?\b', "👍 Likes"),
         (r'\bcomments?\b', "💬 Comments"),
         (r'\bsaves?\b', "🔖 Saves"),
-        (r'\bshares?\b', "🔄 Shares"), # 🔥 Instagram Shares যোগ করা হলো
+        (r'\bshares?\b', "🔄 Shares"),
     ],
     "youtube": [
         (r'\bsubscribers?\b', "🔔 Subscribers"),
@@ -115,7 +113,7 @@ _SUBCAT_RULES = {
         (r'\blikes?\b', "👍 Likes"),
         (r'\bcomments?\b', "💬 Comments"),
         (r'\blive\b', "📡 Live Stream"),
-        (r'\bwatch\s*time\b', "⏱ Watch Time"), # 🔥 YouTube Watch Time যোগ করা হলো
+        (r'\bwatch\s*time\b', "⏱ Watch Time"),
     ],
     "tiktok": [
         (r'\bfollowers?\b', "👥 Followers"),
@@ -124,7 +122,7 @@ _SUBCAT_RULES = {
         (r'\bshares?\b', "🔄 Shares"),
         (r'\bcomments?\b', "💬 Comments"),
         (r'\blive\b', "📡 Live"),
-        (r'\bsaves?\b', "🔖 Saves"), # 🔥 TikTok Saves যোগ করা হলো
+        (r'\bsaves?\b', "🔖 Saves"),
     ],
     "freefire": [
         (r'\bdiamond\b', "💎 Diamonds"),
@@ -139,8 +137,8 @@ _SUBCAT_RULES = {
         (r'\bviews?\b', "👁 Views"),
         (r'\breactions?\b', "❤️ Reactions"),
         (r'\bvotes?\b', "🗳 Votes"),
-        (r'\bbot\b.*\bstart\b|\bstart\b.*\bbot\b', "🤖 Bot Start"), # 🔥 Telegram Bot Start যোগ করা হলো
-        (r'\bpost\b.*\bcomments?\b|\bcomments?\b.*\bpost\b', "💬 Post Comment"), # 🔥 Telegram Post Comment যোগ করা হলো
+        (r'\bbot\b.*\bstart\b|\bstart\b.*\bbot\b', "🤖 Bot Start"),
+        (r'\bpost\b.*\bcomments?\b|\bcomments?\b.*\bpost\b', "💬 Post Comment"),
     ],
     "twitter": [
         (r'\bfollowers?\b', "👥 Followers"),
@@ -161,8 +159,8 @@ _SUBCAT_RULES = {
     ],
     "whatsapp": [
         (r'\bmembers?\b', "👥 Members"),
-        (r'\bchannel\b.*\breaction\b|\breaction\b.*\bchannel\b', "👍 Channel Post Reaction"), # 🔥 WhatsApp Channel Post Reaction
-        (r'\bpoll\b.*\bvotes?\b|\bvotes?\b.*\bpoll\b', "🗳 Poll Votes"), # 🔥 WhatsApp Poll Votes
+        (r'\bchannel\b.*\breaction\b|\breaction\b.*\bchannel\b', "👍 Channel Post Reaction"),
+        (r'\bpoll\b.*\bvotes?\b|\bvotes?\b.*\bpoll\b', "🗳 Poll Votes"),
     ],
     "linkedin": [
         (r'\bfollowers?\b', "👥 Followers"),
@@ -858,7 +856,7 @@ async def new_order_smm2(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🛒 <b>Select Service Category:</b>\n\nআপনি কোন ক্যাটাগরির সার্ভিস নিতে চান নিচে নির্বাচন করুন 👇", reply_markup=categories_kb(cats, CATEGORY_ICONS, upd_ch), parse_mode=ParseMode.HTML)
     return ORDER_PLATFORM
 
-# 🔥 NEW: Game Topup 2 (CSB API Free Fire only)
+# 🔥 Game Topup 2 (CSB API Free Fire only)
 async def new_order_game2(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ctx.user_data["current_api_source"] = "smm2"
     ctx.user_data["current_platform"] = "freefire" 
@@ -876,7 +874,8 @@ async def new_order_game2(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     row = []
     for cat in ff_cats:
         icon = next((v for k, v in CATEGORY_ICONS.items() if k.lower() in cat.lower()), "🔹")
-        row.append(StyledButton(f"{icon} {cat}", style="success", callback_data=f"cat:{cat[:30]}"))
+        # 🔥 cat[:30] এর বদলে শুধু cat বসানো হলো যাতে নাম কেটে না যায়
+        row.append(StyledButton(f"{icon} {cat}", style="success", callback_data=f"cat:{cat}"))
         if len(row) == 2:
             rows.append(row)
             row = []
