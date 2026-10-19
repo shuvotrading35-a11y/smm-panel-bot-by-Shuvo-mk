@@ -217,7 +217,7 @@ def build_app() -> Application:
     # ── Game Topup ConversationHandler (Game 1) ───────────────────
     topup_conv = ConversationHandler(
         entry_points=[
-            MessageHandler(filters.Regex(r"^🎮 ɢᴀᴍᴇ ᴛᴏᴘᴜᴘ \(1\)$"), topup_start),
+            MessageHandler(filters.Regex(r"^🎮 GAME TOPUP \(1\)$"), topup_start),
             MessageHandler(filters.Regex(r"^✈️ ᴛᴇʟᴇɢʀᴀᴍ ꜱᴇʀᴠɪᴄᴇ$"), topup_start_telegram),
             MessageHandler(filters.Regex(r"^✈️ ᴛᴇʟᴇɢʀᴀᴍ ᴏʀᴅᴇʀ$"), topup_start_telegram),
         ],
@@ -262,7 +262,6 @@ def build_app() -> Application:
     # ── Standalone CallbackQuery handlers ────────────────────────
     app.add_handler(CallbackQueryHandler(force_join_check, pattern=r"^fj_check$"))
     
-    # 🔥 নতুন যোগ করা Back to main handler
     app.add_handler(CallbackQueryHandler(back_to_main_cb, pattern=r"^back_to_main_cb$"))
     
     app.add_handler(CallbackQueryHandler(check_payment_callback, pattern=r"^check_pay:"))
@@ -291,8 +290,7 @@ def build_app() -> Application:
             MessageHandler(filters.Regex(r"^🌐 ꜱᴍᴍ ᴏʀᴅᴇʀ \(1\)$"), new_order_smm),
             MessageHandler(filters.Regex(r"^🌐 ꜱᴍᴍ ᴏʀᴅᴇʀ \(2\)$"), new_order_smm2),
             
-            # 🔥 এখানে Game Topup (2) এর এন্ট্রি পয়েন্ট
-            MessageHandler(filters.Regex(r"^🎮 ɢᴀᴍᴇ ᴛᴏᴘᴜᴘ \(2\)$"), new_order_game2),
+            MessageHandler(filters.Regex(r"^🎮 GAME TOPUP \(2\)$"), new_order_game2),
             
             MessageHandler(filters.Regex(r"^✈️ ᴛᴇʟᴇɢʀᴀᴍ ᴏʀᴅᴇʀ$"), new_order_telegram),
             CallbackQueryHandler(order_start_callback, pattern=r"^order_start:"),
@@ -300,10 +298,9 @@ def build_app() -> Application:
         states={
             ORDER_PLATFORM: [CallbackQueryHandler(order_platform_handler, pattern=r"^(platform(:.+|_back)|catidx:\d+|subcat:.+)$")],
             
-            # 🔥 Game Topup (2) এর ক্যাটাগরি হ্যান্ডলার
             ORDER_CATEGORY: [
                 CallbackQueryHandler(order_category_handler, pattern=r"^cat:.+"),
-                CallbackQueryHandler(back_to_main_cb, pattern=r"^back_to_main_cb$") # Back বাটন সাপোর্ট
+                CallbackQueryHandler(back_to_main_cb, pattern=r"^back_to_main_cb$") 
             ],
             
             ORDER_SERVICE:  [CallbackQueryHandler(order_service_handler,  pattern=r"^(svc:.+|svc_page\|.*)$")],
