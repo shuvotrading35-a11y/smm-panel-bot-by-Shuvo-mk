@@ -125,11 +125,11 @@ _SUBCAT_RULES = {
         (r'\bsaves?\b', "🔖 Saves"),
     ],
     "freefire": [
-        (r'\b(?:diamond|doimond)\b', "💎 Diamonds"), # ভুল বানান ঠিক করা হলো
+        (r'\b(?:diamond|doimond)\b', "💎 Diamonds"), 
         (r'\buc\b', "🪙 UC"),
         (r'\bweekly\b', "📅 Weekly"),
         (r'\bmonthly\b', "📅 Monthly"),
-        (r'\blevel\s*up\b|\blevel\b', "⬆️ Level Up"), # full Level up ঠিক করা হলো
+        (r'\blevel\s*up\b|\blevel\b', "⬆️ Level Up"), 
     ],
     "telegram": [
         (r'\bmembers?\b', "👥 Members"),
@@ -633,7 +633,6 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         page     = int(parts[1])
         cat_key  = parts[2]
         
-        # 🔥 Next বাটন ফিক্স: সাব-ক্যাটাগরির জন্য ক্যাশ থেকে ডাটা নিবে
         if "::" in cat_key:
             services = ctx.user_data.get("current_subcat_services", [])
         else:
@@ -755,7 +754,6 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not filtered:
             await query.answer("এই সাব-ক্যাটাগরিতে কিছু নেই।", show_alert=True); return
             
-        # 🔥 ছোট থেকে বড় সাজানো
         def extract_number(s):
             match = re.search(r'\d+', s.get("name", ""))
             return int(match.group()) if match else 0
@@ -811,7 +809,6 @@ async def _show_category_services(query, ctx, category: str, api_source: str = N
         ctx.user_data["current_grouped"] = grouped
         rows = []
         
-        # 🔥 ক্যাটাগরি লিস্ট সাজানো
         def sort_key(item):
             label = item[0]
             if "Diamond" in label: return (0, label)
@@ -923,7 +920,6 @@ async def new_order_smm2(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🛒 <b>Select Service Category:</b>\n\nআপনি কোন ক্যাটাগরির সার্ভিস নিতে চান নিচে নির্বাচন করুন 👇", reply_markup=categories_kb(cats, CATEGORY_ICONS, upd_ch), parse_mode=ParseMode.HTML)
     return ORDER_PLATFORM
 
-# 🔥 Game Topup 2 (Direct to Subcategories)
 async def new_order_game2(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ctx.user_data["current_api_source"] = "smm2"
     ctx.user_data["current_platform"] = "freefire" 
@@ -937,7 +933,6 @@ async def new_order_game2(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
         
     if len(ff_cats) == 1:
-        # 🔥 সরাসরি সাব-ক্যাটাগরি দেখাবে
         category = ff_cats[0]
         ctx.user_data["order_category"] = category
         services = await db.get_services_by_category(category, api_source="smm2")
@@ -969,7 +964,7 @@ async def new_order_game2(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup(rows),
             parse_mode=ParseMode.HTML
         )
-        return ORDER_PLATFORM # এখানে ORDER_PLATFORM দিলে subcat হ্যান্ডেল হবে
+        return ORDER_PLATFORM
         
     rows = []
     row = []
@@ -1148,12 +1143,54 @@ async def order_service_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     data  = query.data
     
+    if data in ("svc_list_back", "sub_back"):
+        category = ctx.user_data.get("order_category", "")
+        api_src = ctx.user_data.get("current_api_source", "smm1")
+        services = await db.get_services_by_category(category, api_source=api_src)
+        platform = ctx.user_data.get("sub_platform") or _detect_platform(services) or ""
+        
+        if not services or not platform:
+            cats = await db.get_categories(api_source=api_src)
+            upd_ch = await db.get_setting("updates_channel", "")
+            await query.edit_message_text("🛒 <b>Select Service Category:</b>\n\nআপনি কোন ক্যাটাগরির সার্ভিস নিতে চান নিচে নির্বাচন করুন 👇", reply_markup=categories_kb(cats, CATEGORY_ICONS, upd_ch), parse_mode=ParseMode.HTML)
+            return ORDER_PLATFORM
+
+        grouped = _group_services(services, platform)
+        
+        if _should_show_subcat(services, grouped):
+            ctx.user_data["current_grouped"] = grouped
+            rows = []
+            def sort_key(item):
+                label = item[0]
+                if "Diamond" in label: return (0, label)
+                if "UC" in label: return (1, label)
+                if "Weekly" in label: return (2, label)
+                if "Monthly" in label: return (3, label)
+                if "Level" in label: return (4, label)
+                return (5, label)
+                
+            for label, items in sorted(grouped.items(), key=sort_key):
+                rows.append([StyledButton(text=f"{label} ({len(items)})", callback_data=f"subcat:{label}", style="success")])
+            
+            if ctx.user_data.get("is_game2_flow"):
+                rows.append([StyledButton(text="🔙 Back to Main", style="danger", callback_data="back_to_main_cb")])
+            else:
+                rows.append([StyledButton(text="◀ Back", callback_data="platform_back", style="danger")])
+                
+            icon = category_icon(category)
+            await query.edit_message_text(f"{icon} <b>{category}</b>\n\nকোন ধরনের সার্ভিস চান?", reply_markup=InlineKeyboardMarkup(rows), parse_mode=ParseMode.HTML)
+            return ORDER_PLATFORM
+        else:
+            total_pages = max(1, (len(services) + 7) // 8)
+            icon = category_icon(category)
+            await query.edit_message_text(f"📋 <b>Select Service:</b> (Page 1/{total_pages})\n\nনিচের বাটন থেকে আপনার প্রয়োজনীয় সার্ভিসটি বেছে নিন 👇", reply_markup=services_kb(services, category), parse_mode=ParseMode.HTML)
+            return ORDER_SERVICE
+
     if data.startswith("svc_page|"):
         parts    = data.split("|", 2)
         page     = int(parts[1])
         cat_key  = parts[2]
         
-        # 🔥 Next বাটন ফিক্স: ক্যাশ থেকে ডাটা নিবে
         if "::" in cat_key:
             services = ctx.user_data.get("current_subcat_services", [])
         else:
