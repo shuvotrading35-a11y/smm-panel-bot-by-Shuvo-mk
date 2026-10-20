@@ -294,14 +294,20 @@ def build_app() -> Application:
             CallbackQueryHandler(order_start_callback, pattern=r"^order_start:"),
         ],
         states={
-            ORDER_PLATFORM: [CallbackQueryHandler(order_platform_handler, pattern=r"^(platform(:.+|_back)|catidx:\d+|subcat:.+)$")],
-            
+            ORDER_PLATFORM: [
+                CallbackQueryHandler(order_platform_handler, pattern=r"^(platform(:.+|_back)|catidx:\d+|subcat:.+|cat_back|svc_list_back|sub_back|svc_page\|.*)$"),
+                CallbackQueryHandler(back_to_main_cb,        pattern=r"^back_to_main_cb$"),
+            ],
+
             ORDER_CATEGORY: [
                 CallbackQueryHandler(order_category_handler, pattern=r"^cat:.+"),
-                CallbackQueryHandler(back_to_main_cb, pattern=r"^back_to_main_cb$") 
+                CallbackQueryHandler(back_to_main_cb,        pattern=r"^back_to_main_cb$"),
             ],
-            
-            ORDER_SERVICE:  [CallbackQueryHandler(order_service_handler,  pattern=r"^(svc:.+|svc_page\|.*|svc_list_back|sub_back)$")],
+
+            ORDER_SERVICE: [
+                CallbackQueryHandler(order_service_handler, pattern=r"^(svc:.+|svc_page\|.*|svc_list_back|sub_back)$"),
+                CallbackQueryHandler(order_platform_handler, pattern=r"^(platform(:.+|_back)|subcat:.+|cat_back|svc_page\|.*)$"),
+            ],
             ORDER_LINK:     [MessageHandler(filters.TEXT & ~CANCEL_FILTER, order_link_handler)],
             ORDER_QUANTITY: [MessageHandler(filters.TEXT & ~CANCEL_FILTER, order_quantity_handler)],
             ORDER_CONFIRM:  [CallbackQueryHandler(order_confirm_callback,  pattern=r"^order_(confirm|cancel)")],
