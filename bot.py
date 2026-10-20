@@ -260,7 +260,6 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("stats",          bot_stats))
 
     # ── Standalone CallbackQuery handlers ────────────────────────
-    # 🔥 এখানে group=1 দেওয়া হয়েছে যাতে কনভার্সেশন হ্যান্ডলারের (Group 0) সাথে কনফ্লিক্ট না হয়
     app.add_handler(CallbackQueryHandler(force_join_check, pattern=r"^fj_check$"), group=1)
     app.add_handler(CallbackQueryHandler(back_to_main_cb, pattern=r"^back_to_main_cb$"), group=1)
     app.add_handler(CallbackQueryHandler(check_payment_callback, pattern=r"^check_pay:"), group=1)
@@ -302,7 +301,7 @@ def build_app() -> Application:
                 CallbackQueryHandler(back_to_main_cb, pattern=r"^back_to_main_cb$") 
             ],
             
-            ORDER_SERVICE:  [CallbackQueryHandler(order_service_handler,  pattern=r"^(svc:.+|svc_page\|.*)$")],
+            ORDER_SERVICE:  [CallbackQueryHandler(order_service_handler,  pattern=r"^(svc:.+|svc_page\|.*|svc_list_back|sub_back)$")],
             ORDER_LINK:     [MessageHandler(filters.TEXT & ~CANCEL_FILTER, order_link_handler)],
             ORDER_QUANTITY: [MessageHandler(filters.TEXT & ~CANCEL_FILTER, order_quantity_handler)],
             ORDER_CONFIRM:  [CallbackQueryHandler(order_confirm_callback,  pattern=r"^order_(confirm|cancel)")],
