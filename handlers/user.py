@@ -641,7 +641,7 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not services:
             await query.answer("No services found.", show_alert=True); return
         total_pages = max(1, (len(services) + 7) // 8)
-        await query.edit_message_text(f"📋 <b>Select Service:</b> (Page {page+1}/{total_pages})\n\nনিচের বাটন থেকে আপনার প্রয়োজনীয় সার্ভিসটি বেছে নিন 👇", reply_markup=services_kb(services, cat_key, page=page), parse_mode=ParseMode.HTML)
+        await query.edit_message_text(f"📋 <b>Select Service:</b> (Page {page+1}/{total_pages})\n\nনিচের বাটন থেকে আপনার প্রয়োজনীয় সার্ভিসটি বেছে নিন 👇", reply_markup=services_kb(services, cat_key, page=page, markup_pct=SERVICE_MARKUP_PCT), parse_mode=ParseMode.HTML)
         return
 
     if data in ("cat_back", "svc_list_back"):
@@ -733,7 +733,7 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         grouped  = ctx.user_data.get("current_grouped", {})
         platform = ctx.user_data.get("sub_platform") or ctx.user_data.get("current_platform", "")
         if not grouped:
-            services = await db.get_services_by_category(category)
+            services = await db.get_services_by_category(category, api_source=api_src)
             platform = platform or (_detect_platform(services) or "")
             grouped  = _group_services(services, platform)
         rows = []
@@ -747,22 +747,22 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if data.startswith("subcat:"):
         label    = data[7:]
         category = ctx.user_data.get("current_category", "")
-        services = await db.get_services_by_category(category)
+        services = await db.get_services_by_category(category, api_source=api_src)
         platform = ctx.user_data.get("sub_platform") or ctx.user_data.get("current_platform", "")
         if not platform: platform = _detect_platform(services) or ""
         filtered = [s for s in services if _get_subcat(platform, s.get("name", "")) == label]
         if not filtered:
             await query.answer("এই সাব-ক্যাটাগরিতে কিছু নেই।", show_alert=True); return
-            
+
         def extract_number(s):
             match = re.search(r'\d+', s.get("name", ""))
             return int(match.group()) if match else 0
         filtered.sort(key=extract_number)
-            
+
         ctx.user_data["current_subcat"] = label
         ctx.user_data["current_subcat_services"] = filtered
         icon = category_icon(category)
-        await query.edit_message_text(f"{icon} <b>{label}</b> — {len(filtered)}টি সার্ভিস\n\nChoose one:", reply_markup=services_kb(filtered, f"{category}::{label}"), parse_mode=ParseMode.HTML)
+        await query.edit_message_text(f"{icon} <b>{label}</b> — {len(filtered)}টি সার্ভিস\n\nChoose one:", reply_markup=services_kb(filtered, f"{category}::{label}", markup_pct=SERVICE_MARKUP_PCT), parse_mode=ParseMode.HTML)
         return
 
     if data.startswith("catidx:"):
@@ -800,15 +800,17 @@ async def _show_category_services(query, ctx, category: str, api_source: str = N
     ctx.user_data["current_api_source"] = src
     ctx.user_data.pop("current_subcat", None)
     ctx.user_data.pop("current_subcat_services", None)
-    
-    platform = _detect_platform(services) or get_platform_name(category)
-    ctx.user_data["sub_platform"] = platform
-    grouped = _group_services(services, platform) if platform else {}
-    
-    if platform and _should_show_subcat(services, grouped):
+
+    # Detect platform — "other" category has no sub-grouping rules, show list directly
+    platform     = _detect_platform(services) or get_platform_name(category)
+    real_platform = platform if platform != "other" else None
+    ctx.user_data["sub_platform"] = real_platform or platform
+    grouped = _group_services(services, real_platform) if real_platform else {}
+
+    if real_platform and _should_show_subcat(services, grouped):
         ctx.user_data["current_grouped"] = grouped
         rows = []
-        
+
         def sort_key(item):
             label = item[0]
             if "Diamond" in label: return (0, label)
@@ -817,7 +819,7 @@ async def _show_category_services(query, ctx, category: str, api_source: str = N
             if "Monthly" in label: return (3, label)
             if "Level" in label: return (4, label)
             return (5, label)
-            
+
         for label, items in sorted(grouped.items(), key=sort_key):
             rows.append([StyledButton(text=f"{label} ({len(items)})", callback_data=f"subcat:{label}", style="success")])
         rows.append([StyledButton(text="◀ Back", callback_data="cat_back", style="danger")])
@@ -826,7 +828,7 @@ async def _show_category_services(query, ctx, category: str, api_source: str = N
     else:
         total_pages = max(1, (len(services) + 7) // 8)
         icon = category_icon(category)
-        await query.edit_message_text(f"📋 <b>Select Service:</b> (Page 1/{total_pages})\n\nনিচের বাটন থেকে আপনার প্রয়োজনীয় সার্ভিসটি বেছে নিন 👇", reply_markup=services_kb(services, category, page=0), parse_mode=ParseMode.HTML)
+        await query.edit_message_text(f"📋 <b>Select Service:</b> (Page 1/{total_pages})\n\nনিচের বাটন থেকে আপনার প্রয়োজনীয় সার্ভিসটি বেছে নিন 👇", reply_markup=services_kb(services, category, page=0, markup_pct=SERVICE_MARKUP_PCT), parse_mode=ParseMode.HTML)
 
 # ═══════════════════════════════════════════════════════════════════
 #  SERVICE DETAIL & ORDER FLOW
@@ -843,7 +845,7 @@ async def service_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             category = ctx.user_data.get("current_category", "")
             if services:
                 icon = category_icon(category)
-                await query.edit_message_text(f"{icon} <b>{subcat}</b> — {len(services)}টি সার্ভিস\n\nChoose one:", reply_markup=services_kb(services, f"{category}::{subcat}"), parse_mode=ParseMode.HTML)
+                await query.edit_message_text(f"{icon} <b>{subcat}</b> — {len(services)}টি সার্ভিস\n\nChoose one:", reply_markup=services_kb(services, f"{category}::{subcat}", markup_pct=SERVICE_MARKUP_PCT), parse_mode=ParseMode.HTML)
                 return
         category = ctx.user_data.get("current_category", "")
         grouped  = ctx.user_data.get("current_grouped", {})
@@ -856,11 +858,12 @@ async def service_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             icon = category_icon(category)
             await query.edit_message_text(f"{icon} <b>{category}</b>\n\nকোন ধরনের সার্ভিস চান?", reply_markup=InlineKeyboardMarkup(rows), parse_mode=ParseMode.HTML)
             return
-        services = await db.get_services_by_category(category)
+        api_src_back = ctx.user_data.get("current_api_source", "smm1")
+        services = await db.get_services_by_category(category, api_source=api_src_back)
         if not services:
             await query.answer("No services.", show_alert=True); return
         icon = category_icon(category)
-        await query.edit_message_text(f"{icon} <b>{category}</b>\n\nChoose a service:", reply_markup=services_kb(services, category), parse_mode=ParseMode.HTML)
+        await query.edit_message_text(f"{icon} <b>{category}</b>\n\nChoose a service:", reply_markup=services_kb(services, category, markup_pct=SERVICE_MARKUP_PCT), parse_mode=ParseMode.HTML)
         return
 
     service_id = data[4:]
@@ -1061,7 +1064,7 @@ async def order_platform_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
                 await query.edit_message_text(f"📦 <b>{category}</b>\n\nকোন ধরনের সার্ভিস চান?", reply_markup=InlineKeyboardMarkup(rows), parse_mode=ParseMode.HTML)
             else:
                 total_pages = max(1, (len(services) + 7) // 8)
-                await query.edit_message_text(f"📋 <b>Select Service:</b> (Page 1/{total_pages})\n\nনিচের বাটন থেকে আপনার প্রয়োজনীয় সার্ভিসটি বেছে নিন 👇", reply_markup=services_kb(services, category), parse_mode=ParseMode.HTML)
+                await query.edit_message_text(f"📋 <b>Select Service:</b> (Page 1/{total_pages})\n\nনিচের বাটন থেকে আপনার প্রয়োজনীয় সার্ভিসটি বেছে নিন 👇", reply_markup=services_kb(services, category, markup_pct=SERVICE_MARKUP_PCT), parse_mode=ParseMode.HTML)
             return ORDER_SERVICE
         label = PLATFORM_LABELS.get(platform, f"🔹 {platform.title()}")
         await query.edit_message_text(f"{label}\n\nStep 2 — Choose a category:", reply_markup=platform_categories_kb(platform, filtered, CATEGORY_ICONS), parse_mode=ParseMode.HTML)
@@ -1086,7 +1089,7 @@ async def order_platform_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
             await query.answer("No services in this category.", show_alert=True); return ORDER_PLATFORM
         total_pages = max(1, (len(services) + 7) // 8)
         icon = category_icon(category)
-        await query.edit_message_text(f"📋 <b>Select Service:</b> (Page 1/{total_pages})\n\nনিচের বাটন থেকে আপনার প্রয়োজনীয় সার্ভিসটি বেছে নিন 👇", reply_markup=services_kb(services, category), parse_mode=ParseMode.HTML)
+        await query.edit_message_text(f"📋 <b>Select Service:</b> (Page 1/{total_pages})\n\nনিচের বাটন থেকে আপনার প্রয়োজনীয় সার্ভিসটি বেছে নিন 👇", reply_markup=services_kb(services, category, markup_pct=SERVICE_MARKUP_PCT), parse_mode=ParseMode.HTML)
         return ORDER_SERVICE
 
     if data.startswith("subcat:"):
@@ -1107,21 +1110,67 @@ async def order_platform_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
         ctx.user_data["order_subcat"] = label
         ctx.user_data["order_subcat_services"] = filtered
         icon = category_icon(category)
-        await query.edit_message_text(f"{icon} <b>{label}</b> — {len(filtered)}টি সার্ভিস\n\nChoose one:", reply_markup=services_kb(filtered, f"{category}::{label}"), parse_mode=ParseMode.HTML)
+        await query.edit_message_text(f"{icon} <b>{label}</b> — {len(filtered)}টি সার্ভিস\n\nChoose one:", reply_markup=services_kb(filtered, f"{category}::{label}", markup_pct=SERVICE_MARKUP_PCT), parse_mode=ParseMode.HTML)
         return ORDER_SERVICE
 
     if data == "sub_back":
         category = ctx.user_data.get("order_category", "")
         grouped  = ctx.user_data.get("current_grouped", {})
         platform = ctx.user_data.get("sub_platform", "")
+        if not grouped and category:
+            services = await db.get_services_by_category(category, api_source=api_src)
+            platform = platform or _detect_platform(services) or ""
+            grouped  = _group_services(services, platform) if platform else {}
         if grouped and platform:
+            def _sk(item):
+                l = item[0]
+                if "Diamond" in l: return (0, l)
+                if "UC" in l:      return (1, l)
+                if "Weekly" in l:  return (2, l)
+                if "Monthly" in l: return (3, l)
+                if "Level" in l:   return (4, l)
+                return (5, l)
             rows = []
-            for label, items in sorted(grouped.items(), key=lambda x: -len(x[1])):
+            for label, items in sorted(grouped.items(), key=_sk):
                 rows.append([StyledButton(text=f"{label} ({len(items)})", callback_data=f"subcat:{label}", style="success")])
-            rows.append([StyledButton(text="◀ Back", callback_data="platform_back", style="danger")])
+            if ctx.user_data.get("is_game2_flow"):
+                rows.append([StyledButton(text="🔙 Back to Main", style="danger", callback_data="back_to_main_cb")])
+            else:
+                rows.append([StyledButton(text="◀ Back", callback_data="platform_back", style="danger")])
             icon = category_icon(category)
             await query.edit_message_text(f"{icon} <b>{category}</b>\n\nকোন ধরনের সার্ভিস চান?", reply_markup=InlineKeyboardMarkup(rows), parse_mode=ParseMode.HTML)
-            return ORDER_SERVICE
+            return ORDER_PLATFORM
+
+    if data in ("cat_back", "svc_list_back"):
+        # Go back to platform selector
+        platform = ctx.user_data.get("order_platform", "")
+        if platform and platform != "other":
+            all_cats = await db.get_categories(api_source=api_src)
+            filtered = [c for c in all_cats if get_platform_name(c) == platform]
+            if len(filtered) > 1:
+                label = PLATFORM_LABELS.get(platform, f"🔹 {platform.title()}")
+                await query.edit_message_text(f"{label}\n\nStep 2 — Choose a category:", reply_markup=platform_categories_kb(platform, filtered, CATEGORY_ICONS), parse_mode=ParseMode.HTML)
+                return ORDER_PLATFORM
+        cats   = await db.get_categories(api_source=api_src)
+        upd_ch = await db.get_setting("updates_channel", "")
+        await query.edit_message_text("🛒 <b>Select Service Category:</b>\n\nআপনি কোন ক্যাটাগরির সার্ভিস নিতে চান নিচে নির্বাচন করুন 👇", reply_markup=categories_kb(cats, CATEGORY_ICONS, upd_ch), parse_mode=ParseMode.HTML)
+        return ORDER_PLATFORM
+
+    if data.startswith("svc_page|"):
+        parts   = data.split("|", 2)
+        page    = int(parts[1])
+        cat_key = parts[2]
+        if "::" in cat_key:
+            services = ctx.user_data.get("order_subcat_services", [])
+        else:
+            services = await db.get_services_by_category(cat_key, api_source=api_src)
+        if not services:
+            await query.answer("No services found.", show_alert=True); return ORDER_SERVICE
+        total_pages = max(1, (len(services) + 7) // 8)
+        icon = category_icon(cat_key)
+        await query.edit_message_text(f"📋 <b>Select Service:</b> (Page {page+1}/{total_pages})\n\nনিচের বাটন থেকে আপনার প্রয়োজনীয় সার্ভিসটি বেছে নিন 👇", reply_markup=services_kb(services, cat_key, page=page, markup_pct=SERVICE_MARKUP_PCT), parse_mode=ParseMode.HTML)
+        return ORDER_SERVICE
+
     return ORDER_PLATFORM
 
 async def order_category_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -1135,56 +1184,92 @@ async def order_category_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
     ctx.user_data["order_category"] = category
     total_pages = max(1, (len(services) + 7) // 8)
     icon = category_icon(category)
-    await query.edit_message_text(f"📋 <b>Select Service:</b> (Page 1/{total_pages})\n\nনিচের বাটন থেকে আপনার প্রয়োজনীয় সার্ভিসটি বেছে নিন 👇", reply_markup=services_kb(services, category), parse_mode=ParseMode.HTML)
+    await query.edit_message_text(f"📋 <b>Select Service:</b> (Page 1/{total_pages})\n\nনিচের বাটন থেকে আপনার প্রয়োজনীয় সার্ভিসটি বেছে নিন 👇", reply_markup=services_kb(services, category, markup_pct=SERVICE_MARKUP_PCT), parse_mode=ParseMode.HTML)
     return ORDER_SERVICE
 
 async def order_service_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    data  = query.data
-    
-    if data in ("svc_list_back", "sub_back"):
+    data    = query.data
+    api_src = ctx.user_data.get("current_api_source", "smm1")
+
+    if data == "sub_back":
+        # subcat → subcat list (within same category)
         category = ctx.user_data.get("order_category", "")
-        api_src = ctx.user_data.get("current_api_source", "smm1")
         services = await db.get_services_by_category(category, api_source=api_src)
         platform = ctx.user_data.get("sub_platform") or _detect_platform(services) or ""
-        
-        if not services or not platform:
-            cats = await db.get_categories(api_source=api_src)
+        grouped  = ctx.user_data.get("current_grouped") or (_group_services(services, platform) if platform else {})
+
+        if not grouped or not platform:
+            cats   = await db.get_categories(api_source=api_src)
             upd_ch = await db.get_setting("updates_channel", "")
             await query.edit_message_text("🛒 <b>Select Service Category:</b>\n\nআপনি কোন ক্যাটাগরির সার্ভিস নিতে চান নিচে নির্বাচন করুন 👇", reply_markup=categories_kb(cats, CATEGORY_ICONS, upd_ch), parse_mode=ParseMode.HTML)
             return ORDER_PLATFORM
 
-        grouped = _group_services(services, platform)
-        
-        if _should_show_subcat(services, grouped):
-            ctx.user_data["current_grouped"] = grouped
-            rows = []
-            def sort_key(item):
-                label = item[0]
-                if "Diamond" in label: return (0, label)
-                if "UC" in label: return (1, label)
-                if "Weekly" in label: return (2, label)
-                if "Monthly" in label: return (3, label)
-                if "Level" in label: return (4, label)
-                return (5, label)
-                
-            for label, items in sorted(grouped.items(), key=sort_key):
-                rows.append([StyledButton(text=f"{label} ({len(items)})", callback_data=f"subcat:{label}", style="success")])
-            
-            if ctx.user_data.get("is_game2_flow"):
-                rows.append([StyledButton(text="🔙 Back to Main", style="danger", callback_data="back_to_main_cb")])
-            else:
-                rows.append([StyledButton(text="◀ Back", callback_data="platform_back", style="danger")])
-                
-            icon = category_icon(category)
-            await query.edit_message_text(f"{icon} <b>{category}</b>\n\nকোন ধরনের সার্ভিস চান?", reply_markup=InlineKeyboardMarkup(rows), parse_mode=ParseMode.HTML)
-            return ORDER_PLATFORM
+        def sort_key(item):
+            label = item[0]
+            if "Diamond" in label: return (0, label)
+            if "UC" in label: return (1, label)
+            if "Weekly" in label: return (2, label)
+            if "Monthly" in label: return (3, label)
+            if "Level" in label: return (4, label)
+            return (5, label)
+
+        rows = []
+        for label, items in sorted(grouped.items(), key=sort_key):
+            rows.append([StyledButton(text=f"{label} ({len(items)})", callback_data=f"subcat:{label}", style="success")])
+
+        if ctx.user_data.get("is_game2_flow"):
+            rows.append([StyledButton(text="🔙 Back to Main", style="danger", callback_data="back_to_main_cb")])
         else:
-            total_pages = max(1, (len(services) + 7) // 8)
-            icon = category_icon(category)
-            await query.edit_message_text(f"📋 <b>Select Service:</b> (Page 1/{total_pages})\n\nনিচের বাটন থেকে আপনার প্রয়োজনীয় সার্ভিসটি বেছে নিন 👇", reply_markup=services_kb(services, category), parse_mode=ParseMode.HTML)
-            return ORDER_SERVICE
+            rows.append([StyledButton(text="◀ Back", callback_data="platform_back", style="danger")])
+
+        icon = category_icon(category)
+        await query.edit_message_text(f"{icon} <b>{category}</b>\n\nকোন ধরনের সার্ভিস চান?", reply_markup=InlineKeyboardMarkup(rows), parse_mode=ParseMode.HTML)
+        return ORDER_PLATFORM
+
+    if data == "svc_list_back":
+        # service list → category/platform level (one step up)
+        category = ctx.user_data.get("order_category", "")
+        platform = ctx.user_data.get("order_platform", "") or ctx.user_data.get("sub_platform", "")
+
+        if ctx.user_data.get("is_game2_flow"):
+            # Game2 → go back to FF subcat list
+            cats    = await db.get_categories(api_source="smm2")
+            ff_cats = [c for c in cats if any(kw in c.lower() for kw in ["free fire", "freefire", "free_fire", "diamond", "uc"])]
+            if ff_cats:
+                category = ff_cats[0]
+                services = await db.get_services_by_category(category, api_source="smm2")
+                grouped  = _group_services(services, "freefire")
+                def _sk(item):
+                    l = item[0]
+                    if "Diamond" in l: return (0, l)
+                    if "UC" in l: return (1, l)
+                    if "Weekly" in l: return (2, l)
+                    if "Monthly" in l: return (3, l)
+                    if "Level" in l: return (4, l)
+                    return (5, l)
+                rows = [[StyledButton(f"{lbl} ({len(itms)})", callback_data=f"subcat:{lbl}", style="success")] for lbl, itms in sorted(grouped.items(), key=_sk)]
+                rows.append([StyledButton("🔙 Back to Main", style="danger", callback_data="back_to_main_cb")])
+                await query.edit_message_text("🎮 <b>Game TopUp (2) - Free Fire</b>\n\nSelect a package category:", reply_markup=InlineKeyboardMarkup(rows), parse_mode=ParseMode.HTML)
+                return ORDER_PLATFORM
+            await query.edit_message_text("❌ FF categories not found.", parse_mode=ParseMode.HTML)
+            return ORDER_PLATFORM
+
+        if platform and platform != "other":
+            # Go back to platform categories (e.g. Facebook sub-cats)
+            all_cats = await db.get_categories(api_source=api_src)
+            filtered = [c for c in all_cats if get_platform_name(c) == platform]
+            if len(filtered) > 1:
+                label = PLATFORM_LABELS.get(platform, f"🔹 {platform.title()}")
+                await query.edit_message_text(f"{label}\n\nStep 2 — Choose a category:", reply_markup=platform_categories_kb(platform, filtered, CATEGORY_ICONS), parse_mode=ParseMode.HTML)
+                return ORDER_PLATFORM
+
+        # fallback → main category platform selector
+        cats   = await db.get_categories(api_source=api_src)
+        upd_ch = await db.get_setting("updates_channel", "")
+        await query.edit_message_text("🛒 <b>Select Service Category:</b>\n\nআপনি কোন ক্যাটাগরির সার্ভিস নিতে চান নিচে নির্বাচন করুন 👇", reply_markup=categories_kb(cats, CATEGORY_ICONS, upd_ch), parse_mode=ParseMode.HTML)
+        return ORDER_PLATFORM
 
     if data.startswith("svc_page|"):
         parts    = data.split("|", 2)
@@ -1200,7 +1285,7 @@ async def order_service_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await query.answer("No services found.", show_alert=True); return ORDER_SERVICE
         total_pages = max(1, (len(services) + 7) // 8)
         icon = category_icon(cat_key)
-        await query.edit_message_text(f"📋 <b>Select Service:</b> (Page {page+1}/{total_pages})\n\nনিচের বাটন থেকে আপনার প্রয়োজনীয় সার্ভিসটি বেছে নিন 👇", reply_markup=services_kb(services, cat_key, page=page), parse_mode=ParseMode.HTML)
+        await query.edit_message_text(f"📋 <b>Select Service:</b> (Page {page+1}/{total_pages})\n\nনিচের বাটন থেকে আপনার প্রয়োজনীয় সার্ভিসটি বেছে নিন 👇", reply_markup=services_kb(services, cat_key, page=page, markup_pct=SERVICE_MARKUP_PCT), parse_mode=ParseMode.HTML)
         return ORDER_SERVICE
 
     service_id = data[4:]
