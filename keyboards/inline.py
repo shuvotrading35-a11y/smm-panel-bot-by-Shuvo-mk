@@ -203,11 +203,12 @@ def platform_categories_kb(platform: str, categories: list[str], icons: dict) ->
     rows = []
     current_row = [] 
 
+    CAT_STYLES = ["success", "primary", "warning"]
     for idx, cat in enumerate(categories):
         icon = next((v for k, v in icons.items() if k.lower() in cat.lower()), "🔹")
         current_row.append(StyledButton(
             f"{icon}  {cat.upper()}",
-            style="success",
+            style=CAT_STYLES[idx % len(CAT_STYLES)],
             callback_data=f"catidx:{idx}"
         ))
         if len(current_row) == 2:
@@ -258,31 +259,35 @@ def services_kb(services: list[dict], category: str, page: int = 0, markup_pct: 
         nl = name.lower()
         return any(kw in nl for kw in ["free fire", "freefire", "diamond", "uc", "unipin"])
 
+    # Cycle through gradient color styles like CSB bot
+    STYLES = ["success", "primary", "warning", "danger"]
+
     rows = []
-    for svc in page_svcs:
+    for i, svc in enumerate(page_svcs):
         em   = get_emoji(svc["name"])
         rate = float(svc.get("rate", 0)) * (1 + markup_pct / 100)
-        name_short = svc["name"][:32] + "…" if len(svc["name"]) > 32 else svc["name"]
+        name_short = svc["name"][:30] + "…" if len(svc["name"]) > 30 else svc["name"]
         if is_game_svc(svc["name"]):
             price_str = f"৳{rate:,.2f}/pkg"
         else:
             price_str = f"৳{rate:,.2f}/1k"
+        btn_style = STYLES[i % len(STYLES)]
         rows.append([StyledButton(
-            f"{em} {name_short} | {price_str}",
-            style="success",
+            f"{em} {name_short}  |  {price_str}",
+            style=btn_style,
             callback_data=f"svc:{svc['service_id']}"
         )])
 
     if total_pages > 1:
         nav = []
         if page > 0:
-            nav.append(StyledButton("◀ Back", style="primary",
+            nav.append(StyledButton("◀️ Prev", style="warning",
                                     callback_data=f"svc_page|{page-1}|{category}"))
         nav.append(InlineKeyboardButton(
             f"📄 {page+1}/{total_pages}", callback_data="noop"
         ))
         if end < total:
-            nav.append(StyledButton("Next ▶", style="primary",
+            nav.append(StyledButton("Next ▶️", style="primary",
                                     callback_data=f"svc_page|{page+1}|{category}"))
         rows.append(nav)
 
