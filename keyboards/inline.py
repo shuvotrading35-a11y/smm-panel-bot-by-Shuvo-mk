@@ -221,7 +221,7 @@ def platform_categories_kb(platform: str, categories: list[str], icons: dict) ->
     return InlineKeyboardMarkup(rows)
 
 
-def services_kb(services: list[dict], category: str, page: int = 0) -> InlineKeyboardMarkup:
+def services_kb(services: list[dict], category: str, page: int = 0, markup_pct: float = 20.0) -> InlineKeyboardMarkup:
     PAGE_SIZE = 8
     total     = len(services)
     start     = page * PAGE_SIZE
@@ -254,11 +254,21 @@ def services_kb(services: list[dict], category: str, page: int = 0) -> InlineKey
                 return em
         return "🔹"
 
+    def is_game_svc(name: str) -> bool:
+        nl = name.lower()
+        return any(kw in nl for kw in ["free fire", "freefire", "diamond", "uc", "unipin"])
+
     rows = []
     for svc in page_svcs:
-        em = get_emoji(svc["name"])
+        em   = get_emoji(svc["name"])
+        rate = float(svc.get("rate", 0)) * (1 + markup_pct / 100)
+        name_short = svc["name"][:32] + "…" if len(svc["name"]) > 32 else svc["name"]
+        if is_game_svc(svc["name"]):
+            price_str = f"৳{rate:,.2f}/pkg"
+        else:
+            price_str = f"৳{rate:,.2f}/1k"
         rows.append([StyledButton(
-            f"{em}  {svc['name']}",
+            f"{em} {name_short} | {price_str}",
             style="success",
             callback_data=f"svc:{svc['service_id']}"
         )])
