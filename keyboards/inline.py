@@ -1,21 +1,14 @@
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton
-from telegram._utils.types import JSONDict
 from config import VIP_PLANS, PAYMENT_METHODS
 from typing import Optional
 
 
 class StyledButton(InlineKeyboardButton):
-    """Bot API 9.4 style parameter support"""
+    """Wrapper — style param accepted but NOT sent to Telegram (unsupported)"""
 
     def __init__(self, text: str, style: Optional[str] = None, **kwargs):
         super().__init__(text=text, **kwargs)
-        self._style = style
-
-    def to_dict(self, recursive: bool = True) -> JSONDict:
-        data = super().to_dict(recursive=recursive)
-        if self._style:
-            data["style"] = self._style
-        return data
+        # style is intentionally ignored — Telegram rejects unknown button fields
 
 
 def confirm_order_kb(service_id: str) -> InlineKeyboardMarkup:
@@ -259,22 +252,21 @@ def services_kb(services: list[dict], category: str, page: int = 0, markup_pct: 
         nl = name.lower()
         return any(kw in nl for kw in ["free fire", "freefire", "diamond", "uc", "unipin"])
 
-    # Cycle through gradient color styles like CSB bot
-    STYLES = ["success", "primary", "warning", "danger"]
+    # Color dots cycle for visual variety (Telegram doesn't support button styles)
+    COLOR_DOTS = ["🟢", "🔵", "🟡", "🔴", "🟣", "🟠", "⚪", "🔘"]
 
     rows = []
     for i, svc in enumerate(page_svcs):
         em   = get_emoji(svc["name"])
         rate = float(svc.get("rate", 0)) * (1 + markup_pct / 100)
-        name_short = svc["name"][:30] + "…" if len(svc["name"]) > 30 else svc["name"]
+        name_short = svc["name"][:28] + "…" if len(svc["name"]) > 28 else svc["name"]
         if is_game_svc(svc["name"]):
             price_str = f"৳{rate:,.2f}/pkg"
         else:
             price_str = f"৳{rate:,.2f}/1k"
-        btn_style = STYLES[i % len(STYLES)]
+        dot = COLOR_DOTS[i % len(COLOR_DOTS)]
         rows.append([StyledButton(
-            f"{em} {name_short}  |  {price_str}",
-            style=btn_style,
+            f"{dot} {em} {name_short}  |  {price_str}",
             callback_data=f"svc:{svc['service_id']}"
         )])
 
