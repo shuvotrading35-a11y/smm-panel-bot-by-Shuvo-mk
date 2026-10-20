@@ -646,7 +646,31 @@ async def category_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     if data in ("cat_back", "svc_list_back"):
         platform = ctx.user_data.get("current_platform", "")
-        
+        category = ctx.user_data.get("current_category", "")
+        grouped  = ctx.user_data.get("current_grouped", {})
+
+        # If we came from a subcat (Diamonds/Level Up etc), go back to subcat list
+        if grouped and category and not ctx.user_data.get("is_game2_flow"):
+            def _srt(item):
+                l = item[0]
+                if "Diamond" in l: return (0, l)
+                if "UC" in l:      return (1, l)
+                if "Weekly" in l:  return (2, l)
+                if "Monthly" in l: return (3, l)
+                if "Level" in l:   return (4, l)
+                return (5, l)
+            rows = []
+            for label, items in sorted(grouped.items(), key=_srt):
+                rows.append([StyledButton(text=f"{label} ({len(items)})", callback_data=f"subcat:{label}", style="success")])
+            rows.append([StyledButton(text="◀ Back", callback_data="platform_back", style="danger")])
+            icon = category_icon(category)
+            await query.edit_message_text(
+                f"{icon} <b>{category}</b>\n\nকোন ধরনের সার্ভিস চান?",
+                reply_markup=InlineKeyboardMarkup(rows),
+                parse_mode=ParseMode.HTML
+            )
+            return
+
         if ctx.user_data.get("is_game2_flow"):
             cats = await db.get_categories(api_source="smm2")
             ff_cats = [c for c in cats if any(kw in c.lower() for kw in ["free fire", "freefire", "free_fire", "diamond", "uc"])]
@@ -800,6 +824,8 @@ async def _show_category_services(query, ctx, category: str, api_source: str = N
     ctx.user_data["current_api_source"] = src
     ctx.user_data.pop("current_subcat", None)
     ctx.user_data.pop("current_subcat_services", None)
+    # Store message_id for auto-delete when user orders or leaves
+    ctx.user_data["browse_msg_id"] = query.message.message_id
 
     # Detect platform — "other" category has no sub-grouping rules, show list directly
     platform     = _detect_platform(services) or get_platform_name(category)
@@ -896,6 +922,9 @@ async def service_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(text, reply_markup=service_detail_kb(service_id), parse_mode=ParseMode.HTML)
 
 async def new_order(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    # Clear previous browse state
+    ctx.user_data.pop("browse_msg_id", None)
+    ctx.user_data.pop("current_grouped", None)
     await _delete_menu_msg(update, ctx, "services_list_msg_id")
     await _delete_menu_msg(update, ctx, "partner_entry_msg_id")
     await _send_replacing(update, ctx, "new_order_msg_id", "🛒 <b>New Order</b>\n\nকোন ধরনের অর্ডার দিতে চাও?", reply_markup=order_menu_keyboard(), parse_mode=ParseMode.HTML)
@@ -1721,6 +1750,15 @@ async def back_to_main(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🏠 Main Menu", reply_markup=main_keyboard())
 
 async def cancel_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    browse_msg = ctx.user_data.pop("browse_msg_id", None)
+    if browse_msg:
+        try:
+            await ctx.bot.delete_message(
+                chat_id=update.effective_chat.id,
+                message_id=browse_msg
+            )
+        except Exception:
+            pass
     ctx.user_data.clear()
     await update.message.reply_text("❌ Cancelled.", reply_markup=main_keyboard())
     return ConversationHandler.END
