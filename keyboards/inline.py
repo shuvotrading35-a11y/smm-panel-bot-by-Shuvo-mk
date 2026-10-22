@@ -1,14 +1,31 @@
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton
-from config import VIP_PLANS, PAYMENT_METHODS
+from telegram._utils.types import JSONDict
+from config import VIP_PLANS, PAYMENT_METHODS, COIN_PACKAGES
 from typing import Optional
 
 
+# ══════════════════════════════════════════════════════════════════
+# Styled button — sends `style` to Bot API (fork/custom server only)
+# ══════════════════════════════════════════════════════════════════
 class StyledButton(InlineKeyboardButton):
-    """Wrapper — style param accepted but NOT sent to Telegram (unsupported)"""
+    """InlineKeyboardButton with a working `style` field.
+
+    ⚠️  `style` is NOT part of the official Telegram Bot API.
+        Works only on forks / custom Bot API servers.
+        On vanilla api.telegram.org the field is dropped or rejected.
+    """
+
+    __slots__ = ("_style",)
 
     def __init__(self, text: str, style: Optional[str] = None, **kwargs):
         super().__init__(text=text, **kwargs)
-        # style is intentionally ignored — Telegram rejects unknown button fields
+        object.__setattr__(self, "_style", style)
+
+    def to_dict(self, recursive: bool = True) -> JSONDict:
+        data = super().to_dict(recursive=recursive)
+        if self._style:
+            data["style"] = self._style
+        return data
 
 
 def confirm_order_kb(service_id: str) -> InlineKeyboardMarkup:
@@ -39,7 +56,6 @@ def payment_methods_kb() -> InlineKeyboardMarkup:
 
 
 def coin_packages_kb() -> InlineKeyboardMarkup:
-    from config import COIN_PACKAGES
     rows = []
     badges = {1500: " ⭐ POPULAR", 3000: " 🔥 BEST VALUE", 7000: " 💎 PREMIUM"}
     for coins, price in COIN_PACKAGES:
@@ -55,7 +71,6 @@ def coin_packages_kb() -> InlineKeyboardMarkup:
 
 
 def pkg_payment_kb() -> InlineKeyboardMarkup:
-    from config import PAYMENT_METHODS
     rows = []
     methods = list(PAYMENT_METHODS.items())
     for key, label in methods:
@@ -153,7 +168,8 @@ def force_join_kb(channels: list[dict]) -> InlineKeyboardMarkup:
     rows = []
     for ch in channels:
         name = ch.get("channel_name") or ch["channel_id"]
-        link = ch.get("invite_link") or f"https://t.me/{ch['channel_id'].lstrip('@')}"
+        # removeprefix("@") — lstrip("@") strips ALL leading '@' chars
+        link = ch.get("invite_link") or f"https://t.me/{ch['channel_id'].removeprefix('@')}"
         rows.append([InlineKeyboardButton(f"📢 {name}", url=link)])
     rows.append([StyledButton("✅ I've Joined — Check", style="danger", callback_data="fj_check")])
     return InlineKeyboardMarkup(rows)
@@ -168,7 +184,7 @@ def categories_kb(categories: list[str], icons: dict, updates_channel: str = "")
         "telegram":  "✈️ TELEGRAM",
         "twitter":   "𝕏 TWITTER",
         "spotify":   "🎧 SPOTIFY",
-        "whatsapp":  "💬 WHATSAPP",  # 🔥 Free Fire বাদ দিয়ে WhatsApp যোগ করা হলো
+        "whatsapp":  "💬 WHATSAPP",
     }
 
     rows = []
@@ -194,9 +210,10 @@ def categories_kb(categories: list[str], icons: dict, updates_channel: str = "")
 
 def platform_categories_kb(platform: str, categories: list[str], icons: dict) -> InlineKeyboardMarkup:
     rows = []
-    current_row = [] 
+    current_row = []
 
-    CAT_STYLES = ["success", "primary", "warning"]
+    # valid styles only: primary / success / danger
+    CAT_STYLES = ["success", "primary", "danger"]
     for idx, cat in enumerate(categories):
         icon = next((v for k, v in icons.items() if k.lower() in cat.lower()), "🔹")
         current_row.append(StyledButton(
@@ -206,7 +223,7 @@ def platform_categories_kb(platform: str, categories: list[str], icons: dict) ->
         ))
         if len(current_row) == 2:
             rows.append(current_row)
-            current_row = [] 
+            current_row = []
 
     if current_row:
         rows.append(current_row)
@@ -252,28 +269,25 @@ def services_kb(services: list[dict], category: str, page: int = 0, markup_pct: 
         nl = name.lower()
         return any(kw in nl for kw in ["free fire", "freefire", "diamond", "uc", "unipin"])
 
-    # Color dots cycle for visual variety (Telegram doesn't support button styles)
-    COLOR_DOTS = ["🟢", "🔵", "🟡", "🔴", "🟣", "🟠", "⚪", "🔘"]
-
     rows = []
-    for i, svc in enumerate(page_svcs):
+    for svc in page_svcs:
         em   = get_emoji(svc["name"])
         rate = float(svc.get("rate", 0)) * (1 + markup_pct / 100)
-        name_short = svc["name"][:28] + "…" if len(svc["name"]) > 28 else svc["name"]
+        name_short = svc["name"][:30] + "…" if len(svc["name"]) > 30 else svc["name"]
         if is_game_svc(svc["name"]):
             price_str = f"৳{rate:,.2f}/pkg"
         else:
             price_str = f"৳{rate:,.2f}/1k"
-        dot = COLOR_DOTS[i % len(COLOR_DOTS)]
         rows.append([StyledButton(
-            f"{dot} {em} {name_short}  |  {price_str}",
+            f"▶️ {em} {name_short}  |  {price_str}",
+            style="primary",
             callback_data=f"svc:{svc['service_id']}"
         )])
 
     if total_pages > 1:
         nav = []
         if page > 0:
-            nav.append(StyledButton("◀️ Prev", style="warning",
+            nav.append(StyledButton("◀️ Prev", style="primary",
                                     callback_data=f"svc_page|{page-1}|{category}"))
         nav.append(InlineKeyboardButton(
             f"📄 {page+1}/{total_pages}", callback_data="noop"
@@ -299,7 +313,7 @@ def order_categories_kb(categories: list[str], icons: dict) -> InlineKeyboardMar
     for i in range(0, len(categories), 2):
         row = []
         for cat in categories[i:i+2]:
-            icon = next((v for k, v in icons.items() if k.lower() in cat.lower()), "\U0001f539")
+            icon = next((v for k, v in icons.items() if k.lower() in cat.lower()), "🔹")
             row.append(StyledButton(f"{icon} {cat}", style="primary", callback_data=f"cat:{cat[:30]}"))
         rows.append(row)
     return InlineKeyboardMarkup(rows)
