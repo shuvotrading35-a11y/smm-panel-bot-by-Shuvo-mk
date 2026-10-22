@@ -1190,14 +1190,32 @@ async def order_platform_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
         page    = int(parts[1])
         cat_key = parts[2]
         if "::" in cat_key:
+            # subcat pagination — restore from user_data (api_source already correct)
             services = ctx.user_data.get("order_subcat_services", [])
+            if not services:
+                # fallback: re-fetch subcat
+                real_cat, sub_label = cat_key.split("::", 1)
+                all_svcs = await db.get_services_by_category(real_cat, api_source=api_src)
+                platform = ctx.user_data.get("sub_platform", "freefire")
+                services = [s for s in all_svcs if _get_subcat(platform, s.get("name", "")) == sub_label]
+                def _en(s):
+                    import re as _re
+                    m = _re.search(r'\d+', s.get("name", ""))
+                    return int(m.group()) if m else 0
+                services.sort(key=_en)
+                ctx.user_data["order_subcat_services"] = services
         else:
             services = await db.get_services_by_category(cat_key, api_source=api_src)
         if not services:
             await query.answer("No services found.", show_alert=True); return ORDER_SERVICE
         total_pages = max(1, (len(services) + 7) // 8)
-        icon = category_icon(cat_key)
-        await query.edit_message_text(f"📋 <b>Select Service:</b> (Page {page+1}/{total_pages})\n\nনিচের বাটন থেকে আপনার প্রয়োজনীয় সার্ভিসটি বেছে নিন 👇", reply_markup=services_kb(services, cat_key, page=page, markup_pct=SERVICE_MARKUP_PCT), parse_mode=ParseMode.HTML)
+        display_key = cat_key.split("::")[-1] if "::" in cat_key else cat_key
+        icon = category_icon(display_key)
+        await query.edit_message_text(
+            f"{icon} <b>Select Service:</b> (Page {page+1}/{total_pages})\n\nনিচের বাটন থেকে আপনার প্রয়োজনীয় সার্ভিসটি বেছে নিন 👇",
+            reply_markup=services_kb(services, cat_key, page=page, markup_pct=SERVICE_MARKUP_PCT),
+            parse_mode=ParseMode.HTML
+        )
         return ORDER_SERVICE
 
     return ORDER_PLATFORM
@@ -1304,17 +1322,30 @@ async def order_service_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         parts    = data.split("|", 2)
         page     = int(parts[1])
         cat_key  = parts[2]
-        
+
         if "::" in cat_key:
             services = ctx.user_data.get("current_subcat_services", [])
+            if not services:
+                real_cat, sub_label = cat_key.split("::", 1)
+                all_svcs = await db.get_services_by_category(real_cat, api_source=api_src)
+                platform = ctx.user_data.get("sub_platform", "")
+                services = [s for s in all_svcs if _get_subcat(platform, s.get("name", "")) == sub_label]
+                import re as _re2
+                services.sort(key=lambda s: int(m.group()) if (m := _re2.search(r'\d+', s.get("name",""))) else 0)
+                ctx.user_data["current_subcat_services"] = services
         else:
             services = await db.get_services_by_category(cat_key, api_source=api_src)
 
         if not services:
             await query.answer("No services found.", show_alert=True); return ORDER_SERVICE
         total_pages = max(1, (len(services) + 7) // 8)
-        icon = category_icon(cat_key)
-        await query.edit_message_text(f"📋 <b>Select Service:</b> (Page {page+1}/{total_pages})\n\nনিচের বাটন থেকে আপনার প্রয়োজনীয় সার্ভিসটি বেছে নিন 👇", reply_markup=services_kb(services, cat_key, page=page, markup_pct=SERVICE_MARKUP_PCT), parse_mode=ParseMode.HTML)
+        display_key = cat_key.split("::")[-1] if "::" in cat_key else cat_key
+        icon = category_icon(display_key)
+        await query.edit_message_text(
+            f"{icon} <b>Select Service:</b> (Page {page+1}/{total_pages})\n\nনিচের বাটন থেকে আপনার প্রয়োজনীয় সার্ভিসটি বেছে নিন 👇",
+            reply_markup=services_kb(services, cat_key, page=page, markup_pct=SERVICE_MARKUP_PCT),
+            parse_mode=ParseMode.HTML
+        )
         return ORDER_SERVICE
 
     service_id = data[4:]
