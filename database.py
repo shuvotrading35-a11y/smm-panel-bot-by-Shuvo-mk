@@ -365,9 +365,17 @@ async def create_order(user_id: int, service_id: str, service_name: str,
                category, link, quantity, charge, api_source) VALUES (?,?,?,?,?,?,?,?,?)""",
             (user_id, api_order_id, service_id, service_name, category, link, quantity, charge, api_source)
         )
-        await db.execute("UPDATE users SET total_orders = total_orders + 1 WHERE user_id=?", (user_id,))
+        await db.execute(
+            "UPDATE users SET total_orders=total_orders+1, total_spent=total_spent+? WHERE user_id=?",
+            (charge, user_id)
+        )
         await db.commit()
-        return cur.lastrowid
+    # Pay referral commission (non-blocking)
+    try:
+        await process_order_commission(user_id, charge)
+    except Exception:
+        pass
+    return cur.lastrowid
 
 async def get_order(order_id: int) -> dict | None:
     async with aiosqlite.connect(DB_PATH) as db:
@@ -623,7 +631,24 @@ async def claim_daily(user_id: int, amount: float) -> tuple[bool, str]:
 # ─────────────────────────────────────────────────────────────────
 #  REFERRAL
 # ─────────────────────────────────────────────────────────────────
+# Tier thresholds and rewards
+REFERRAL_TIERS = [
+    (50,  20.0, "💎 Diamond"),
+    (25,  12.0, "🥇 Gold"),
+    (10,   8.0, "🥈 Silver"),
+    (0,    5.0, "🥉 Bronze"),
+]
+REFERRAL_COMMISSION_PCT = 2.0  # 2% of each order charge
+
+def get_referral_tier(referral_count: int) -> tuple[float, str]:
+    """Return (reward_per_join, tier_label) based on current count."""
+    for threshold, reward, label in REFERRAL_TIERS:
+        if referral_count >= threshold:
+            return reward, label
+    return 5.0, "🥉 Bronze"
+
 async def process_referral(new_user_id: int, referrer_id: int, reward: float):
+    """Tier-based join reward. reward param kept for compat but tier overrides it."""
     if new_user_id == referrer_id:
         return
     async with aiosqlite.connect(DB_PATH) as db:
@@ -634,14 +659,49 @@ async def process_referral(new_user_id: int, referrer_id: int, reward: float):
             existing = await cur.fetchone()
         if existing:
             return
+        # Get current referral_count to determine tier reward
+        async with db.execute(
+            "SELECT referral_count FROM users WHERE user_id=?", (referrer_id,)
+        ) as cur:
+            row = await cur.fetchone()
+        current_count = row[0] if row else 0
+        tier_reward, tier_label = get_referral_tier(current_count)
+
         await db.execute(
             "UPDATE users SET balance=balance+?, referral_count=referral_count+1, "
             "referral_earned=referral_earned+? WHERE user_id=?",
-            (reward, reward, referrer_id)
+            (tier_reward, tier_reward, referrer_id)
         )
         await db.execute(
             "INSERT INTO transactions (user_id, type, amount, description, ref_id) VALUES (?,?,?,?,?)",
-            (referrer_id, "referral", reward, f"Referral reward for user {new_user_id}", str(new_user_id))
+            (referrer_id, "referral", tier_reward,
+             f"{tier_label} referral reward for user {new_user_id}", str(new_user_id))
+        )
+        await db.commit()
+
+async def process_order_commission(user_id: int, charge: float) -> None:
+    """Pay 2% commission to referrer when user places an order."""
+    if charge <= 0:
+        return
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT referred_by FROM users WHERE user_id=?", (user_id,)
+        ) as cur:
+            row = await cur.fetchone()
+        if not row or not row[0]:
+            return
+        referrer_id  = row[0]
+        commission   = round(charge * REFERRAL_COMMISSION_PCT / 100, 4)
+        if commission <= 0:
+            return
+        await db.execute(
+            "UPDATE users SET balance=balance+?, referral_earned=referral_earned+? WHERE user_id=?",
+            (commission, commission, referrer_id)
+        )
+        await db.execute(
+            "INSERT INTO transactions (user_id, type, amount, description, ref_id) VALUES (?,?,?,?,?)",
+            (referrer_id, "referral_commission", commission,
+             f"2% order commission from user {user_id}", str(user_id))
         )
         await db.commit()
 
