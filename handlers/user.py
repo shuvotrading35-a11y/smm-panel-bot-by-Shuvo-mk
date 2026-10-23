@@ -455,14 +455,17 @@ async def package_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             "✏️ <b>Custom Amount</b>\n\nকত Coins কিনতে চাও লেখো:\n<i>(শুধু সংখ্যা, উদাহরণ: 1500)</i>\n\n⬅️ /cancel লিখলে বাতিল হবে।",
             reply_markup=pkg_payment_kb(), parse_mode=ParseMode.HTML)
         return DEPOSIT_METHOD
-    parts  = data.split(":")
-    coins  = parts[1]
-    price  = parts[2] if len(parts) > 2 else "?"
+    parts = data.split(":")
+    coins = parts[1]
+    price = parts[2] if len(parts) > 2 else "?"
+    bonus = int(parts[3]) if len(parts) > 3 else 0
     ctx.user_data["deposit_package"] = coins
     ctx.user_data["deposit_coins"]   = coins
     ctx.user_data["deposit_price"]   = price
+    ctx.user_data["deposit_bonus"]   = bonus
+    bonus_line = f"\n🎁 Bonus: <b>+{bonus} Coins FREE</b>" if bonus > 0 else ""
     await query.edit_message_text(
-        f"🛍️ <b>{int(coins):,} Coins — {price}</b>\n\n💳 পেমেন্ট পদ্ধতি বেছে নাও:",
+        f"🛍️ <b>{int(coins):,} Coins — {price}</b>{bonus_line}\n\n💳 পেমেন্ট পদ্ধতি বেছে নাও:",
         reply_markup=pkg_payment_kb(), parse_mode=ParseMode.HTML)
     return DEPOSIT_METHOD
 
@@ -520,22 +523,79 @@ async def check_payment_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
     invoice_id = query.data.split(":")[1]
     status = await check_shuvopay_invoice(invoice_id)
     if status == "paid":
-        user_id = update.effective_user.id
-        amount  = ctx.user_data.get("deposit_amount", 0)
-        coins   = ctx.user_data.get("deposit_coins", amount)
-        await db.add_coins(user_id, float(coins), method="ShuvoPay (bKash)", txn_id=invoice_id)
-        await query.edit_message_text(f"🎉 <b>পেমেন্ট সফল!</b>\n\n✅ <b>{fmt_coins_full(float(coins))} Coins</b> তোমার account এ যোগ হয়েছে।\n\nধন্যবাদ! 🙏", parse_mode=ParseMode.HTML, reply_markup=None)
+        user_id     = update.effective_user.id
+        amount      = ctx.user_data.get("deposit_amount", 0)
+        # Fix: use COIN_RATE to convert BDT to coins if coins not set
+        raw_coins   = ctx.user_data.get("deposit_coins")
+        bonus       = int(ctx.user_data.get("deposit_bonus", 0))
+        if raw_coins and raw_coins != "None":
+            base_coins = float(raw_coins)
+        else:
+            base_coins = round(float(amount) / COIN_RATE) if COIN_RATE > 0 else float(amount)
+        total_coins = base_coins + bonus
+        await db.add_coins(user_id, total_coins, method="ShuvoPay (bKash)", txn_id=invoice_id)
+        bonus_line = f"\n🎁 Bonus: <b>+{bonus} Coins</b>" if bonus > 0 else ""
+        await query.edit_message_text(
+            f"🎉 <b>পেমেন্ট সফল!</b>\n\n"
+            f"✅ <b>{fmt_coins_full(base_coins)} Coins</b> তোমার account এ যোগ হয়েছে।{bonus_line}\n\n"
+            f"💰 মোট: <b>{fmt_coins_full(total_coins)} Coins</b>\n\nধন্যবাদ! 🙏",
+            parse_mode=ParseMode.HTML, reply_markup=None)
         udata = await db.get_user(user_id)
         for admin_id in ADMIN_IDS:
-            try: await ctx.bot.send_message(admin_id, f"✅ <b>Auto Payment Verified</b>\n👤 {udata['full_name']} (@{udata.get('username','')})\n💰 {fmt_coins_full(float(coins))}\n🆔 Invoice: <code>{invoice_id}</code>", parse_mode=ParseMode.HTML)
+            try: await ctx.bot.send_message(
+                admin_id,
+                f"✅ <b>Auto Payment Verified</b>\n"
+                f"👤 {udata['full_name']} (@{udata.get('username','')})\n"
+                f"💰 {fmt_coins_full(total_coins)} (base: {fmt_coins_full(base_coins)}, bonus: {bonus})\n"
+                f"🆔 Invoice: <code>{invoice_id}</code>",
+                parse_mode=ParseMode.HTML)
             except Exception: pass
         ctx.user_data.clear()
     else:
-        pay_url = f"{SHUVOPAY_CHECKOUT}?id={invoice_id}"
-        kb = InlineKeyboardMarkup([[InlineKeyboardButton("💳 Pay Now", url=pay_url)], [InlineKeyboardButton("✅ আমি পেমেন্ট করেছি", callback_data=f"check_pay:{invoice_id}")]])
+        pay_url  = f"{SHUVOPAY_CHECKOUT}?id={invoice_id}"
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("💳 Pay Now", url=pay_url)],
+            [InlineKeyboardButton("✅ আমি পেমেন্ট করেছি", callback_data=f"check_pay:{invoice_id}")]
+        ])
         await query.edit_message_text(
-            f"⏳ <b>পেমেন্ট এখনো confirm হয়নি।</b>\n\nপেমেন্ট করে থাকলে কিছুক্ষণ অপেক্ষা করুন।\nতারপর আবার <b>আমি পেমেন্ট করেছি</b> বাটনে চাপুন।\n\n❓ সমস্যা হলে: @shuvo_9882",
+            f"⏳ <b>পেমেন্ট এখনো confirm হয়নি।</b>\n\n"
+            f"পেমেন্ট করে থাকলে কিছুক্ষণ অপেক্ষা করুন।\n"
+            f"তারপর আবার <b>আমি পেমেন্ট করেছি</b> বাটনে চাপুন।\n\n"
+            f"❓ সমস্যা হলে: @shuvo_9882",
             reply_markup=kb, parse_mode=ParseMode.HTML)
+
+        # Auto-retry: check every 60s for up to 5 mins in background
+        async def _auto_check(bot, chat_id, msg_id, inv_id, user_id, coins, bonus, rate):
+            import asyncio as _aio
+            for _ in range(5):
+                await _aio.sleep(60)
+                st = await check_shuvopay_invoice(inv_id)
+                if st == "paid":
+                    base = float(coins) if coins and coins != "None" else round(float(0) / rate) if rate > 0 else 0
+                    total = base + int(bonus)
+                    await db.add_coins(user_id, total, method="ShuvoPay Auto", txn_id=inv_id)
+                    bonus_line = f"\n🎁 Bonus: +{bonus} Coins" if int(bonus) > 0 else ""
+                    try:
+                        await bot.edit_message_text(
+                            chat_id=chat_id, message_id=msg_id,
+                            text=f"🎉 <b>পেমেন্ট সফল! (Auto Verified)</b>\n\n"
+                                 f"✅ <b>{fmt_coins_full(base)} Coins</b> যোগ হয়েছে।{bonus_line}\n"
+                                 f"💰 মোট: <b>{fmt_coins_full(total)} Coins</b>\n\nধন্যবাদ! 🙏",
+                            parse_mode="HTML")
+                    except Exception:
+                        pass
+                    break
+
+        asyncio.create_task(_auto_check(
+            ctx.bot,
+            update.effective_chat.id,
+            query.message.message_id,
+            invoice_id,
+            ctx.user_data.get("deposit_coins"),
+            ctx.user_data.get("deposit_bonus", 0),
+            ctx.user_data.get("deposit_amount", 0),
+            COIN_RATE
+        ))
 
 async def deposit_amount_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
@@ -554,16 +614,29 @@ async def deposit_txn_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     method  = ctx.user_data.get("deposit_method", "unknown")
     amount  = ctx.user_data.get("deposit_amount", 0)
-    dep_id = await db.create_deposit(user_id, amount, method, txn_id)
+    # Calculate coins from BDT amount using COIN_RATE
+    coins_to_add = round(amount / COIN_RATE) if COIN_RATE > 0 else amount
+    bonus        = int(ctx.user_data.get("deposit_bonus", 0))
+    total_coins  = coins_to_add + bonus
+    dep_id = await db.create_deposit(user_id, total_coins, method, txn_id)
+    bonus_line = f"\n🎁 Bonus: <b>+{bonus} Coins FREE</b>" if bonus > 0 else ""
     await update.message.reply_text(
-        f"✅ <b>Deposit Request Submitted!</b>\n\n🆔 Request ID: <code>#{dep_id}</code>\n💰 Amount: <code>{fmt_coins_full(amount)}</code>\n💳 Method: <code>{method}</code>\n📋 TXN ID: <code>{txn_id}</code>\n\n⏳ Admin will verify and approve within 24h.",
+        f"✅ <b>Deposit Request Submitted!</b>\n\n"
+        f"🆔 Request ID: <code>#{dep_id}</code>\n"
+        f"💰 Coins: <code>{fmt_coins_full(coins_to_add)}</code>{bonus_line}\n"
+        f"💳 Method: <code>{method}</code>\n"
+        f"📋 TXN ID: <code>{txn_id}</code>\n\n"
+        f"⏳ Admin will verify and approve within 24h.",
         parse_mode=ParseMode.HTML, reply_markup=main_keyboard())
     udata = await db.get_user(user_id)
     admin_msg = (
         f"💳 <b>New Deposit Request</b>\n{'─'*28}\n"
         f"👤 User: <code>{udata['full_name']}</code> (<code>@{udata.get('username','')}</code>)\n"
-        f"🆔 User ID: <code>{user_id}</code>\n💰 Amount: <code>{fmt_coins_full(amount)}</code>\n"
-        f"💳 Method: <code>{method}</code>\n📋 TXN ID: <code>{txn_id}</code>\n🆔 Request ID: <code>#{dep_id}</code>"
+        f"🆔 User ID: <code>{user_id}</code>\n"
+        f"💰 Coins: <code>{fmt_coins_full(total_coins)}</code> (BDT: {amount}){bonus_line}\n"
+        f"💳 Method: <code>{method}</code>\n"
+        f"📋 TXN ID: <code>{txn_id}</code>\n"
+        f"🆔 Request ID: <code>#{dep_id}</code>"
     )
     from keyboards.inline import deposit_approve_kb
     for admin_id in ADMIN_IDS:
@@ -1649,15 +1722,39 @@ async def tracker_input_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 #  REFERRAL & LEADERBOARD
 # ═══════════════════════════════════════════════════════════════════
 async def referral(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    udata   = await db.get_user(user_id)
-    link    = referral_link(user_id)
+    user_id  = update.effective_user.id
+    udata    = await db.get_user(user_id)
+    link     = referral_link(user_id)
+    ref_count = udata.get("referral_count", 0)
+
+    # Determine current tier and next tier
+    from database import REFERRAL_TIERS, get_referral_tier
+    cur_reward, cur_tier = get_referral_tier(ref_count)
+
+    # Find next tier
+    next_tier_info = ""
+    for threshold, reward, label in reversed(REFERRAL_TIERS):
+        if threshold > ref_count:
+            needed = threshold - ref_count
+            next_tier_info = f"\n🎯 Next Tier: <b>{label}</b> (আর {needed} জন দরকার → {reward} coins/join)"
+            break
+
     text = (
-        f"👥 <b>Referral System</b>\n" f"{'─'*28}\n"
-        f"🔗 Your Link:\n<code>{link}</code>\n\n"
-        f"👥 Total Referrals: <code>{udata.get('referral_count',0)}</code>\n"
-        f"💰 Earned: <code>{fmt_coins_full(udata.get('referral_earned',0))}</code>\n\n"
-        f"💎 Earn <b>{REFERRAL_REWARD} coins</b> for each new user!"
+        f"👥 <b>Referral System</b>\n{'─'*28}\n"
+        f"🔗 তোমার Referral Link:\n<code>{link}</code>\n\n"
+        f"{'─'*28}\n"
+        f"🏅 বর্তমান Tier: <b>{cur_tier}</b>\n"
+        f"💎 প্রতি Join: <b>{cur_reward} coins</b>\n"
+        f"📦 প্রতি Order: <b>2% commission</b>{next_tier_info}\n\n"
+        f"{'─'*28}\n"
+        f"👥 মোট Referral: <code>{ref_count}</code>\n"
+        f"💰 মোট Earned: <code>{fmt_coins_full(udata.get('referral_earned',0))}</code>\n\n"
+        f"📊 <b>Tier System:</b>\n"
+        f"🥉 Bronze (0–9 জন) → 5 coins/join\n"
+        f"🥈 Silver (10–24 জন) → 8 coins/join\n"
+        f"🥇 Gold (25–49 জন) → 12 coins/join\n"
+        f"💎 Diamond (50+ জন) → 20 coins/join\n\n"
+        f"🔄 তোমার referred user যতবার order দেবে → তুমি <b>2% commission</b> পাবে!"
     )
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
