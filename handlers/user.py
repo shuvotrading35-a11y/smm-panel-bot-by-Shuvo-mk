@@ -510,10 +510,36 @@ async def payment_method_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE
     }
     if method not in payment_info:
         await query.answer("This method is not available.", show_alert=True); return DEPOSIT_METHOD
-    pkg_line = f"🛍️ Package: <b>{int(coins):,} Coins — {price}</b>\n\n" if coins and coins != "?" else ""
+
     ctx.user_data["deposit_method"] = method
+
+    # Package already selected — skip amount input, go straight to TXN ID
+    if coins and coins not in ("?", "None", None) and price and price != "?":
+        # Extract numeric amount from price string (e.g. "৳500" → 500.0)
+        price_str = str(price).replace("৳", "").replace(",", "").strip()
+        try:
+            amount = float(price_str)
+        except ValueError:
+            amount = 0.0
+        ctx.user_data["deposit_amount"] = amount
+        bonus       = int(ctx.user_data.get("deposit_bonus", 0))
+        bonus_line  = f"\n🎁 Bonus: <b>+{bonus} Coins FREE</b>" if bonus > 0 else ""
+        await query.edit_message_text(
+            f"💳 <b>{method_name}</b>\n\n"
+            f"🛍️ Package: <b>{int(coins):,} Coins — {price}</b>{bonus_line}\n\n"
+            f"{payment_info[method]}\n\n"
+            f"✅ পেমেন্ট করার পর নিচে <b>Transaction ID</b> পাঠাও:\n"
+            f"❓ সাহায্য: @shuvo_9882",
+            parse_mode=ParseMode.HTML)
+        return DEPOSIT_TXN
+
+    # Custom amount — ask for amount first
+    pkg_line = ""
     await query.edit_message_text(
-        f"💳 <b>{method_name}</b>\n\n{pkg_line}{payment_info[method]}\n\n✅ পেমেন্ট করার পর Transaction ID পাঠাও।\n❓ সাহায্য: @shuvo_9882\n\n👇 Deposit amount লেখো (শুধু সংখ্যা):",
+        f"💳 <b>{method_name}</b>\n\n{pkg_line}{payment_info[method]}\n\n"
+        f"✅ পেমেন্ট করার পর Transaction ID পাঠাও।\n"
+        f"❓ সাহায্য: @shuvo_9882\n\n"
+        f"👇 Deposit amount লেখো (শুধু সংখ্যা):",
         parse_mode=ParseMode.HTML)
     return DEPOSIT_AMOUNT
 
