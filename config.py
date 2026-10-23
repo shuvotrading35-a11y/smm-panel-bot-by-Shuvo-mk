@@ -94,12 +94,16 @@ SERVICE_MARKUP_PCT = float(os.getenv("SERVICE_MARKUP_PCT", "30"))
 TOPUP_MARKUP_PCT   = float(os.getenv("TOPUP_MARKUP_PCT",   "20"))
 
 # ── Coin Packages ─────────────────────────────────────
+# (coins, price_label, bonus_coins)
 COIN_PACKAGES = [
-    (50,   "৳50"),
-    (100,  "৳100"),
-    (200,  "৳200"),
-    (300,  "৳300"),
-    (500,  "৳500"),
-    (700,  "৳700"),
-    (1000, "৳1000"),
+    (50,   "৳50",   0),
+    (100,  "৳100",  0),
+    (200,  "৳200",  10),
+    (300,  "৳300",  20),
+    (500,  "৳500",  50),
+    (700,  "৳700",  80),
+    (1000, "৳1000", 150),
 ]
+
+# Referral commission % on each order
+REFERRAL_COMMISSION_PCT = float(os.getenv("REFERRAL_COMMISSION_PCT", "2.0"))
