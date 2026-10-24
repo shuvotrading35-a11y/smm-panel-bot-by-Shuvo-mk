@@ -135,7 +135,7 @@ async def balance_manager(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         return
     await update.message.reply_text(
-        "💰 <b>Balance Manager</b>\n\nEnter User ID to add balance:",
+        "💰 <b>Balance Manager</b>\n\n👤 User ID দাও:",
         parse_mode=ParseMode.HTML,
         reply_markup=cancel_keyboard()
     )
@@ -145,31 +145,88 @@ async def balance_manager(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def add_bal_id_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     uid = update.message.text.strip()
     if not uid.isdigit():
-        await update.message.reply_text("❌ Invalid User ID:")
+        await update.message.reply_text("❌ Invalid User ID। আবার দাও:")
         return ADD_BAL_ID
+
+    udata = await db.get_user(int(uid))
+    if not udata:
+        await update.message.reply_text("❌ এই User ID পাওয়া যায়নি। আবার দাও:")
+        return ADD_BAL_ID
+
     ctx.user_data["adm_target_id"] = int(uid)
-    await update.message.reply_text("Enter amount to add:")
+
+    name     = udata.get("full_name", "Unknown")
+    username = udata.get("username", "")
+    balance  = udata.get("balance", 0)
+    spent    = udata.get("total_spent", 0)
+    orders   = udata.get("total_orders", 0)
+    deposited = udata.get("total_deposited", 0)
+    banned   = "🔴 Banned" if udata.get("is_banned") else "🟢 Active"
+
+    text = (
+        f"👤 <b>User Details</b>\n{'─'*28}\n"
+        f"📛 Name: <b>{name}</b>\n"
+        f"🆔 ID: <code>{uid}</code>\n"
+        f"👤 Username: @{username or 'N/A'}\n"
+        f"{'─'*28}\n"
+        f"💰 Balance: <b>{fmt_coins(balance)}</b>\n"
+        f"📥 Total Deposited: <code>{fmt_coins(deposited)}</code>\n"
+        f"📦 Total Orders: <code>{orders}</code>\n"
+        f"💸 Total Spent: <code>{fmt_coins(spent)}</code>\n"
+        f"{'─'*28}\n"
+        f"Status: {banned}\n\n"
+        f"➕ যোগ করতে: amount লেখো (যেমন: <code>500</code>)\n"
+        f"➖ কাটতে: minus দাও (যেমন: <code>-200</code>)"
+    )
+    await update.message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=cancel_keyboard())
     return ADD_BAL_AMOUNT
 
 
 async def add_bal_amount_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
-    if not text.replace(".", "", 1).isdigit():
-        await update.message.reply_text("❌ Invalid amount:")
+    # Allow negative amounts for deduction
+    is_negative = text.startswith("-")
+    clean = text.lstrip("-").replace(".", "", 1)
+    if not clean.isdigit():
+        await update.message.reply_text("❌ Invalid amount। উদাহরণ: <code>500</code> বা <code>-200</code>", parse_mode=ParseMode.HTML)
         return ADD_BAL_AMOUNT
-    amount  = float(text)
-    uid     = ctx.user_data["adm_target_id"]
-    await db.add_balance(uid, amount, "Admin Add")
+
+    amount = float(text)
+    uid    = ctx.user_data["adm_target_id"]
+
     udata = await db.get_user(uid)
+    if not udata:
+        await update.message.reply_text("❌ User not found.")
+        return ConversationHandler.END
+
+    # Check if deduction would make balance negative
+    if is_negative and udata.get("balance", 0) + amount < 0:
+        await update.message.reply_text(
+            f"❌ Balance কম। বর্তমান balance: <b>{fmt_coins(udata.get('balance', 0))}</b>\nআবার দাও:",
+            parse_mode=ParseMode.HTML
+        )
+        return ADD_BAL_AMOUNT
+
+    method = "Admin Deduct" if is_negative else "Admin Add"
+    await db.add_balance(uid, amount, method)
+    udata  = await db.get_user(uid)
+    action = f"কেটেছে <b>{fmt_coins(abs(amount))}</b>" if is_negative else f"যোগ করেছে <b>{fmt_coins(amount)}</b>"
+
     await update.message.reply_text(
-        f"✅ Added <code>{fmt_coins(amount)} coins</code> to user <code>{uid}</code>.\n"
-        f"New balance: <code>{fmt_coins(udata['balance']) if udata else '?'} coins</code>",
+        f"✅ <b>সফল!</b>\n\n"
+        f"👤 User: <b>{udata['full_name']}</b> (<code>{uid}</code>)\n"
+        f"💰 {action}\n"
+        f"📊 নতুন Balance: <b>{fmt_coins(udata['balance'])}</b>",
         parse_mode=ParseMode.HTML,
         reply_markup=admin_keyboard()
     )
     # Notify user
     try:
-        await ctx.bot.send_message(uid, f"💰 Admin added <b>{fmt_coins(amount)} coins</b> to your balance!", parse_mode=ParseMode.HTML)
+        if is_negative:
+            msg = f"⚠️ Admin তোমার account থেকে <b>{fmt_coins(abs(amount))}</b> কেটেছে।\n💰 বর্তমান Balance: <b>{fmt_coins(udata['balance'])}</b>"
+        else:
+            msg = f"🎉 Admin তোমার account এ <b>{fmt_coins(amount)}</b> যোগ করেছে!\n💰 বর্তমান Balance: <b>{fmt_coins(udata['balance'])}</b>"
+        await ctx.bot.send_message(uid, msg, parse_mode=ParseMode.HTML)
     except Exception:
         pass
     ctx.user_data.clear()
