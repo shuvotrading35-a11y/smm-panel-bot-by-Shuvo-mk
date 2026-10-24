@@ -176,15 +176,18 @@ def categories_kb(categories: list[str], icons: dict, updates_channel: str = "")
 
     platforms_to_show = ["facebook", "telegram", "tiktok", "instagram", "youtube", "twitter", "whatsapp", "spotify"]
 
+    # 2 per row for platform buttons
     for p in platforms_to_show:
         label = PLATFORM_LABELS.get(p, f"🔹 {p.upper()}")
-        row.append(StyledButton(label, style="success", callback_data=f"platform:{p}"))
+        row.append(StyledButton(label, callback_data=f"platform:{p}"))
         if len(row) == 2:
             rows.append(row)
             row = []
+    if row:
+        rows.append(row)
 
-    row.append(StyledButton("📦 OTHER SERVICE", style="success", callback_data="platform:other"))
-    rows.append(row)
+    # OTHER SERVICE — full width
+    rows.append([StyledButton("📦 OTHER SERVICE", callback_data="platform:other")])
 
     if updates_channel:
         rows.append([InlineKeyboardButton("📢 Join Updates Channel", url=updates_channel)])
@@ -196,22 +199,14 @@ def platform_categories_kb(platform: str, categories: list[str], icons: dict) ->
     rows = []
     current_row = [] 
 
-    CAT_STYLES = ["success", "primary", "warning"]
     for idx, cat in enumerate(categories):
         icon = next((v for k, v in icons.items() if k.lower() in cat.lower()), "🔹")
-        current_row.append(StyledButton(
+        rows.append([StyledButton(
             f"{icon}  {cat.upper()}",
-            style=CAT_STYLES[idx % len(CAT_STYLES)],
             callback_data=f"catidx:{idx}"
-        ))
-        if len(current_row) == 2:
-            rows.append(current_row)
-            current_row = [] 
+        )])
 
-    if current_row:
-        rows.append(current_row)
-
-    rows.append([StyledButton("◀ Back", style="danger", callback_data="platform_back")])
+    rows.append([StyledButton("◀ Back", callback_data="platform_back")])
     return InlineKeyboardMarkup(rows)
 
 
