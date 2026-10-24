@@ -680,6 +680,12 @@ async def search_service_prompt(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def services_list(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await _delete_menu_msg(update, ctx, "new_order_msg_id")
     await _delete_menu_msg(update, ctx, "partner_entry_msg_id")
+    # Clear any stale conversation state so quantity prompt doesn't appear
+    ctx.user_data.pop("order_service_id", None)
+    ctx.user_data.pop("order_service_name", None)
+    ctx.user_data.pop("order_category", None)
+    ctx.user_data.pop("order_subcat_services", None)
+    ctx.user_data.pop("current_subcat", None)
     await _send_replacing(update, ctx, "services_list_msg_id", "📊 <b>Services List</b>\n\nকোন সার্ভিস দেখতে চাও?", reply_markup=service_menu_keyboard(), parse_mode=ParseMode.HTML)
 
 async def services_list_smm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
