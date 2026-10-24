@@ -38,17 +38,19 @@ COIN_TO_BDT = 1.0
 USD_TO_BDT  = 135.0    # আপনি চাইলে এখানে রেট পরিবর্তন করতে পারেন (যেমন 120 বা 135)
 
 def fmt_coins(amount: float) -> str:
-    return f"{amount:,.2f}"
+    """শুধু টাকার পরিমাণ"""
+    try:
+        return f"৳{float(amount):,.2f}"
+    except (ValueError, TypeError):
+        return "৳0.00"
 
 def fmt_coins_full(amount: float) -> str:
-    """Coins + BDT + USD — সব একসাথে দেখাবে"""
+    """টাকা — সব জায়গায় ৳ দেখাবে"""
     try:
         amount = float(amount)
-        bdt = amount * COIN_TO_BDT
-        usd = bdt / USD_TO_BDT
-        return f"{amount:,.2f} Coins (≈ ৳{bdt:,.1f} / ${usd:.3f})"
+        return f"৳{amount:,.2f}"
     except (ValueError, TypeError):
-        return "0.00 Coins"
+        return "৳0.00"
 
 def fmt_status(status: str) -> str:
     icons = {
