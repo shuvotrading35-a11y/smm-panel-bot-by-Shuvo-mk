@@ -42,14 +42,14 @@ def coin_packages_kb() -> InlineKeyboardMarkup:
     from config import COIN_PACKAGES
     rows = []
     for item in COIN_PACKAGES:
-        coins, price = item[0], item[1]
+        amount, price = item[0], item[1]
         bonus = item[2] if len(item) > 2 else 0
-        bonus_str = f"  +{bonus} Bonus 🎁" if bonus > 0 else ""
+        bonus_str = f"  +৳{bonus} বোনাস 🎁" if bonus > 0 else ""
         rows.append([StyledButton(
-            f"🛍️  {coins:,} Coins  —  {price}{bonus_str}",
-            callback_data=f"pkg:{coins}:{price}:{bonus}"
+            f"💳  {price}  ডিপোজিট{bonus_str}",
+            callback_data=f"pkg:{amount}:{price}:{bonus}"
         )])
-    rows.append([StyledButton("✏️  Custom Amount", callback_data="pkg:custom")])
+    rows.append([StyledButton("✏️  নিজে পরিমাণ লিখুন", callback_data="pkg:custom")])
     rows.append([InlineKeyboardButton("💬  Contact Admin", url="https://t.me/shuvo_9882")])
     return InlineKeyboardMarkup(rows)
 
