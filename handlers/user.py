@@ -523,10 +523,10 @@ async def payment_method_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE
             amount = 0.0
         ctx.user_data["deposit_amount"] = amount
         bonus       = int(ctx.user_data.get("deposit_bonus", 0))
-        bonus_line  = f"\n🎁 Bonus: <b>+{bonus} Coins FREE</b>" if bonus > 0 else ""
+        bonus_line  = f"\n🎁 বোনাস: <b>+৳{bonus} FREE</b>" if bonus > 0 else ""
         await query.edit_message_text(
             f"💳 <b>{method_name}</b>\n\n"
-            f"🛍️ Package: <b>{int(coins):,} Coins — {price}</b>{bonus_line}\n\n"
+            f"💳 ডিপোজিট: <b>{price}</b>{bonus_line}\n\n"
             f"{payment_info[method]}\n\n"
             f"✅ পেমেন্ট করার পর নিচে <b>Transaction ID</b> পাঠাও:\n"
             f"❓ সাহায্য: @shuvo_9882",
@@ -560,11 +560,11 @@ async def check_payment_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
             base_coins = round(float(amount) / COIN_RATE) if COIN_RATE > 0 else float(amount)
         total_coins = base_coins + bonus
         await db.add_coins(user_id, total_coins, method="ShuvoPay (bKash)", txn_id=invoice_id)
-        bonus_line = f"\n🎁 Bonus: <b>+{bonus} Coins</b>" if bonus > 0 else ""
+        bonus_line = f"\n🎁 বোনাস: <b>+{fmt_coins_full(bonus)}</b>" if bonus > 0 else ""
         await query.edit_message_text(
             f"🎉 <b>পেমেন্ট সফল!</b>\n\n"
-            f"✅ <b>{fmt_coins_full(base_coins)} Coins</b> তোমার account এ যোগ হয়েছে।{bonus_line}\n\n"
-            f"💰 মোট: <b>{fmt_coins_full(total_coins)} Coins</b>\n\nধন্যবাদ! 🙏",
+            f"✅ <b>{fmt_coins_full(base_coins)}</b> তোমার account এ যোগ হয়েছে।{bonus_line}\n\n"
+            f"💰 মোট: <b>{fmt_coins_full(total_coins)}</b>\n\nধন্যবাদ! 🙏",
             parse_mode=ParseMode.HTML, reply_markup=None)
         udata = await db.get_user(user_id)
         for admin_id in ADMIN_IDS:
@@ -645,11 +645,11 @@ async def deposit_txn_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     bonus        = int(ctx.user_data.get("deposit_bonus", 0))
     total_coins  = coins_to_add + bonus
     dep_id = await db.create_deposit(user_id, total_coins, method, txn_id)
-    bonus_line = f"\n🎁 Bonus: <b>+{bonus} Coins FREE</b>" if bonus > 0 else ""
+    bonus_line = f"\n🎁 বোনাস: <b>+{fmt_coins_full(bonus)} FREE</b>" if bonus > 0 else ""
     await update.message.reply_text(
         f"✅ <b>Deposit Request Submitted!</b>\n\n"
         f"🆔 Request ID: <code>#{dep_id}</code>\n"
-        f"💰 Coins: <code>{fmt_coins_full(coins_to_add)}</code>{bonus_line}\n"
+        f"💰 Amount: <code>{fmt_coins_full(coins_to_add)}</code>{bonus_line}\n"
         f"💳 Method: <code>{method}</code>\n"
         f"📋 TXN ID: <code>{txn_id}</code>\n\n"
         f"⏳ Admin will verify and approve within 24h.",
@@ -1223,22 +1223,39 @@ async def order_platform_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
     if data.startswith("subcat:"):
         label    = data[7:]
         category = ctx.user_data.get("order_category", "")
+        # game2 flow: api_src must be smm2
+        if ctx.user_data.get("is_game2_flow"):
+            api_src = "smm2"
+            ctx.user_data["current_api_source"] = "smm2"
         services = await db.get_services_by_category(category, api_source=api_src)
         platform = ctx.user_data.get("sub_platform", "")
-        if not platform: platform = _detect_platform(services) or ""
+        if not platform:
+            platform = _detect_platform(services) or "freefire" if ctx.user_data.get("is_game2_flow") else _detect_platform(services) or ""
+            ctx.user_data["sub_platform"] = platform
         filtered = [s for s in services if _get_subcat(platform, s.get("name", "")) == label]
         if not filtered:
+            # fallback: show all services if filter gives nothing
+            filtered = services
+        if not filtered:
             await query.answer("এই সাব-ক্যাটাগরিতে কিছু নেই।", show_alert=True); return ORDER_SERVICE
-            
+
         def extract_number(s):
             match = re.search(r'\d+', s.get("name", ""))
             return int(match.group()) if match else 0
         filtered.sort(key=extract_number)
-            
-        ctx.user_data["order_subcat"] = label
+
+        ctx.user_data["order_subcat"]          = label
         ctx.user_data["order_subcat_services"] = filtered
+        # Also store for svc_page pagination
+        ctx.user_data["order_category"]        = category
+        ctx.user_data["sub_platform"]          = platform
         icon = category_icon(category)
-        await query.edit_message_text(f"{icon} <b>{label}</b> — {len(filtered)}টি সার্ভিস\n\nChoose one:", reply_markup=services_kb(filtered, f"{category}::{label}", markup_pct=SERVICE_MARKUP_PCT), parse_mode=ParseMode.HTML)
+        cat_key = f"{category}::{label}"
+        await query.edit_message_text(
+            f"{icon} <b>{label}</b> — {len(filtered)}টি সার্ভিস\n\nChoose one:",
+            reply_markup=services_kb(filtered, cat_key, markup_pct=SERVICE_MARKUP_PCT),
+            parse_mode=ParseMode.HTML
+        )
         return ORDER_SERVICE
 
     if data == "sub_back":
@@ -1288,20 +1305,21 @@ async def order_platform_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
         parts   = data.split("|", 2)
         page    = int(parts[1])
         cat_key = parts[2]
+        # Enforce smm2 for game2 flow
+        if ctx.user_data.get("is_game2_flow"):
+            api_src = "smm2"
         if "::" in cat_key:
-            # subcat pagination — restore from user_data (api_source already correct)
+            # subcat pagination — restore from user_data
             services = ctx.user_data.get("order_subcat_services", [])
             if not services:
-                # fallback: re-fetch subcat
                 real_cat, sub_label = cat_key.split("::", 1)
-                all_svcs = await db.get_services_by_category(real_cat, api_source=api_src)
                 platform = ctx.user_data.get("sub_platform", "freefire")
+                all_svcs = await db.get_services_by_category(real_cat, api_source=api_src)
                 services = [s for s in all_svcs if _get_subcat(platform, s.get("name", "")) == sub_label]
-                def _en(s):
-                    import re as _re
-                    m = _re.search(r'\d+', s.get("name", ""))
-                    return int(m.group()) if m else 0
-                services.sort(key=_en)
+                if not services:
+                    services = all_svcs  # fallback
+                import re as _re
+                services.sort(key=lambda s: int(m.group()) if (m := _re.search(r'\d+', s.get("name", ""))) else 0)
                 ctx.user_data["order_subcat_services"] = services
         else:
             services = await db.get_services_by_category(cat_key, api_source=api_src)
@@ -1770,17 +1788,17 @@ async def referral(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         f"🔗 তোমার Referral Link:\n<code>{link}</code>\n\n"
         f"{'─'*28}\n"
         f"🏅 বর্তমান Tier: <b>{cur_tier}</b>\n"
-        f"💎 প্রতি Join: <b>{cur_reward} coins</b>\n"
+        f"💎 প্রতি Join: <b>৳{cur_reward}</b>\n"
         f"📦 প্রতি Order: <b>2% commission</b>{next_tier_info}\n\n"
         f"{'─'*28}\n"
         f"👥 মোট Referral: <code>{ref_count}</code>\n"
         f"💰 মোট Earned: <code>{fmt_coins_full(udata.get('referral_earned',0))}</code>\n\n"
         f"📊 <b>Tier System:</b>\n"
-        f"🥉 Bronze (0–9 জন) → 5 coins/join\n"
-        f"🥈 Silver (10–24 জন) → 8 coins/join\n"
-        f"🥇 Gold (25–49 জন) → 12 coins/join\n"
-        f"💎 Diamond (50+ জন) → 20 coins/join\n\n"
-        f"🔄 তোমার referred user যতবার order দেবে → তুমি <b>2% commission</b> পাবে!"
+        f"🥉 Bronze (0–9 জন) → ৳5/join\n"
+        f"🥈 Silver (10–24 জন) → ৳8/join\n"
+        f"🥇 Gold (25–49 জন) → ৳12/join\n"
+        f"💎 Diamond (50+ জন) → ৳20/join\n\n"
+        f"🔄 তোমার referred user যতবার order দেবে → তুমি <b>2% commission</b> (টাকা) পাবে!"
     )
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
