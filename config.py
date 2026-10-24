@@ -41,7 +41,7 @@ DB_PATH = os.getenv("DB_PATH", "data/database.db")
 DAILY_BONUS_AMOUNT = float(os.getenv("DAILY_BONUS_AMOUNT", "1"))
 REFERRAL_REWARD    = float(os.getenv("REFERRAL_REWARD", "5"))
 MIN_DEPOSIT        = float(os.getenv("MIN_DEPOSIT", "1.00"))
-COIN_RATE          = float(os.getenv("COIN_RATE", "0.0074"))
+COIN_RATE          = 1.0  # 1 balance unit = ৳1
 
 # ── VIP Plans ────────────────────────────────────────
 VIP_PLANS = {
@@ -94,14 +94,15 @@ SERVICE_MARKUP_PCT = float(os.getenv("SERVICE_MARKUP_PCT", "30"))
 TOPUP_MARKUP_PCT   = float(os.getenv("TOPUP_MARKUP_PCT",   "20"))
 
 # ── Coin Packages ─────────────────────────────────────
-# (coins, price_label, bonus_coins)
+# (amount_taka, price_label, bonus_taka)
+# ৳1000 → ৳150 bonus (15%)
 COIN_PACKAGES = [
     (50,   "৳50",   0),
     (100,  "৳100",  0),
     (200,  "৳200",  10),
-    (300,  "৳300",  20),
+    (300,  "৳300",  15),
     (500,  "৳500",  50),
-    (700,  "৳700",  80),
+    (700,  "৳700",  70),
     (1000, "৳1000", 150),
 ]
 
