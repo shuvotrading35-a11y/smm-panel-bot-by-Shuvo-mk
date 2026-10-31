@@ -1058,68 +1058,64 @@ async def new_order_smm2(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     return ORDER_PLATFORM
 
 async def new_order_game2(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Game TopUp 2 — Free Fire via CSB API (smm2).
+    সব FF categories merge করে একটা grouped subcat list দেখাই।
+    """
     ctx.user_data["current_api_source"] = "smm2"
-    ctx.user_data["current_platform"] = "freefire" 
-    ctx.user_data["is_game2_flow"] = True
-    
+    ctx.user_data["current_platform"]   = "freefire"
+    ctx.user_data["is_game2_flow"]      = True
+    ctx.user_data["sub_platform"]       = "freefire"
+
     cats = await db.get_categories(api_source="smm2")
-    ff_cats = [c for c in cats if any(kw in c.lower() for kw in ["free fire", "freefire", "free_fire", "diamond", "uc"])]
-    
+    ff_cats = [c for c in cats if any(
+        kw in c.lower() for kw in ["free fire", "freefire", "free_fire", "diamond", "uc"]
+    )]
+
     if not ff_cats:
-        await update.message.reply_text("⚠️ Free Fire services not found in CSB API.")
-        return ConversationHandler.END
-        
-    if len(ff_cats) == 1:
-        category = ff_cats[0]
-        ctx.user_data["order_category"] = category
-        services = await db.get_services_by_category(category, api_source="smm2")
-        if not services:
-            await update.message.reply_text("⚠️ No services found in this category.")
-            return ConversationHandler.END
-            
-        platform = "freefire"
-        grouped = _group_services(services, platform)
-        ctx.user_data["current_grouped"] = grouped
-        ctx.user_data["sub_platform"] = platform
-        
-        def sort_key(item):
-            label = item[0]
-            if "Diamond" in label: return (0, label)
-            if "UC" in label: return (1, label)
-            if "Weekly" in label: return (2, label)
-            if "Monthly" in label: return (3, label)
-            if "Level" in label: return (4, label)
-            return (5, label)
-            
-        rows = []
-        for label, items in sorted(grouped.items(), key=sort_key):
-            rows.append([StyledButton(text=f"{label} ({len(items)})", callback_data=f"subcat:{label}", style="success")])
-        rows.append([StyledButton(text="🔙 Back to Main", style="danger", callback_data="back_to_main_cb")])
-        
         await update.message.reply_text(
-            "🎮 <b>Game TopUp (2) - Free Fire</b>\n\nSelect a package category:",
-            reply_markup=InlineKeyboardMarkup(rows),
-            parse_mode=ParseMode.HTML
+            "⚠️ Free Fire services পাওয়া যায়নি।\n"
+            "Admin /syncservices দিয়ে CSB API sync করুন।"
         )
-        return ORDER_PLATFORM
-        
-    rows = []
-    row = []
+        return ConversationHandler.END
+
+    # Merge all FF category services into one grouped view
+    all_services = []
     for cat in ff_cats:
-        icon = next((v for k, v in CATEGORY_ICONS.items() if k.lower() in cat.lower()), "🔹")
-        row.append(StyledButton(f"{icon} {cat}", style="success", callback_data=f"cat:{cat}"))
-        if len(row) == 2:
-            rows.append(row)
-            row = []
-    if row: rows.append(row)
-    rows.append([StyledButton("🔙 Back to Main", style="danger", callback_data="back_to_main_cb")])
-    
+        svcs = await db.get_services_by_category(cat, api_source="smm2")
+        # Store category on each service for order placement
+        for s in svcs:
+            s["_ff_cat"] = cat
+        all_services.extend(svcs)
+
+    if not all_services:
+        await update.message.reply_text("⚠️ CSB API তে কোনো service নেই। Sync করুন।")
+        return ConversationHandler.END
+
+    grouped = _group_services(all_services, "freefire")
+    ctx.user_data["current_grouped"]    = grouped
+    ctx.user_data["order_category"]     = ff_cats[0]  # primary cat
+    ctx.user_data["ff_all_services"]    = all_services  # cache for pagination
+
+    def _sort(item):
+        l = item[0]
+        if "Diamond" in l: return (0, l)
+        if "UC"      in l: return (1, l)
+        if "Weekly"  in l: return (2, l)
+        if "Monthly" in l: return (3, l)
+        if "Level"   in l: return (4, l)
+        return (5, l)
+
+    rows = []
+    for label, items in sorted(grouped.items(), key=_sort):
+        rows.append([StyledButton(f"{label} ({len(items)})", callback_data=f"subcat:{label}")])
+    rows.append([StyledButton("🔙 Back to Main", callback_data="back_to_main_cb")])
+
     await update.message.reply_text(
-        "🎮 <b>Game TopUp (2) - Free Fire</b>\n\nSelect a package category:",
-        reply_markup=InlineKeyboardMarkup(rows), 
+        "🎮 <b>Game TopUp (2) — Free Fire</b>\n\nSelect a package category:",
+        reply_markup=InlineKeyboardMarkup(rows),
         parse_mode=ParseMode.HTML
     )
-    return ORDER_CATEGORY
+    return ORDER_PLATFORM
 
 async def back_to_main_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -1227,36 +1223,51 @@ async def order_platform_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
         return ORDER_SERVICE
 
     if data.startswith("subcat:"):
-        label    = data[7:]
-        category = ctx.user_data.get("order_category", "")
-        # game2 flow: api_src must be smm2
+        label = data[7:]
+
         if ctx.user_data.get("is_game2_flow"):
             api_src = "smm2"
             ctx.user_data["current_api_source"] = "smm2"
-        services = await db.get_services_by_category(category, api_source=api_src)
-        platform = ctx.user_data.get("sub_platform", "")
-        if not platform:
-            platform = _detect_platform(services) or "freefire" if ctx.user_data.get("is_game2_flow") else _detect_platform(services) or ""
-            ctx.user_data["sub_platform"] = platform
-        filtered = [s for s in services if _get_subcat(platform, s.get("name", "")) == label]
-        if not filtered:
-            # fallback: show all services if filter gives nothing
-            filtered = services
-        if not filtered:
-            await query.answer("এই সাব-ক্যাটাগরিতে কিছু নেই।", show_alert=True); return ORDER_SERVICE
 
-        def extract_number(s):
-            match = re.search(r'\d+', s.get("name", ""))
-            return int(match.group()) if match else 0
-        filtered.sort(key=extract_number)
+        category = ctx.user_data.get("order_category", "")
+        platform = ctx.user_data.get("sub_platform", "freefire" if ctx.user_data.get("is_game2_flow") else "")
+        ctx.user_data["sub_platform"] = platform
+
+        # game2: use merged cache; others: fetch from DB
+        if ctx.user_data.get("is_game2_flow"):
+            all_svcs = ctx.user_data.get("ff_all_services") or []
+            if not all_svcs:
+                cats = await db.get_categories(api_source="smm2")
+                ff_cats = [c for c in cats if any(
+                    kw in c.lower() for kw in ["free fire","freefire","free_fire","diamond","uc"]
+                )]
+                for cat in ff_cats:
+                    svcs = await db.get_services_by_category(cat, api_source="smm2")
+                    for s in svcs: s["_ff_cat"] = cat
+                    all_svcs.extend(svcs)
+                ctx.user_data["ff_all_services"] = all_svcs
+        else:
+            all_svcs = await db.get_services_by_category(category, api_source=api_src)
+
+        if not all_svcs:
+            await query.answer("⚠️ Services পাওয়া যায়নি। Sync করুন।", show_alert=True)
+            return ORDER_PLATFORM
+
+        filtered = [s for s in all_svcs if _get_subcat(platform, s.get("name", "")) == label]
+        if not filtered:
+            filtered = all_svcs  # fallback
+
+        def _num(s):
+            m = re.search(r'\d+', s.get("name", ""))
+            return int(m.group()) if m else 0
+        filtered.sort(key=_num)
 
         ctx.user_data["order_subcat"]          = label
         ctx.user_data["order_subcat_services"] = filtered
-        # Also store for svc_page pagination
         ctx.user_data["order_category"]        = category
-        ctx.user_data["sub_platform"]          = platform
-        icon = category_icon(category)
+
         cat_key = f"{category}::{label}"
+        icon    = category_icon(label)
         await query.edit_message_text(
             f"{icon} <b>{label}</b> — {len(filtered)}টি সার্ভিস\n\nChoose one:",
             reply_markup=services_kb(filtered, cat_key, markup_pct=SERVICE_MARKUP_PCT),
@@ -1311,28 +1322,33 @@ async def order_platform_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
         parts   = data.split("|", 2)
         page    = int(parts[1])
         cat_key = parts[2]
-        # Enforce smm2 for game2 flow
+
         if ctx.user_data.get("is_game2_flow"):
             api_src = "smm2"
+
         if "::" in cat_key:
-            # subcat pagination — restore from user_data
+            _, sub_label = cat_key.split("::", 1)
             services = ctx.user_data.get("order_subcat_services", [])
             if not services:
-                real_cat, sub_label = cat_key.split("::", 1)
                 platform = ctx.user_data.get("sub_platform", "freefire")
-                all_svcs = await db.get_services_by_category(real_cat, api_source=api_src)
-                services = [s for s in all_svcs if _get_subcat(platform, s.get("name", "")) == sub_label]
+                if ctx.user_data.get("is_game2_flow"):
+                    pool = ctx.user_data.get("ff_all_services", [])
+                else:
+                    real_cat = cat_key.split("::")[0]
+                    pool = await db.get_services_by_category(real_cat, api_source=api_src)
+                services = [s for s in pool if _get_subcat(platform, s.get("name", "")) == sub_label]
                 if not services:
-                    services = all_svcs  # fallback
-                import re as _re
-                services.sort(key=lambda s: int(m.group()) if (m := _re.search(r'\d+', s.get("name", ""))) else 0)
+                    services = pool
+                services.sort(key=lambda s: int(m.group()) if (m := re.search(r'\d+', s.get("name",""))) else 0)
                 ctx.user_data["order_subcat_services"] = services
         else:
             services = await db.get_services_by_category(cat_key, api_source=api_src)
+
         if not services:
             await query.answer("No services found.", show_alert=True); return ORDER_SERVICE
-        total_pages = max(1, (len(services) + 7) // 8)
+
         display_key = cat_key.split("::")[-1] if "::" in cat_key else cat_key
+        total_pages = max(1, (len(services) + 7) // 8)
         icon = category_icon(display_key)
         await query.edit_message_text(
             f"{icon} <b>Select Service:</b> (Page {page+1}/{total_pages})\n\nনিচের বাটন থেকে আপনার প্রয়োজনীয় সার্ভিসটি বেছে নিন 👇",
@@ -1404,26 +1420,34 @@ async def order_service_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         platform = ctx.user_data.get("order_platform", "") or ctx.user_data.get("sub_platform", "")
 
         if ctx.user_data.get("is_game2_flow"):
-            # Game2 → go back to FF subcat list
-            cats    = await db.get_categories(api_source="smm2")
-            ff_cats = [c for c in cats if any(kw in c.lower() for kw in ["free fire", "freefire", "free_fire", "diamond", "uc"])]
-            if ff_cats:
-                category = ff_cats[0]
-                services = await db.get_services_by_category(category, api_source="smm2")
-                grouped  = _group_services(services, "freefire")
-                def _sk(item):
-                    l = item[0]
-                    if "Diamond" in l: return (0, l)
-                    if "UC" in l: return (1, l)
-                    if "Weekly" in l: return (2, l)
-                    if "Monthly" in l: return (3, l)
-                    if "Level" in l: return (4, l)
-                    return (5, l)
-                rows = [[StyledButton(f"{lbl} ({len(itms)})", callback_data=f"subcat:{lbl}", style="success")] for lbl, itms in sorted(grouped.items(), key=_sk)]
-                rows.append([StyledButton("🔙 Back to Main", style="danger", callback_data="back_to_main_cb")])
-                await query.edit_message_text("🎮 <b>Game TopUp (2) - Free Fire</b>\n\nSelect a package category:", reply_markup=InlineKeyboardMarkup(rows), parse_mode=ParseMode.HTML)
-                return ORDER_PLATFORM
-            await query.edit_message_text("❌ FF categories not found.", parse_mode=ParseMode.HTML)
+            # Game2 → rebuild subcat list from cache
+            grouped = ctx.user_data.get("current_grouped", {})
+            if not grouped:
+                all_svcs = ctx.user_data.get("ff_all_services", [])
+                if not all_svcs:
+                    cats    = await db.get_categories(api_source="smm2")
+                    ff_cats = [c for c in cats if any(kw in c.lower() for kw in ["free fire","freefire","free_fire","diamond","uc"])]
+                    for cat in ff_cats:
+                        svcs = await db.get_services_by_category(cat, api_source="smm2")
+                        for s in svcs: s["_ff_cat"] = cat
+                        all_svcs.extend(svcs)
+                    ctx.user_data["ff_all_services"] = all_svcs
+                grouped = _group_services(all_svcs, "freefire")
+                ctx.user_data["current_grouped"] = grouped
+            def _sk(item):
+                l = item[0]
+                if "Diamond" in l: return (0, l)
+                if "UC"      in l: return (1, l)
+                if "Weekly"  in l: return (2, l)
+                if "Monthly" in l: return (3, l)
+                if "Level"   in l: return (4, l)
+                return (5, l)
+            rows = [[StyledButton(f"{lbl} ({len(itms)})", callback_data=f"subcat:{lbl}")] for lbl, itms in sorted(grouped.items(), key=_sk)]
+            rows.append([StyledButton("🔙 Back to Main", callback_data="back_to_main_cb")])
+            await query.edit_message_text(
+                "🎮 <b>Game TopUp (2) — Free Fire</b>\n\nSelect a package category:",
+                reply_markup=InlineKeyboardMarkup(rows), parse_mode=ParseMode.HTML
+            )
             return ORDER_PLATFORM
 
         if platform and platform != "other":
@@ -1442,20 +1466,27 @@ async def order_service_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return ORDER_PLATFORM
 
     if data.startswith("svc_page|"):
-        parts    = data.split("|", 2)
-        page     = int(parts[1])
-        cat_key  = parts[2]
+        parts   = data.split("|", 2)
+        page    = int(parts[1])
+        cat_key = parts[2]
+
+        if ctx.user_data.get("is_game2_flow"):
+            api_src = "smm2"
 
         if "::" in cat_key:
-            services = ctx.user_data.get("current_subcat_services", [])
+            _, sub_label = cat_key.split("::", 1)
+            services = ctx.user_data.get("order_subcat_services") or ctx.user_data.get("current_subcat_services", [])
             if not services:
-                real_cat, sub_label = cat_key.split("::", 1)
-                all_svcs = await db.get_services_by_category(real_cat, api_source=api_src)
-                platform = ctx.user_data.get("sub_platform", "")
-                services = [s for s in all_svcs if _get_subcat(platform, s.get("name", "")) == sub_label]
-                import re as _re2
-                services.sort(key=lambda s: int(m.group()) if (m := _re2.search(r'\d+', s.get("name",""))) else 0)
-                ctx.user_data["current_subcat_services"] = services
+                platform = ctx.user_data.get("sub_platform", "freefire")
+                if ctx.user_data.get("is_game2_flow"):
+                    pool = ctx.user_data.get("ff_all_services", [])
+                else:
+                    real_cat = cat_key.split("::")[0]
+                    pool = await db.get_services_by_category(real_cat, api_source=api_src)
+                services = [s for s in pool if _get_subcat(platform, s.get("name","")) == sub_label]
+                if not services: services = pool
+                services.sort(key=lambda s: int(m.group()) if (m := re.search(r'\d+', s.get("name",""))) else 0)
+                ctx.user_data["order_subcat_services"] = services
         else:
             services = await db.get_services_by_category(cat_key, api_source=api_src)
 
